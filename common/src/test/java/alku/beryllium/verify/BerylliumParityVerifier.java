@@ -13,8 +13,10 @@ public final class BerylliumParityVerifier {
     public static void main(String[] args) {
         verifyJavaKernel();
         verifyJavaKernelDouble();
+        verifyJavaFilterAndSort();
         verifyNativeBridgeFallback();
         verifyNativeBridgeFallbackDouble();
+        verifyNativeBridgeFilterAndSort();
         verifyInvalidInput();
     }
 
@@ -51,6 +53,22 @@ public final class BerylliumParityVerifier {
         assertArrayEquals(expected, actual, "Native bridge double fallback/parity");
     }
 
+    private static void verifyNativeBridgeFilterAndSort() {
+        int[] positions = {0, 64, 0, 3, 68, 4, -1, 63, -2};
+        int[] filtered = NativeBridge.filterWithinRadius(0, 64, 0, 40, positions);
+        int[] sorted = NativeBridge.sortByDistance(0, 64, 0, positions);
+        assertArrayEquals(new int[] {0, 2}, filtered, "Native bridge radius filter");
+        assertArrayEquals(new int[] {0, 2, 1}, sorted, "Native bridge distance sort");
+    }
+
+    private static void verifyJavaFilterAndSort() {
+        int[] positions = {0, 64, 0, 3, 68, 4, -1, 63, -2};
+        int[] filtered = JavaComputeKernels.filterWithinRadius(0, 64, 0, 40, positions);
+        int[] sorted = JavaComputeKernels.sortByDistance(0, 64, 0, positions);
+        assertArrayEquals(new int[] {0, 2}, filtered, "Java radius filter");
+        assertArrayEquals(new int[] {0, 2, 1}, sorted, "Java distance sort");
+    }
+
     private static void verifyInvalidInput() {
         try {
             JavaComputeKernels.squaredDistances(0, 0, 0, new int[] {1, 2});
@@ -62,6 +80,12 @@ public final class BerylliumParityVerifier {
     }
 
     private static void assertArrayEquals(long[] expected, long[] actual, String label) {
+        if (!Arrays.equals(expected, actual)) {
+            throw new AssertionError(label + " mismatch, expected " + Arrays.toString(expected) + " but got " + Arrays.toString(actual));
+        }
+    }
+
+    private static void assertArrayEquals(int[] expected, int[] actual, String label) {
         if (!Arrays.equals(expected, actual)) {
             throw new AssertionError(label + " mismatch, expected " + Arrays.toString(expected) + " but got " + Arrays.toString(actual));
         }

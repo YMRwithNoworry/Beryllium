@@ -1,6 +1,7 @@
 package alku.beryllium.mixin;
 
 import alku.beryllium.compute.NearestEntitySearch;
+import alku.beryllium.compute.TargetingConditionsBatch;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.LivingEntity;
@@ -142,5 +143,33 @@ public interface EntityGetterMixin {
         double z
     ) {
         return NearestEntitySearch.findNearest(candidates, conditions, source, x, y, z);
+    }
+
+    /**
+     * @reason Batch nearby-player filtering through packed coordinates and native distance kernels.
+     * @author YMRwithNoworry
+     */
+    @Overwrite
+    default List<Player> getNearbyPlayers(TargetingConditions conditions, LivingEntity source, AABB box) {
+        return TargetingConditionsBatch.filterNearby(
+            this.players(),
+            conditions,
+            source,
+            player -> box.contains(player.getX(), player.getY(), player.getZ())
+        );
+    }
+
+    /**
+     * @reason Batch nearby-entity filtering through packed coordinates and native distance kernels.
+     * @author YMRwithNoworry
+     */
+    @Overwrite
+    default <T extends LivingEntity> List<T> getNearbyEntities(Class<T> type, TargetingConditions conditions, LivingEntity source, AABB box) {
+        return TargetingConditionsBatch.filterNearby(
+            this.getEntitiesOfClass(type, box, candidate -> true),
+            conditions,
+            source,
+            candidate -> true
+        );
     }
 }

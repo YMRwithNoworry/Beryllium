@@ -7,6 +7,8 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Predicate;
 
 /**
@@ -61,5 +63,42 @@ public final class TargetingConditionsBatch {
         }
 
         return true;
+    }
+
+    public static <T extends LivingEntity> List<T> filterNearby(
+        List<? extends T> candidates,
+        TargetingConditions conditions,
+        @Nullable LivingEntity source,
+        Predicate<? super T> candidatePredicate
+    ) {
+        if (source == null) {
+            return List.copyOf(candidates.stream().filter(candidatePredicate::test).filter(candidate -> pretest(null, candidate, conditions)).toList());
+        }
+
+        List<T> filteredCandidates = new ArrayList<>(candidates.size());
+        for (T candidate : candidates) {
+            if (candidatePredicate.test(candidate) && pretest(source, candidate, conditions)) {
+                filteredCandidates.add(candidate);
+            }
+        }
+
+        if (filteredCandidates.isEmpty()) {
+            return List.of();
+        }
+
+        double[] positions = EntityPacking.packPositions(filteredCandidates);
+        double[] distances = positions.length / 3 >= 32 && alku.beryllium.bridge.NativeBridge.isLoaded()
+            ? alku.beryllium.bridge.NativeBridge.computeSquaredDistances(source.getX(), source.getY(), source.getZ(), positions)
+            : JavaComputeKernels.squaredDistances(source.getX(), source.getY(), source.getZ(), positions);
+
+        List<T> result = new ArrayList<>(filteredCandidates.size());
+        for (int index = 0; index < filteredCandidates.size(); index++) {
+            T candidate = filteredCandidates.get(index);
+            if (testDistance(source, candidate, conditions, distances[index])) {
+                result.add(candidate);
+            }
+        }
+
+        return result;
     }
 }

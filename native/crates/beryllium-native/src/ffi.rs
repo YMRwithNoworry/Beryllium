@@ -2,7 +2,13 @@ use jni::objects::{JClass, JDoubleArray, JIntArray, JLongArray};
 use jni::sys::{jdouble, jint, jlong};
 use jni::JNIEnv;
 
-use crate::{kernel::compute_squared_distances, kernel::compute_squared_distances_f64, NativeError};
+use crate::{
+    kernel::compute_squared_distances,
+    kernel::compute_squared_distances_f64,
+    kernel::filter_within_radius,
+    kernel::sort_by_distance,
+    NativeError,
+};
 
 /// Result code returned by the FFI layer.
 #[repr(i32)]
@@ -54,6 +60,33 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_computeSquaredDis
     output: JDoubleArray<'_>,
 ) -> jint {
     compute_squared_distances_double_jni(env, origin_x, origin_y, origin_z, positions, output).code()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinRadiusNative(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    origin_x: jint,
+    origin_y: jint,
+    origin_z: jint,
+    radius_squared: jlong,
+    positions: JIntArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    filter_within_radius_jni(env, origin_x, origin_y, origin_z, radius_squared, positions, output)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_sortByDistanceNative(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    origin_x: jint,
+    origin_y: jint,
+    origin_z: jint,
+    positions: JIntArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    sort_by_distance_jni(env, origin_x, origin_y, origin_z, positions, output).code()
 }
 
 fn compute_squared_distances_jni(
@@ -130,6 +163,89 @@ fn compute_squared_distances_double_jni(
     }
 
     if env.set_double_array_region(&output, 0, &output_buffer).is_err() {
+        return NativeStatus::Jni;
+    }
+
+    NativeStatus::Ok
+}
+
+fn filter_within_radius_jni(
+    env: JNIEnv<'_>,
+    origin_x: jint,
+    origin_y: jint,
+    origin_z: jint,
+    radius_squared: jlong,
+    positions: JIntArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    let positions_len = match env.get_array_length(&positions) {
+        Ok(value) => value as usize,
+        Err(_) => return NativeStatus::Jni.code(),
+    };
+    let output_len = match env.get_array_length(&output) {
+        Ok(value) => value as usize,
+        Err(_) => return NativeStatus::Jni.code(),
+    };
+
+    let mut positions_buffer = vec![0; positions_len];
+    if env.get_int_array_region(&positions, 0, &mut positions_buffer).is_err() {
+        return NativeStatus::Jni.code();
+    }
+
+    let mut output_buffer = vec![0; output_len];
+    let count = match filter_within_radius(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        &positions_buffer,
+        &mut output_buffer,
+    ) {
+        Ok(value) => value,
+        Err(error) => return NativeStatus::from(error).code(),
+    };
+
+    if env.set_int_array_region(&output, 0, &output_buffer[..count]).is_err() {
+        return NativeStatus::Jni.code();
+    }
+
+    count as jint
+}
+
+fn sort_by_distance_jni(
+    env: JNIEnv<'_>,
+    origin_x: jint,
+    origin_y: jint,
+    origin_z: jint,
+    positions: JIntArray<'_>,
+    output: JIntArray<'_>,
+) -> NativeStatus {
+    let positions_len = match env.get_array_length(&positions) {
+        Ok(value) => value as usize,
+        Err(_) => return NativeStatus::Jni,
+    };
+    let output_len = match env.get_array_length(&output) {
+        Ok(value) => value as usize,
+        Err(_) => return NativeStatus::Jni,
+    };
+
+    let mut positions_buffer = vec![0; positions_len];
+    if env.get_int_array_region(&positions, 0, &mut positions_buffer).is_err() {
+        return NativeStatus::Jni;
+    }
+
+    let mut output_buffer = vec![0; output_len];
+    if let Err(error) = sort_by_distance(
+        origin_x,
+        origin_y,
+        origin_z,
+        &positions_buffer,
+        &mut output_buffer,
+    ) {
+        return error.into();
+    }
+
+    if env.set_int_array_region(&output, 0, &output_buffer).is_err() {
         return NativeStatus::Jni;
     }
 

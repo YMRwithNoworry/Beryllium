@@ -84,6 +84,54 @@ public final class NativeBridge {
         return computeSquaredDistances(origin[0], origin[1], origin[2], positions);
     }
 
+    public static int[] filterWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {
+        JavaComputeKernels.validatePositions(positions);
+        if (radiusSquared < 0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+
+        int[] output = new int[positions.length / 3];
+        if (!isLoaded()) {
+            return JavaComputeKernels.filterWithinRadius(originX, originY, originZ, radiusSquared, positions);
+        }
+
+        int nativeCount = filterWithinRadiusNative(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            output
+        );
+        if (nativeCount < 0) {
+            return JavaComputeKernels.filterWithinRadius(originX, originY, originZ, radiusSquared, positions);
+        }
+
+        return java.util.Arrays.copyOf(output, nativeCount);
+    }
+
+    public static int[] sortByDistance(int originX, int originY, int originZ, int[] positions) {
+        JavaComputeKernels.validatePositions(positions);
+
+        int[] output = new int[positions.length / 3];
+        if (!isLoaded()) {
+            return JavaComputeKernels.sortByDistance(originX, originY, originZ, positions);
+        }
+
+        NativeStatus nativeStatus = NativeStatus.fromCode(sortByDistanceNative(
+            originX,
+            originY,
+            originZ,
+            positions,
+            output
+        ));
+        if (!nativeStatus.isSuccess()) {
+            return JavaComputeKernels.sortByDistance(originX, originY, originZ, positions);
+        }
+
+        return output;
+    }
+
     private static native int computeSquaredDistancesNative(
         int originX,
         int originY,
@@ -98,5 +146,22 @@ public final class NativeBridge {
         double originZ,
         double[] positions,
         double[] output
+    );
+
+    private static native int filterWithinRadiusNative(
+        int originX,
+        int originY,
+        int originZ,
+        long radiusSquared,
+        int[] positions,
+        int[] output
+    );
+
+    private static native int sortByDistanceNative(
+        int originX,
+        int originY,
+        int originZ,
+        int[] positions,
+        int[] output
     );
 }
