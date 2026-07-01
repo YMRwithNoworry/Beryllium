@@ -56,4 +56,13 @@ tasks.register('javaParityTest', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
 }
 
+tasks.register('nativeRuntimeTest', JavaExec) {
+    description = 'Requires the bundled native backend to load and executes every JNI entry point.'
+    group = 'verification'
+    dependsOn tasks.named('testClasses')
+    mainClass = 'alku.beryllium.verify.BerylliumNativeRuntimeVerifier'
+    classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
+}
+
 check.dependsOn tasks.named('javaParityTest')
+check.dependsOn tasks.named('nativeRuntimeTest')

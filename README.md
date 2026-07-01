@@ -57,6 +57,8 @@ gradle :neoforge:runClient
 gradle :common:test :fabric:test :neoforge:test
 ```
 
+当前 `:common:check` 会运行两个 JavaExec 验证器：`javaParityTest` 覆盖 Java fallback/native 语义一致性，`nativeRuntimeTest` 要求打包进 classpath 的 native 后端真实加载并执行所有 JNI 入口。
+
 ### 运行单个测试
 
 ```bash
