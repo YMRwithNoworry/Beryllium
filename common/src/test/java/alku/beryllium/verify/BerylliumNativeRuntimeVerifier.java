@@ -3,6 +3,7 @@ package alku.beryllium.verify;
 import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
+import alku.beryllium.compute.NativeBatchingVerifier;
 import alku.beryllium.compute.TargetingConditionsBatchVerifier;
 
 import java.util.Arrays;
@@ -24,6 +25,7 @@ public final class BerylliumNativeRuntimeVerifier {
         verifyNativeRadiusFilters();
         verifyNativeAabbFilter();
         verifyNativeAabbIntersectionFilter();
+        NativeBatchingVerifier.verifyDefaultThreshold();
         EntitySectionBatchVerifier.verifyAcceptIntersecting();
         EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersecting();

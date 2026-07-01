@@ -13,8 +13,6 @@ import java.util.function.Predicate;
  * Shared nearest-entity search helpers that can switch between Java and Rust batch distance checks.
  */
 public final class NearestEntitySearch {
-    private static final int NATIVE_BATCH_THRESHOLD = 32;
-
     private NearestEntitySearch() {
     }
 
@@ -103,7 +101,7 @@ public final class NearestEntitySearch {
         }
 
         double[] positions = EntityPacking.packPositions(filteredCandidates);
-        int nearestIndex = positions.length / 3 >= NATIVE_BATCH_THRESHOLD && NativeBridge.isLoaded()
+        int nearestIndex = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
             ? findNearestIndexNative(originX, originY, originZ, maxDistanceSquared, includeMaxDistance, positions)
             : findNearestIndexJava(originX, originY, originZ, maxDistanceSquared, includeMaxDistance, positions);
 
@@ -129,7 +127,7 @@ public final class NearestEntitySearch {
 
         double[] positions = EntityPacking.packPositions(filteredCandidates);
 
-        double[] distances = positions.length / 3 >= NATIVE_BATCH_THRESHOLD && NativeBridge.isLoaded()
+        double[] distances = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
             ? NativeBridge.computeSquaredDistances(originX, originY, originZ, positions)
             : JavaComputeKernels.squaredDistances(originX, originY, originZ, positions);
 

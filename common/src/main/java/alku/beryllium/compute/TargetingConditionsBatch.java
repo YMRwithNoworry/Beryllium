@@ -17,8 +17,6 @@ import java.util.function.Predicate;
  * Evaluates TargetingConditions using precomputed squared distances.
  */
 public final class TargetingConditionsBatch {
-    private static final int NATIVE_BATCH_THRESHOLD = 32;
-
     private TargetingConditionsBatch() {
     }
 
@@ -155,7 +153,7 @@ public final class TargetingConditionsBatch {
         }
 
         double[] positions = EntityPacking.packPositions(candidates, xGetter, yGetter, zGetter);
-        int[] boxMatches = positions.length / 3 >= NATIVE_BATCH_THRESHOLD && NativeBridge.isLoaded()
+        int[] boxMatches = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
             ? NativeBridge.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions)
             : JavaComputeKernels.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions);
 
@@ -185,7 +183,7 @@ public final class TargetingConditionsBatch {
 
         if (!accessor.beryllium$testInvisible()) {
             double maxDistance = Math.max(range, 2.0);
-            int[] matches = positions.length / 3 >= NATIVE_BATCH_THRESHOLD && NativeBridge.isLoaded()
+            int[] matches = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
                 ? NativeBridge.filterWithinRadius(source.getX(), source.getY(), source.getZ(), maxDistance * maxDistance, positions)
                 : JavaComputeKernels.filterWithinRadius(source.getX(), source.getY(), source.getZ(), maxDistance * maxDistance, positions);
 
@@ -196,7 +194,7 @@ public final class TargetingConditionsBatch {
             return result;
         }
 
-        double[] distances = positions.length / 3 >= NATIVE_BATCH_THRESHOLD && NativeBridge.isLoaded()
+        double[] distances = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
             ? NativeBridge.computeSquaredDistances(source.getX(), source.getY(), source.getZ(), positions)
             : JavaComputeKernels.squaredDistances(source.getX(), source.getY(), source.getZ(), positions);
 

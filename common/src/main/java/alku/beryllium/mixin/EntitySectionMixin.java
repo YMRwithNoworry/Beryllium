@@ -1,7 +1,7 @@
 package alku.beryllium.mixin;
 
-import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.compute.EntitySectionBatch;
+import alku.beryllium.compute.NativeBatching;
 import net.minecraft.util.AbortableIterationConsumer;
 import net.minecraft.util.ClassInstanceMultiMap;
 import net.minecraft.world.level.entity.EntityAccess;
@@ -17,8 +17,6 @@ import java.util.List;
 
 @Mixin(EntitySection.class)
 public class EntitySectionMixin<T extends EntityAccess> {
-    private static final int BERYLLIUM_NATIVE_BATCH_THRESHOLD = 32;
-
     /**
      * @reason Batch entity bounding-box intersection tests through the native AABB kernel.
      * @author YMRwithNoworry
@@ -53,7 +51,7 @@ public class EntitySectionMixin<T extends EntityAccess> {
     }
 
     private static boolean shouldUseNativeBatch(int candidateCount) {
-        return candidateCount >= BERYLLIUM_NATIVE_BATCH_THRESHOLD && NativeBridge.isLoaded();
+        return NativeBatching.shouldUseNativeEntityBatch(candidateCount);
     }
 
     private static <T extends EntityAccess> AbortableIterationConsumer.Continuation getEntitiesVanilla(
