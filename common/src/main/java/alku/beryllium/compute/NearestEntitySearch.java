@@ -29,11 +29,34 @@ public final class NearestEntitySearch {
         double originY,
         double originZ
     ) {
-        if (source == null || hasConstantVisibilityRange(conditions)) {
+        if (source == null) {
             return findNearestWithinDistance(
                 candidates,
                 candidate -> TargetingConditionsBatch.pretest(source, candidate, conditions),
-                source == null ? -1.0 : constantMaxDistanceSquared(conditions),
+                -1.0,
+                originX,
+                originY,
+                originZ
+            );
+        }
+
+        TargetingConditionsAccessor accessor = (TargetingConditionsAccessor) conditions;
+        if (accessor.beryllium$range() <= 0.0) {
+            return findNearestWithinDistance(
+                candidates,
+                candidate -> TargetingConditionsBatch.pretest(source, candidate, conditions),
+                -1.0,
+                originX,
+                originY,
+                originZ
+            );
+        }
+
+        if (!accessor.beryllium$testInvisible() && !TargetingConditionsBatch.requiresPostDistanceLineOfSight(source, conditions)) {
+            return findNearestWithinDistance(
+                candidates,
+                candidate -> TargetingConditionsBatch.pretestBeforeDistance(source, candidate, conditions),
+                constantMaxDistanceSquared(conditions),
                 originX,
                 originY,
                 originZ
@@ -42,8 +65,10 @@ public final class NearestEntitySearch {
 
         return findNearest(
             candidates,
-            candidate -> TargetingConditionsBatch.pretest(source, candidate, conditions),
-            (candidate, distanceSquared) -> TargetingConditionsBatch.testDistance(source, candidate, conditions, distanceSquared),
+            candidate -> TargetingConditionsBatch.pretestBeforeDistance(source, candidate, conditions),
+            (candidate, distanceSquared) ->
+                TargetingConditionsBatch.testDistance(source, candidate, conditions, distanceSquared)
+                    && TargetingConditionsBatch.posttestAfterDistance(source, candidate, conditions),
             originX,
             originY,
             originZ
@@ -197,11 +222,6 @@ public final class NearestEntitySearch {
         }
 
         return filteredCandidates;
-    }
-
-    private static boolean hasConstantVisibilityRange(TargetingConditions conditions) {
-        TargetingConditionsAccessor accessor = (TargetingConditionsAccessor) conditions;
-        return accessor.beryllium$range() <= 0.0 || !accessor.beryllium$testInvisible();
     }
 
     private static double constantMaxDistanceSquared(TargetingConditions conditions) {

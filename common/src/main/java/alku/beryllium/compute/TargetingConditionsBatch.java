@@ -21,6 +21,10 @@ public final class TargetingConditionsBatch {
     }
 
     public static boolean pretest(@Nullable LivingEntity source, LivingEntity target, TargetingConditions conditions) {
+        return pretestBeforeDistance(source, target, conditions) && posttestAfterDistance(source, target, conditions);
+    }
+
+    static boolean pretestBeforeDistance(@Nullable LivingEntity source, LivingEntity target, TargetingConditions conditions) {
         if (source == target) {
             return false;
         }
@@ -42,11 +46,28 @@ public final class TargetingConditionsBatch {
             return false;
         }
 
-        if (accessor.beryllium$checkLineOfSight() && source instanceof Mob mob && !mob.getSensing().hasLineOfSight(target)) {
+        return true;
+    }
+
+    static boolean posttestAfterDistance(@Nullable LivingEntity source, LivingEntity target, TargetingConditions conditions) {
+        if (!requiresPostDistanceLineOfSight(source, conditions)) {
+            return true;
+        }
+
+        if (!((Mob) source).getSensing().hasLineOfSight(target)) {
             return false;
         }
 
         return true;
+    }
+
+    static boolean requiresPostDistanceLineOfSight(@Nullable LivingEntity source, TargetingConditions conditions) {
+        if (!(source instanceof Mob)) {
+            return false;
+        }
+
+        TargetingConditionsAccessor accessor = (TargetingConditionsAccessor) conditions;
+        return accessor.beryllium$checkLineOfSight();
     }
 
     public static boolean testDistance(@Nullable LivingEntity source, LivingEntity target, TargetingConditions conditions, double distanceSquared) {
@@ -86,7 +107,7 @@ public final class TargetingConditionsBatch {
 
         List<T> filteredCandidates = new ArrayList<>(candidates.size());
         for (T candidate : candidates) {
-            if (candidatePredicate.test(candidate) && pretest(source, candidate, conditions)) {
+            if (candidatePredicate.test(candidate) && pretestBeforeDistance(source, candidate, conditions)) {
                 filteredCandidates.add(candidate);
             }
         }
@@ -129,7 +150,7 @@ public final class TargetingConditionsBatch {
 
         List<T> filteredCandidates = new ArrayList<>(boxedCandidates.size());
         for (T candidate : boxedCandidates) {
-            if (pretest(source, candidate, conditions)) {
+            if (pretestBeforeDistance(source, candidate, conditions)) {
                 filteredCandidates.add(candidate);
             }
         }
@@ -169,6 +190,29 @@ public final class TargetingConditionsBatch {
         return boxedCandidates;
     }
 
+    static <T> List<T> filterByConstantDistanceAndPosttest(
+        List<T> filteredCandidates,
+        double[] positions,
+        double originX,
+        double originY,
+        double originZ,
+        double maxDistanceSquared,
+        Predicate<? super T> posttest
+    ) {
+        int[] matches = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+            ? NativeBridge.filterWithinRadius(originX, originY, originZ, maxDistanceSquared, positions)
+            : JavaComputeKernels.filterWithinRadius(originX, originY, originZ, maxDistanceSquared, positions);
+
+        List<T> result = new ArrayList<>(matches.length);
+        for (int index : matches) {
+            T candidate = filteredCandidates.get(index);
+            if (posttest.test(candidate)) {
+                result.add(candidate);
+            }
+        }
+        return result;
+    }
+
     private static <T extends LivingEntity> List<T> filterByDistance(
         List<T> filteredCandidates,
         TargetingConditions conditions,
@@ -178,20 +222,30 @@ public final class TargetingConditionsBatch {
         TargetingConditionsAccessor accessor = (TargetingConditionsAccessor) conditions;
         double range = accessor.beryllium$range();
         if (range <= 0.0) {
-            return new ArrayList<>(filteredCandidates);
+            if (!requiresPostDistanceLineOfSight(source, conditions)) {
+                return new ArrayList<>(filteredCandidates);
+            }
+
+            List<T> result = new ArrayList<>(filteredCandidates.size());
+            for (T candidate : filteredCandidates) {
+                if (posttestAfterDistance(source, candidate, conditions)) {
+                    result.add(candidate);
+                }
+            }
+            return result;
         }
 
         if (!accessor.beryllium$testInvisible()) {
             double maxDistance = Math.max(range, 2.0);
-            int[] matches = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
-                ? NativeBridge.filterWithinRadius(source.getX(), source.getY(), source.getZ(), maxDistance * maxDistance, positions)
-                : JavaComputeKernels.filterWithinRadius(source.getX(), source.getY(), source.getZ(), maxDistance * maxDistance, positions);
-
-            List<T> result = new ArrayList<>(matches.length);
-            for (int index : matches) {
-                result.add(filteredCandidates.get(index));
-            }
-            return result;
+            return filterByConstantDistanceAndPosttest(
+                filteredCandidates,
+                positions,
+                source.getX(),
+                source.getY(),
+                source.getZ(),
+                maxDistance * maxDistance,
+                candidate -> posttestAfterDistance(source, candidate, conditions)
+            );
         }
 
         double[] distances = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
@@ -201,7 +255,7 @@ public final class TargetingConditionsBatch {
         List<T> result = new ArrayList<>(filteredCandidates.size());
         for (int index = 0; index < filteredCandidates.size(); index++) {
             T candidate = filteredCandidates.get(index);
-            if (testDistance(source, candidate, conditions, distances[index])) {
+            if (testDistance(source, candidate, conditions, distances[index]) && posttestAfterDistance(source, candidate, conditions)) {
                 result.add(candidate);
             }
         }

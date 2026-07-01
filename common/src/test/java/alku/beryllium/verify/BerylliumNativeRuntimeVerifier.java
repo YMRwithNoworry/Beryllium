@@ -36,6 +36,7 @@ public final class BerylliumNativeRuntimeVerifier {
         SupportingBlockSearchVerifier.verifyFindNearest();
         SupportingBlockSearchVerifier.verifyEmptyCandidates();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
+        TargetingConditionsBatchVerifier.verifyFilterByConstantDistanceBeforePosttest();
         verifyNativeSort();
     }
 

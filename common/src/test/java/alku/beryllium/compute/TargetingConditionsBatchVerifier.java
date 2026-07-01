@@ -13,6 +13,39 @@ public final class TargetingConditionsBatchVerifier {
         verifyAabbEdgeSemantics();
     }
 
+    public static void verifyFilterByConstantDistanceBeforePosttest() {
+        List<SimplePoint> points = List.of(
+            new SimplePoint(0, 3.0, 0.0, 0.0),
+            new SimplePoint(1, 1.0, 0.0, 0.0),
+            new SimplePoint(2, 0.0, 2.0, 0.0),
+            new SimplePoint(3, 0.0, 0.0, 1.0)
+        );
+        List<Integer> posttested = new ArrayList<>();
+
+        List<SimplePoint> actual = TargetingConditionsBatch.filterByConstantDistanceAndPosttest(
+            points,
+            EntityPacking.packPositions(points, point -> point.x, point -> point.y, point -> point.z),
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            point -> {
+                posttested.add(point.id);
+                return point.id != 2;
+            }
+        );
+
+        List<SimplePoint> expected = List.of(points.get(1), points.get(3));
+        if (!expected.equals(actual)) {
+            throw new AssertionError("distance-filtered posttest mismatch, expected " + expected + " but got " + actual);
+        }
+
+        List<Integer> expectedPosttested = List.of(1, 2, 3);
+        if (!expectedPosttested.equals(posttested)) {
+            throw new AssertionError("posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
+        }
+    }
+
     private static void verifyFilterCandidatesWithinAabb(List<SimplePoint> points, int minInclusive, int maxExclusive) {
         double min = minInclusive;
         double max = maxExclusive;
@@ -51,12 +84,12 @@ public final class TargetingConditionsBatchVerifier {
     private static List<SimplePoint> sizedPoints(int size) {
         List<SimplePoint> points = new ArrayList<>(size);
         for (int index = 0; index < size; index++) {
-            points.add(new SimplePoint(index, index + 0.25, index + 0.5));
+            points.add(new SimplePoint(index, index, index + 0.25, index + 0.5));
         }
 
         return points;
     }
 
-    private record SimplePoint(double x, double y, double z) {
+    private record SimplePoint(int id, double x, double y, double z) {
     }
 }
