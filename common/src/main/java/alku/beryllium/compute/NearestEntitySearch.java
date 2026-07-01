@@ -47,7 +47,32 @@ public final class NearestEntitySearch {
         double originY,
         double originZ
     ) {
-        return findNearest(candidates, predicate, (candidate, distanceSquared) -> true, originX, originY, originZ);
+        return findNearestWithinDistance(candidates, predicate, -1.0, originX, originY, originZ);
+    }
+
+    public static <T extends LivingEntity> T findNearestWithinDistance(
+        List<? extends T> candidates,
+        Predicate<? super T> predicate,
+        double maxDistanceSquared,
+        double originX,
+        double originY,
+        double originZ
+    ) {
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        List<T> filteredCandidates = filterCandidates(candidates, predicate);
+        if (filteredCandidates.isEmpty()) {
+            return null;
+        }
+
+        double[] positions = EntityPacking.packPositions(filteredCandidates);
+        int nearestIndex = positions.length / 3 >= NATIVE_BATCH_THRESHOLD && NativeBridge.isLoaded()
+            ? NativeBridge.findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions)
+            : JavaComputeKernels.findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions);
+
+        return nearestIndex >= 0 ? filteredCandidates.get(nearestIndex) : null;
     }
 
     public static <T extends LivingEntity> T findNearest(
@@ -62,16 +87,7 @@ public final class NearestEntitySearch {
             return null;
         }
 
-        List<T> filteredCandidates = new ArrayList<>(candidates.size());
-
-        for (T candidate : candidates) {
-            if (!predicate.test(candidate)) {
-                continue;
-            }
-
-            filteredCandidates.add(candidate);
-        }
-
+        List<T> filteredCandidates = filterCandidates(candidates, predicate);
         if (filteredCandidates.isEmpty()) {
             return null;
         }
@@ -97,5 +113,19 @@ public final class NearestEntitySearch {
         }
 
         return nearest;
+    }
+
+    private static <T extends LivingEntity> List<T> filterCandidates(
+        List<? extends T> candidates,
+        Predicate<? super T> predicate
+    ) {
+        List<T> filteredCandidates = new ArrayList<>(candidates.size());
+        for (T candidate : candidates) {
+            if (predicate.test(candidate)) {
+                filteredCandidates.add(candidate);
+            }
+        }
+
+        return filteredCandidates;
     }
 }

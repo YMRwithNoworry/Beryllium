@@ -33,10 +33,10 @@ public interface EntityGetterMixin {
     @Nullable
     default Player getNearestPlayer(double x, double y, double z, double distance, @Nullable Predicate<Entity> predicate) {
         Predicate<Player> effectivePredicate = predicate == null ? player -> true : player -> predicate.test(player);
-        return NearestEntitySearch.findNearest(
+        return NearestEntitySearch.findNearestWithinDistance(
             this.players(),
             effectivePredicate,
-            (candidate, distanceSquared) -> distance < 0.0 || distanceSquared <= distance * distance,
+            distance < 0.0 ? -1.0 : distance * distance,
             x,
             y,
             z
@@ -70,10 +70,10 @@ public interface EntityGetterMixin {
      */
     @Overwrite
     default boolean hasNearbyAlivePlayer(double x, double y, double z, double distance) {
-        return NearestEntitySearch.findNearest(
+        return NearestEntitySearch.findNearestWithinDistance(
             this.players(),
             player -> EntitySelector.NO_SPECTATORS.test(player) && EntitySelector.LIVING_ENTITY_STILL_ALIVE.test(player),
-            (candidate, distanceSquared) -> distance < 0.0 || distanceSquared <= distance * distance,
+            distance < 0.0 ? -1.0 : distance * distance,
             x,
             y,
             z

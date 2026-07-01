@@ -4,7 +4,8 @@ use jni::JNIEnv;
 
 use crate::{
     kernel::compute_squared_distances, kernel::compute_squared_distances_f64,
-    kernel::filter_within_radius, kernel::sort_by_distance, NativeError,
+    kernel::filter_within_radius, kernel::find_nearest_index_f64, kernel::sort_by_distance,
+    NativeError,
 };
 
 /// Result code returned by the FFI layer.
@@ -79,6 +80,26 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinRadiu
         radius_squared,
         positions,
         output,
+    )
+}
+
+#[no_mangle]
+pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_findNearestIndexDoubleNative(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    origin_x: jdouble,
+    origin_y: jdouble,
+    origin_z: jdouble,
+    max_distance_squared: jdouble,
+    positions: JDoubleArray<'_>,
+) -> jint {
+    find_nearest_index_double_jni(
+        env,
+        origin_x,
+        origin_y,
+        origin_z,
+        max_distance_squared,
+        positions,
     )
 }
 
@@ -236,6 +257,40 @@ fn filter_within_radius_jni(
     count as jint
 }
 
+fn find_nearest_index_double_jni(
+    env: JNIEnv<'_>,
+    origin_x: jdouble,
+    origin_y: jdouble,
+    origin_z: jdouble,
+    max_distance_squared: jdouble,
+    positions: JDoubleArray<'_>,
+) -> jint {
+    let positions_len = match env.get_array_length(&positions) {
+        Ok(value) => value as usize,
+        Err(_) => return native_index_error_code(NativeStatus::Jni),
+    };
+
+    let mut positions_buffer = vec![0.0; positions_len];
+    if env
+        .get_double_array_region(&positions, 0, &mut positions_buffer)
+        .is_err()
+    {
+        return native_index_error_code(NativeStatus::Jni);
+    }
+
+    match find_nearest_index_f64(
+        origin_x,
+        origin_y,
+        origin_z,
+        max_distance_squared,
+        &positions_buffer,
+    ) {
+        Ok(Some(index)) => index as jint,
+        Ok(None) => -1,
+        Err(error) => native_index_error_code(error.into()),
+    }
+}
+
 fn sort_by_distance_jni(
     env: JNIEnv<'_>,
     origin_x: jint,
@@ -284,6 +339,10 @@ fn sort_by_distance_jni(
 
 fn cast_i64_to_jlong(values: &[i64]) -> &[jlong] {
     values
+}
+
+fn native_index_error_code(status: NativeStatus) -> jint {
+    -1 - status.code()
 }
 
 impl NativeStatus {

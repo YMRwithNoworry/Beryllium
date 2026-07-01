@@ -13,10 +13,12 @@ public final class BerylliumParityVerifier {
     public static void main(String[] args) {
         verifyJavaKernel();
         verifyJavaKernelDouble();
+        verifyJavaNearestIndex();
         verifyJavaFilterAndSort();
         verifyJavaIntegerOverflowSemantics();
         verifyNativeBridgeFallback();
         verifyNativeBridgeFallbackDouble();
+        verifyNativeBridgeNearestIndex();
         verifyNativeBridgeFilterAndSort();
         verifyNativeBridgeLargeFilterAndSort();
         verifyNativeBridgeIntegerOverflowSemantics();
@@ -56,6 +58,19 @@ public final class BerylliumParityVerifier {
         assertArrayEquals(expected, actual, "Native bridge double fallback/parity");
     }
 
+    private static void verifyNativeBridgeNearestIndex() {
+        double[] positions = descendingAxisPositionsDouble(5000);
+        int nearest = NativeBridge.findNearestIndex(0.0, 0.0, 0.0, 1024.0, positions);
+        int missing = NativeBridge.findNearestIndex(0.0, 0.0, 0.0, 4.0, new double[] {3.0, 0.0, 0.0});
+
+        if (nearest != 4999) {
+            throw new AssertionError("Native bridge nearest index mismatch, expected 4999 but got " + nearest);
+        }
+        if (missing != -1) {
+            throw new AssertionError("Native bridge nearest index radius rejection mismatch, expected -1 but got " + missing);
+        }
+    }
+
     private static void verifyNativeBridgeFilterAndSort() {
         int[] positions = {0, 64, 0, 3, 68, 4, -1, 63, -2};
         int[] filtered = NativeBridge.filterWithinRadius(0, 64, 0, 40, positions);
@@ -85,6 +100,19 @@ public final class BerylliumParityVerifier {
         int[] sorted = JavaComputeKernels.sortByDistance(0, 64, 0, positions);
         assertArrayEquals(new int[] {0, 2}, filtered, "Java radius filter");
         assertArrayEquals(new int[] {0, 2, 1}, sorted, "Java distance sort");
+    }
+
+    private static void verifyJavaNearestIndex() {
+        double[] positions = descendingAxisPositionsDouble(5000);
+        int nearest = JavaComputeKernels.findNearestIndex(0.0, 0.0, 0.0, 1024.0, positions);
+        int missing = JavaComputeKernels.findNearestIndex(0.0, 0.0, 0.0, 4.0, new double[] {3.0, 0.0, 0.0});
+
+        if (nearest != 4999) {
+            throw new AssertionError("Java nearest index mismatch, expected 4999 but got " + nearest);
+        }
+        if (missing != -1) {
+            throw new AssertionError("Java nearest index radius rejection mismatch, expected -1 but got " + missing);
+        }
     }
 
     private static void verifyJavaIntegerOverflowSemantics() {
@@ -123,6 +151,14 @@ public final class BerylliumParityVerifier {
 
     private static int[] descendingAxisPositions(int count) {
         int[] positions = new int[count * 3];
+        for (int index = 0; index < count; index++) {
+            positions[index * 3] = count - 1 - index;
+        }
+        return positions;
+    }
+
+    private static double[] descendingAxisPositionsDouble(int count) {
+        double[] positions = new double[count * 3];
         for (int index = 0; index < count; index++) {
             positions[index * 3] = count - 1 - index;
         }

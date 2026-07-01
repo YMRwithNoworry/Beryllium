@@ -31,6 +31,25 @@ public final class JavaComputeKernels {
         return result;
     }
 
+    public static int findNearestIndex(double originX, double originY, double originZ, double maxDistanceSquared, double[] positions) {
+        validatePositions(positions);
+
+        int nearestIndex = -1;
+        double nearestDistance = -1.0;
+        for (int index = 0; index < positions.length / 3; index++) {
+            double distance = squaredDistanceAt(originX, originY, originZ, positions, index);
+            if (maxDistanceSquared >= 0.0 && distance > maxDistanceSquared) {
+                continue;
+            }
+            if (nearestIndex == -1 || distance < nearestDistance) {
+                nearestIndex = index;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearestIndex;
+    }
+
     public static int[] filterWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {
         validatePositions(positions);
         if (radiusSquared < 0) {
