@@ -14,6 +14,7 @@ public final class BerylliumParityVerifier {
         verifyJavaKernel();
         verifyJavaKernelDouble();
         verifyJavaNearestIndex();
+        verifyJavaNearestIndexTieAndUnbounded();
         verifyJavaFilterAndSort();
         verifyJavaDoubleFilter();
         verifyJavaAabbFilter();
@@ -21,6 +22,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeFallback();
         verifyNativeBridgeFallbackDouble();
         verifyNativeBridgeNearestIndex();
+        verifyNativeBridgeNearestIndexTieAndUnbounded();
         verifyNativeBridgeFilterAndSort();
         verifyNativeBridgeDoubleFilter();
         verifyNativeBridgeAabbFilter();
@@ -73,6 +75,17 @@ public final class BerylliumParityVerifier {
         if (missing != -1) {
             throw new AssertionError("Native bridge nearest index radius rejection mismatch, expected -1 but got " + missing);
         }
+    }
+
+    private static void verifyNativeBridgeNearestIndexTieAndUnbounded() {
+        double[] tiedPositions = {1.0, 0.0, 0.0, -1.0, 0.0, 0.0};
+        int nearest = NativeBridge.findNearestIndex(0.0, 0.0, 0.0, -1.0, tiedPositions);
+        assertEquals(0, nearest, "Native bridge nearest index tie order");
+
+        int bounded = NativeBridge.findNearestIndex(0.0, 0.0, 0.0, 4.0, new double[] {9.0, 0.0, 0.0});
+        int unbounded = NativeBridge.findNearestIndex(0.0, 0.0, 0.0, -1.0, new double[] {9.0, 0.0, 0.0});
+        assertEquals(-1, bounded, "Native bridge nearest bounded rejection");
+        assertEquals(0, unbounded, "Native bridge nearest unbounded acceptance");
     }
 
     private static void verifyNativeBridgeFilterAndSort() {
@@ -163,6 +176,17 @@ public final class BerylliumParityVerifier {
         }
     }
 
+    private static void verifyJavaNearestIndexTieAndUnbounded() {
+        double[] tiedPositions = {1.0, 0.0, 0.0, -1.0, 0.0, 0.0};
+        int nearest = JavaComputeKernels.findNearestIndex(0.0, 0.0, 0.0, -1.0, tiedPositions);
+        assertEquals(0, nearest, "Java nearest index tie order");
+
+        int bounded = JavaComputeKernels.findNearestIndex(0.0, 0.0, 0.0, 4.0, new double[] {9.0, 0.0, 0.0});
+        int unbounded = JavaComputeKernels.findNearestIndex(0.0, 0.0, 0.0, -1.0, new double[] {9.0, 0.0, 0.0});
+        assertEquals(-1, bounded, "Java nearest bounded rejection");
+        assertEquals(0, unbounded, "Java nearest unbounded acceptance");
+    }
+
     private static void verifyJavaIntegerOverflowSemantics() {
         int[] positions = {Integer.MAX_VALUE, 0, 0};
         long[] actual = JavaComputeKernels.squaredDistances(Integer.MIN_VALUE, 0, 0, positions);
@@ -177,6 +201,12 @@ public final class BerylliumParityVerifier {
         }
 
         throw new AssertionError("Expected invalid packed positions to be rejected");
+    }
+
+    private static void assertEquals(int expected, int actual, String label) {
+        if (expected != actual) {
+            throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
+        }
     }
 
     private static void assertArrayEquals(long[] expected, long[] actual, String label) {

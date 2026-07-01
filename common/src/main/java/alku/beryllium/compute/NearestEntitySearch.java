@@ -1,6 +1,7 @@
 package alku.beryllium.compute;
 
 import alku.beryllium.bridge.NativeBridge;
+import alku.beryllium.mixin.TargetingConditionsAccessor;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 
@@ -30,6 +31,17 @@ public final class NearestEntitySearch {
         double originY,
         double originZ
     ) {
+        if (source != null && hasConstantVisibilityRange(conditions)) {
+            return findNearestWithinDistance(
+                candidates,
+                candidate -> TargetingConditionsBatch.pretest(source, candidate, conditions),
+                constantMaxDistanceSquared(conditions),
+                originX,
+                originY,
+                originZ
+            );
+        }
+
         return findNearest(
             candidates,
             candidate -> TargetingConditionsBatch.pretest(source, candidate, conditions),
@@ -127,5 +139,21 @@ public final class NearestEntitySearch {
         }
 
         return filteredCandidates;
+    }
+
+    private static boolean hasConstantVisibilityRange(TargetingConditions conditions) {
+        TargetingConditionsAccessor accessor = (TargetingConditionsAccessor) conditions;
+        return accessor.beryllium$range() <= 0.0 || !accessor.beryllium$testInvisible();
+    }
+
+    private static double constantMaxDistanceSquared(TargetingConditions conditions) {
+        TargetingConditionsAccessor accessor = (TargetingConditionsAccessor) conditions;
+        double range = accessor.beryllium$range();
+        if (range <= 0.0) {
+            return -1.0;
+        }
+
+        double maxDistance = Math.max(range, 2.0);
+        return maxDistance * maxDistance;
     }
 }
