@@ -15,11 +15,13 @@ public final class BerylliumParityVerifier {
         verifyJavaKernelDouble();
         verifyJavaNearestIndex();
         verifyJavaFilterAndSort();
+        verifyJavaDoubleFilter();
         verifyJavaIntegerOverflowSemantics();
         verifyNativeBridgeFallback();
         verifyNativeBridgeFallbackDouble();
         verifyNativeBridgeNearestIndex();
         verifyNativeBridgeFilterAndSort();
+        verifyNativeBridgeDoubleFilter();
         verifyNativeBridgeLargeFilterAndSort();
         verifyNativeBridgeIntegerOverflowSemantics();
         verifyInvalidInput();
@@ -79,6 +81,12 @@ public final class BerylliumParityVerifier {
         assertArrayEquals(new int[] {0, 2, 1}, sorted, "Native bridge distance sort");
     }
 
+    private static void verifyNativeBridgeDoubleFilter() {
+        double[] positions = descendingAxisPositionsDouble(5000);
+        int[] filtered = NativeBridge.filterWithinRadius(0.0, 0.0, 0.0, 1024.0, positions);
+        assertArrayEquals(range(4967, 5000), filtered, "Native bridge large double radius filter");
+    }
+
     private static void verifyNativeBridgeLargeFilterAndSort() {
         int[] positions = descendingAxisPositions(5000);
         int[] filtered = NativeBridge.filterWithinRadius(0, 0, 0, 1024, positions);
@@ -100,6 +108,12 @@ public final class BerylliumParityVerifier {
         int[] sorted = JavaComputeKernels.sortByDistance(0, 64, 0, positions);
         assertArrayEquals(new int[] {0, 2}, filtered, "Java radius filter");
         assertArrayEquals(new int[] {0, 2, 1}, sorted, "Java distance sort");
+    }
+
+    private static void verifyJavaDoubleFilter() {
+        double[] positions = descendingAxisPositionsDouble(5000);
+        int[] filtered = JavaComputeKernels.filterWithinRadius(0.0, 0.0, 0.0, 1024.0, positions);
+        assertArrayEquals(range(4967, 5000), filtered, "Java large double radius filter");
     }
 
     private static void verifyJavaNearestIndex() {

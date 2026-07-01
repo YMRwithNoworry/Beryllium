@@ -50,6 +50,24 @@ public final class JavaComputeKernels {
         return nearestIndex;
     }
 
+    public static int[] filterWithinRadius(double originX, double originY, double originZ, double radiusSquared, double[] positions) {
+        validatePositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+
+        int[] matches = new int[positions.length / 3];
+        int count = 0;
+        for (int index = 0; index < matches.length; index++) {
+            if (squaredDistanceAt(originX, originY, originZ, positions, index) <= radiusSquared) {
+                matches[count] = index;
+                count++;
+            }
+        }
+
+        return Arrays.copyOf(matches, count);
+    }
+
     public static int[] filterWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {
         validatePositions(positions);
         if (radiusSquared < 0) {

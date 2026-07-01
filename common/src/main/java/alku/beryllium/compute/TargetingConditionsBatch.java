@@ -1,6 +1,7 @@
 package alku.beryllium.compute;
 
 import alku.beryllium.mixin.TargetingConditionsAccessor;
+import alku.beryllium.bridge.NativeBridge;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -87,8 +88,27 @@ public final class TargetingConditionsBatch {
         }
 
         double[] positions = EntityPacking.packPositions(filteredCandidates);
-        double[] distances = positions.length / 3 >= 32 && alku.beryllium.bridge.NativeBridge.isLoaded()
-            ? alku.beryllium.bridge.NativeBridge.computeSquaredDistances(source.getX(), source.getY(), source.getZ(), positions)
+        TargetingConditionsAccessor accessor = (TargetingConditionsAccessor) conditions;
+        double range = accessor.beryllium$range();
+        if (range <= 0.0) {
+            return new ArrayList<>(filteredCandidates);
+        }
+
+        if (!accessor.beryllium$testInvisible()) {
+            double maxDistance = Math.max(range, 2.0);
+            int[] matches = positions.length / 3 >= 32 && NativeBridge.isLoaded()
+                ? NativeBridge.filterWithinRadius(source.getX(), source.getY(), source.getZ(), maxDistance * maxDistance, positions)
+                : JavaComputeKernels.filterWithinRadius(source.getX(), source.getY(), source.getZ(), maxDistance * maxDistance, positions);
+
+            List<T> result = new ArrayList<>(matches.length);
+            for (int index : matches) {
+                result.add(filteredCandidates.get(index));
+            }
+            return result;
+        }
+
+        double[] distances = positions.length / 3 >= 32 && NativeBridge.isLoaded()
+            ? NativeBridge.computeSquaredDistances(source.getX(), source.getY(), source.getZ(), positions)
             : JavaComputeKernels.squaredDistances(source.getX(), source.getY(), source.getZ(), positions);
 
         List<T> result = new ArrayList<>(filteredCandidates.size());

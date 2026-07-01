@@ -17,6 +17,7 @@ Beryllium 是一个基于 Architectury 的 Minecraft 多加载器性能模组，
 - 近邻查询优化：`EntityGetter` 的最近玩家/最近实体默认逻辑会在候选集足够大时走 Rust batch 距离计算，并保留原版判定条件。
 - Native filter/sort kernel：半径过滤和按距离排序在大批量输入下使用 Rayon 并行路径，并通过 Java fallback/parity verifier 覆盖原版语义。
 - Native nearest-index kernel：最近玩家与存活玩家检测的简单半径路径可直接在 Rust 中返回最近候选索引，减少 Java 侧整批距离数组扫描。
+- TargetingConditions 批量过滤：不需要隐身可见度修正的固定范围查询会直接走 native double 半径过滤，保留需要逐实体可见度计算的原逻辑。
 
 ## 目录结构
 

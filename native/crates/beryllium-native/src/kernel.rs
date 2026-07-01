@@ -117,6 +117,64 @@ pub fn find_nearest_index_f64(
     Ok(nearest_index)
 }
 
+/// Filters packed f64 x/y/z triples by squared radius and returns the matching indices.
+pub fn filter_within_radius_f64(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    if radius_squared < 0.0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    if positions.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if output.len() < position_count {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    if position_count >= PARALLEL_THRESHOLD {
+        let matches: Vec<Option<i32>> = positions
+            .par_chunks_exact(3)
+            .enumerate()
+            .map(|(index, position)| {
+                if squared_distance_at_f64_slice(origin_x, origin_y, origin_z, position)
+                    <= radius_squared
+                {
+                    Some(index as i32)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut count = 0;
+        for index in matches.into_iter().flatten() {
+            output[count] = index;
+            count += 1;
+        }
+
+        return Ok(count);
+    }
+
+    let mut count = 0;
+    for index in 0..position_count {
+        if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index) <= radius_squared
+        {
+            output[count] = index as i32;
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
 /// Filters packed x/y/z triples by squared radius and returns the matching indices.
 pub fn filter_within_radius(
     origin_x: i32,
@@ -253,6 +311,18 @@ fn squared_distance_at_f64(
     dx * dx + dy * dy + dz * dz
 }
 
+fn squared_distance_at_f64_slice(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    position: &[f64],
+) -> f64 {
+    let dx = position[0] - origin_x;
+    let dy = position[1] - origin_y;
+    let dz = position[2] - origin_z;
+    dx * dx + dy * dy + dz * dz
+}
+
 fn within_max_distance(distance: f64, max_distance_squared: f64) -> bool {
     max_distance_squared < 0.0 || distance <= max_distance_squared
 }
@@ -367,6 +437,29 @@ mod tests {
 
         let nearest = find_nearest_index_f64(0.0, 0.0, 0.0, 1024.0, &positions).unwrap();
         assert_eq!(nearest, Some(4999));
+    }
+
+    #[test]
+    fn filter_within_radius_f64_should_match_reference_indices() {
+        let positions = [0.0, 64.0, 0.0, 3.0, 68.0, 4.0, -1.0, 63.0, -2.0];
+        let mut output = [0; 3];
+        let count =
+            filter_within_radius_f64(0.0, 64.0, 0.0, 40.0, &positions, &mut output).unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(&output[..count], &[0, 2]);
+    }
+
+    #[test]
+    fn filter_within_radius_f64_should_match_parallel_reference_indices() {
+        let positions: Vec<f64> = (0..5000)
+            .flat_map(|index| [(4999 - index) as f64, 0.0, 0.0])
+            .collect();
+        let mut output = vec![0; 5000];
+
+        let count =
+            filter_within_radius_f64(0.0, 0.0, 0.0, 1024.0, &positions, &mut output).unwrap();
+        assert_eq!(count, 33);
+        assert_eq!(&output[..count], &(4967..5000).collect::<Vec<_>>()[..]);
     }
 
     #[test]
