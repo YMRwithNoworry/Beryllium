@@ -3,11 +3,8 @@ use jni::sys::{jdouble, jint, jlong};
 use jni::JNIEnv;
 
 use crate::{
-    kernel::compute_squared_distances,
-    kernel::compute_squared_distances_f64,
-    kernel::filter_within_radius,
-    kernel::sort_by_distance,
-    NativeError,
+    kernel::compute_squared_distances, kernel::compute_squared_distances_f64,
+    kernel::filter_within_radius, kernel::sort_by_distance, NativeError,
 };
 
 /// Result code returned by the FFI layer.
@@ -59,7 +56,8 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_computeSquaredDis
     positions: JDoubleArray<'_>,
     output: JDoubleArray<'_>,
 ) -> jint {
-    compute_squared_distances_double_jni(env, origin_x, origin_y, origin_z, positions, output).code()
+    compute_squared_distances_double_jni(env, origin_x, origin_y, origin_z, positions, output)
+        .code()
 }
 
 #[no_mangle]
@@ -73,7 +71,15 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinRadiu
     positions: JIntArray<'_>,
     output: JIntArray<'_>,
 ) -> jint {
-    filter_within_radius_jni(env, origin_x, origin_y, origin_z, radius_squared, positions, output)
+    filter_within_radius_jni(
+        env,
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        positions,
+        output,
+    )
 }
 
 #[no_mangle]
@@ -107,7 +113,10 @@ fn compute_squared_distances_jni(
     };
 
     let mut positions_buffer = vec![0; positions_len];
-    if env.get_int_array_region(&positions, 0, &mut positions_buffer).is_err() {
+    if env
+        .get_int_array_region(&positions, 0, &mut positions_buffer)
+        .is_err()
+    {
         return NativeStatus::Jni;
     }
 
@@ -122,7 +131,10 @@ fn compute_squared_distances_jni(
         return error.into();
     }
 
-    if env.set_long_array_region(&output, 0, cast_i64_to_jlong(&output_buffer)).is_err() {
+    if env
+        .set_long_array_region(&output, 0, cast_i64_to_jlong(&output_buffer))
+        .is_err()
+    {
         return NativeStatus::Jni;
     }
 
@@ -147,7 +159,10 @@ fn compute_squared_distances_double_jni(
     };
 
     let mut positions_buffer = vec![0.0; positions_len];
-    if env.get_double_array_region(&positions, 0, &mut positions_buffer).is_err() {
+    if env
+        .get_double_array_region(&positions, 0, &mut positions_buffer)
+        .is_err()
+    {
         return NativeStatus::Jni;
     }
 
@@ -162,7 +177,10 @@ fn compute_squared_distances_double_jni(
         return error.into();
     }
 
-    if env.set_double_array_region(&output, 0, &output_buffer).is_err() {
+    if env
+        .set_double_array_region(&output, 0, &output_buffer)
+        .is_err()
+    {
         return NativeStatus::Jni;
     }
 
@@ -188,7 +206,10 @@ fn filter_within_radius_jni(
     };
 
     let mut positions_buffer = vec![0; positions_len];
-    if env.get_int_array_region(&positions, 0, &mut positions_buffer).is_err() {
+    if env
+        .get_int_array_region(&positions, 0, &mut positions_buffer)
+        .is_err()
+    {
         return NativeStatus::Jni.code();
     }
 
@@ -205,7 +226,10 @@ fn filter_within_radius_jni(
         Err(error) => return NativeStatus::from(error).code(),
     };
 
-    if env.set_int_array_region(&output, 0, &output_buffer[..count]).is_err() {
+    if env
+        .set_int_array_region(&output, 0, &output_buffer[..count])
+        .is_err()
+    {
         return NativeStatus::Jni.code();
     }
 
@@ -230,7 +254,10 @@ fn sort_by_distance_jni(
     };
 
     let mut positions_buffer = vec![0; positions_len];
-    if env.get_int_array_region(&positions, 0, &mut positions_buffer).is_err() {
+    if env
+        .get_int_array_region(&positions, 0, &mut positions_buffer)
+        .is_err()
+    {
         return NativeStatus::Jni;
     }
 
@@ -245,7 +272,10 @@ fn sort_by_distance_jni(
         return error.into();
     }
 
-    if env.set_int_array_region(&output, 0, &output_buffer).is_err() {
+    if env
+        .set_int_array_region(&output, 0, &output_buffer)
+        .is_err()
+    {
         return NativeStatus::Jni;
     }
 

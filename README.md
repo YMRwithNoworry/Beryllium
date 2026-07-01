@@ -15,6 +15,7 @@ Beryllium 是一个基于 Architectury 的 Minecraft 多加载器性能模组，
 - `/beryllium native`：显示 Rust native 后端加载状态。
 - `/beryllium distance`：运行批量平方距离计算示例，优先使用 Rust native，native 不可用时自动回退到 Java 参考实现。
 - 近邻查询优化：`EntityGetter` 的最近玩家/最近实体默认逻辑会在候选集足够大时走 Rust batch 距离计算，并保留原版判定条件。
+- Native filter/sort kernel：半径过滤和按距离排序在大批量输入下使用 Rayon 并行路径，并通过 Java fallback/parity verifier 覆盖原版语义。
 
 ## 目录结构
 

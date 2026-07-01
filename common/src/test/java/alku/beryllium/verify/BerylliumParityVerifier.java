@@ -14,9 +14,12 @@ public final class BerylliumParityVerifier {
         verifyJavaKernel();
         verifyJavaKernelDouble();
         verifyJavaFilterAndSort();
+        verifyJavaIntegerOverflowSemantics();
         verifyNativeBridgeFallback();
         verifyNativeBridgeFallbackDouble();
         verifyNativeBridgeFilterAndSort();
+        verifyNativeBridgeLargeFilterAndSort();
+        verifyNativeBridgeIntegerOverflowSemantics();
         verifyInvalidInput();
     }
 
@@ -61,12 +64,33 @@ public final class BerylliumParityVerifier {
         assertArrayEquals(new int[] {0, 2, 1}, sorted, "Native bridge distance sort");
     }
 
+    private static void verifyNativeBridgeLargeFilterAndSort() {
+        int[] positions = descendingAxisPositions(5000);
+        int[] filtered = NativeBridge.filterWithinRadius(0, 0, 0, 1024, positions);
+        int[] sorted = NativeBridge.sortByDistance(0, 0, 0, positions);
+
+        assertArrayEquals(range(4967, 5000), filtered, "Native bridge large radius filter");
+        assertArrayEquals(descendingRange(4999, 0), sorted, "Native bridge large distance sort");
+    }
+
+    private static void verifyNativeBridgeIntegerOverflowSemantics() {
+        int[] positions = {Integer.MAX_VALUE, 0, 0};
+        long[] actual = NativeBridge.computeSquaredDistances(Integer.MIN_VALUE, 0, 0, positions);
+        assertArrayEquals(new long[] {-8_589_934_591L}, actual, "Native bridge integer overflow parity");
+    }
+
     private static void verifyJavaFilterAndSort() {
         int[] positions = {0, 64, 0, 3, 68, 4, -1, 63, -2};
         int[] filtered = JavaComputeKernels.filterWithinRadius(0, 64, 0, 40, positions);
         int[] sorted = JavaComputeKernels.sortByDistance(0, 64, 0, positions);
         assertArrayEquals(new int[] {0, 2}, filtered, "Java radius filter");
         assertArrayEquals(new int[] {0, 2, 1}, sorted, "Java distance sort");
+    }
+
+    private static void verifyJavaIntegerOverflowSemantics() {
+        int[] positions = {Integer.MAX_VALUE, 0, 0};
+        long[] actual = JavaComputeKernels.squaredDistances(Integer.MIN_VALUE, 0, 0, positions);
+        assertArrayEquals(new long[] {-8_589_934_591L}, actual, "Java integer overflow semantics");
     }
 
     private static void verifyInvalidInput() {
@@ -95,5 +119,29 @@ public final class BerylliumParityVerifier {
         if (!Arrays.equals(expected, actual)) {
             throw new AssertionError(label + " mismatch, expected " + Arrays.toString(expected) + " but got " + Arrays.toString(actual));
         }
+    }
+
+    private static int[] descendingAxisPositions(int count) {
+        int[] positions = new int[count * 3];
+        for (int index = 0; index < count; index++) {
+            positions[index * 3] = count - 1 - index;
+        }
+        return positions;
+    }
+
+    private static int[] range(int startInclusive, int endExclusive) {
+        int[] result = new int[endExclusive - startInclusive];
+        for (int index = 0; index < result.length; index++) {
+            result[index] = startInclusive + index;
+        }
+        return result;
+    }
+
+    private static int[] descendingRange(int startInclusive, int endInclusive) {
+        int[] result = new int[startInclusive - endInclusive + 1];
+        for (int index = 0; index < result.length; index++) {
+            result[index] = startInclusive - index;
+        }
+        return result;
     }
 }
