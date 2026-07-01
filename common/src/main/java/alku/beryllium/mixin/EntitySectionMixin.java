@@ -1,7 +1,7 @@
 package alku.beryllium.mixin;
 
 import alku.beryllium.bridge.NativeBridge;
-import alku.beryllium.compute.EntityBoxPacking;
+import alku.beryllium.compute.EntitySectionBatch;
 import net.minecraft.util.AbortableIterationConsumer;
 import net.minecraft.util.ClassInstanceMultiMap;
 import net.minecraft.world.level.entity.EntityAccess;
@@ -30,15 +30,7 @@ public class EntitySectionMixin<T extends EntityAccess> {
             return getEntitiesVanilla(storage, box, consumer);
         }
 
-        List<T> entities = snapshot(storage);
-        int[] matches = intersectingEntityIndices(box, entities);
-        for (int index : matches) {
-            if (consumer.accept(entities.get(index)).shouldAbort()) {
-                return AbortableIterationConsumer.Continuation.ABORT;
-            }
-        }
-
-        return AbortableIterationConsumer.Continuation.CONTINUE;
+        return EntitySectionBatch.acceptIntersecting(snapshot(storage), box, consumer);
     }
 
     /**
@@ -57,31 +49,7 @@ public class EntitySectionMixin<T extends EntityAccess> {
             return getEntitiesVanilla(candidates, entityTypeTest, box, consumer);
         }
 
-        List<U> entities = new ArrayList<>(candidates.size());
-        for (T candidate : candidates) {
-            U castCandidate = entityTypeTest.tryCast(candidate);
-            if (castCandidate != null) {
-                entities.add(castCandidate);
-            }
-        }
-
-        if (entities.isEmpty()) {
-            return AbortableIterationConsumer.Continuation.CONTINUE;
-        }
-
-        int[] matches = intersectingEntityIndices(box, entities);
-        for (int index : matches) {
-            if (consumer.accept(entities.get(index)).shouldAbort()) {
-                return AbortableIterationConsumer.Continuation.ABORT;
-            }
-        }
-
-        return AbortableIterationConsumer.Continuation.CONTINUE;
-    }
-
-    private static <T extends EntityAccess> int[] intersectingEntityIndices(AABB box, List<T> entities) {
-        double[] boxes = EntityBoxPacking.packBoxes(entities);
-        return NativeBridge.filterIntersectingAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, boxes);
+        return EntitySectionBatch.acceptIntersecting(candidates, entityTypeTest, box, consumer);
     }
 
     private static boolean shouldUseNativeBatch(int candidateCount) {

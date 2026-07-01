@@ -2,6 +2,7 @@ package alku.beryllium.verify;
 
 import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
+import alku.beryllium.compute.EntitySectionBatchVerifier;
 import alku.beryllium.compute.JavaComputeKernels;
 import alku.beryllium.compute.TargetingConditionsBatchVerifier;
 
@@ -33,6 +34,9 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeAabbIntersectionFilter();
         verifyNativeBridgeLargeFilterAndSort();
         verifyNativeBridgeIntegerOverflowSemantics();
+        EntitySectionBatchVerifier.verifyAcceptIntersecting();
+        EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();
+        EntitySectionBatchVerifier.verifyTypedAcceptIntersecting();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
         verifyInvalidInput();
     }
