@@ -31,11 +31,11 @@ public final class NearestEntitySearch {
         double originY,
         double originZ
     ) {
-        if (source != null && hasConstantVisibilityRange(conditions)) {
+        if (source == null || hasConstantVisibilityRange(conditions)) {
             return findNearestWithinDistance(
                 candidates,
                 candidate -> TargetingConditionsBatch.pretest(source, candidate, conditions),
-                constantMaxDistanceSquared(conditions),
+                source == null ? -1.0 : constantMaxDistanceSquared(conditions),
                 originX,
                 originY,
                 originZ
