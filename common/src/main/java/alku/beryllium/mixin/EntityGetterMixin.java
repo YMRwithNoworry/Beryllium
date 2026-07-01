@@ -7,6 +7,7 @@ import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.EntityGetter;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.Nullable;
@@ -15,6 +16,7 @@ import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Predicate;
 
 @Mixin(EntityGetter.class)
@@ -166,5 +168,28 @@ public interface EntityGetterMixin {
             source,
             candidate -> true
         );
+    }
+
+    /**
+     * @reason Use the server-side UUID map when available, then preserve the vanilla list scan fallback.
+     * @author YMRwithNoworry
+     */
+    @Overwrite
+    @Nullable
+    default Player getPlayerByUUID(UUID uuid) {
+        if (this instanceof ServerLevel serverLevel) {
+            Player player = serverLevel.getServer().getPlayerList().getPlayer(uuid);
+            if (player != null && player.level() == serverLevel) {
+                return player;
+            }
+        }
+
+        for (Player player : this.players()) {
+            if (uuid.equals(player.getUUID())) {
+                return player;
+            }
+        }
+
+        return null;
     }
 }
