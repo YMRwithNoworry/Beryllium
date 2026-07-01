@@ -157,6 +157,39 @@ public final class NativeBridge {
         return java.util.Arrays.copyOf(output, nativeCount);
     }
 
+    public static int[] filterWithinAabb(
+        double minX,
+        double minY,
+        double minZ,
+        double maxX,
+        double maxY,
+        double maxZ,
+        double[] positions
+    ) {
+        JavaComputeKernels.validatePositions(positions);
+
+        int[] output = new int[positions.length / 3];
+        if (!isLoaded()) {
+            return JavaComputeKernels.filterWithinAabb(minX, minY, minZ, maxX, maxY, maxZ, positions);
+        }
+
+        int nativeCount = filterWithinAabbDoubleNative(
+            minX,
+            minY,
+            minZ,
+            maxX,
+            maxY,
+            maxZ,
+            positions,
+            output
+        );
+        if (nativeCount < 0) {
+            return JavaComputeKernels.filterWithinAabb(minX, minY, minZ, maxX, maxY, maxZ, positions);
+        }
+
+        return java.util.Arrays.copyOf(output, nativeCount);
+    }
+
     public static int[] sortByDistance(int originX, int originY, int originZ, int[] positions) {
         JavaComputeKernels.validatePositions(positions);
 
@@ -219,6 +252,17 @@ public final class NativeBridge {
         double originZ,
         double maxDistanceSquared,
         double[] positions
+    );
+
+    private static native int filterWithinAabbDoubleNative(
+        double minX,
+        double minY,
+        double minZ,
+        double maxX,
+        double maxY,
+        double maxZ,
+        double[] positions,
+        int[] output
     );
 
     private static native int sortByDistanceNative(

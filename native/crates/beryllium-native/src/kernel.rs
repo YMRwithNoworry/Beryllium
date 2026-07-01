@@ -175,6 +175,70 @@ pub fn filter_within_radius_f64(
     Ok(count)
 }
 
+/// Filters packed f64 x/y/z triples by AABB containment and returns the matching indices.
+pub fn filter_within_aabb_f64(
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    if positions.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if output.len() < position_count {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    if position_count >= PARALLEL_THRESHOLD {
+        let matches: Vec<Option<i32>> = positions
+            .par_chunks_exact(3)
+            .enumerate()
+            .map(|(index, position)| {
+                if contains_aabb_position(min_x, min_y, min_z, max_x, max_y, max_z, position) {
+                    Some(index as i32)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut count = 0;
+        for index in matches.into_iter().flatten() {
+            output[count] = index;
+            count += 1;
+        }
+
+        return Ok(count);
+    }
+
+    let mut count = 0;
+    for index in 0..position_count {
+        let offset = index * 3;
+        if contains_aabb(
+            min_x,
+            min_y,
+            min_z,
+            max_x,
+            max_y,
+            max_z,
+            positions[offset],
+            positions[offset + 1],
+            positions[offset + 2],
+        ) {
+            output[count] = index as i32;
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
 /// Filters packed x/y/z triples by squared radius and returns the matching indices.
 pub fn filter_within_radius(
     origin_x: i32,
@@ -323,6 +387,42 @@ fn squared_distance_at_f64_slice(
     dx * dx + dy * dy + dz * dz
 }
 
+fn contains_aabb_position(
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
+    position: &[f64],
+) -> bool {
+    contains_aabb(
+        min_x,
+        min_y,
+        min_z,
+        max_x,
+        max_y,
+        max_z,
+        position[0],
+        position[1],
+        position[2],
+    )
+}
+
+fn contains_aabb(
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+) -> bool {
+    x >= min_x && x < max_x && y >= min_y && y < max_y && z >= min_z && z < max_z
+}
+
 fn within_max_distance(distance: f64, max_distance_squared: f64) -> bool {
     max_distance_squared < 0.0 || distance <= max_distance_squared
 }
@@ -458,6 +558,31 @@ mod tests {
 
         let count =
             filter_within_radius_f64(0.0, 0.0, 0.0, 1024.0, &positions, &mut output).unwrap();
+        assert_eq!(count, 33);
+        assert_eq!(&output[..count], &(4967..5000).collect::<Vec<_>>()[..]);
+    }
+
+    #[test]
+    fn filter_within_aabb_f64_should_match_reference_indices() {
+        let positions = [0.0, 64.0, 0.0, 3.0, 68.0, 4.0, -1.0, 63.0, -2.0];
+        let mut output = [0; 3];
+        let count =
+            filter_within_aabb_f64(-1.0, 63.0, -3.0, 1.0, 65.0, 1.0, &positions, &mut output)
+                .unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(&output[..count], &[0, 2]);
+    }
+
+    #[test]
+    fn filter_within_aabb_f64_should_match_parallel_reference_indices() {
+        let positions: Vec<f64> = (0..5000)
+            .flat_map(|index| [(4999 - index) as f64, 0.0, 0.0])
+            .collect();
+        let mut output = vec![0; 5000];
+
+        let count =
+            filter_within_aabb_f64(0.0, -1.0, -1.0, 33.0, 1.0, 1.0, &positions, &mut output)
+                .unwrap();
         assert_eq!(count, 33);
         assert_eq!(&output[..count], &(4967..5000).collect::<Vec<_>>()[..]);
     }

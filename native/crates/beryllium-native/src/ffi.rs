@@ -4,8 +4,8 @@ use jni::JNIEnv;
 
 use crate::{
     kernel::compute_squared_distances, kernel::compute_squared_distances_f64,
-    kernel::filter_within_radius, kernel::filter_within_radius_f64, kernel::find_nearest_index_f64,
-    kernel::sort_by_distance, NativeError,
+    kernel::filter_within_aabb_f64, kernel::filter_within_radius, kernel::filter_within_radius_f64,
+    kernel::find_nearest_index_f64, kernel::sort_by_distance, NativeError,
 };
 
 /// Result code returned by the FFI layer.
@@ -102,6 +102,24 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinRadiu
         radius_squared,
         positions,
         output,
+    )
+}
+
+#[no_mangle]
+pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinAabbDoubleNative(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    min_x: jdouble,
+    min_y: jdouble,
+    min_z: jdouble,
+    max_x: jdouble,
+    max_y: jdouble,
+    max_z: jdouble,
+    positions: JDoubleArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    filter_within_aabb_double_jni(
+        env, min_x, min_y, min_z, max_x, max_y, max_z, positions, output,
     )
 }
 
@@ -311,6 +329,59 @@ fn filter_within_radius_double_jni(
         origin_y,
         origin_z,
         radius_squared,
+        &positions_buffer,
+        &mut output_buffer,
+    ) {
+        Ok(value) => value,
+        Err(error) => return native_count_error_code(error.into()),
+    };
+
+    if env
+        .set_int_array_region(&output, 0, &output_buffer[..count])
+        .is_err()
+    {
+        return native_count_error_code(NativeStatus::Jni);
+    }
+
+    count as jint
+}
+
+fn filter_within_aabb_double_jni(
+    env: JNIEnv<'_>,
+    min_x: jdouble,
+    min_y: jdouble,
+    min_z: jdouble,
+    max_x: jdouble,
+    max_y: jdouble,
+    max_z: jdouble,
+    positions: JDoubleArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    let positions_len = match env.get_array_length(&positions) {
+        Ok(value) => value as usize,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+    let output_len = match env.get_array_length(&output) {
+        Ok(value) => value as usize,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+
+    let mut positions_buffer = vec![0.0; positions_len];
+    if env
+        .get_double_array_region(&positions, 0, &mut positions_buffer)
+        .is_err()
+    {
+        return native_count_error_code(NativeStatus::Jni);
+    }
+
+    let mut output_buffer = vec![0; output_len];
+    let count = match filter_within_aabb_f64(
+        min_x,
+        min_y,
+        min_z,
+        max_x,
+        max_y,
+        max_z,
         &positions_buffer,
         &mut output_buffer,
     ) {

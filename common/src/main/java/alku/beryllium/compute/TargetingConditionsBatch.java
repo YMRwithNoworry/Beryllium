@@ -6,6 +6,7 @@ import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
+import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -87,6 +88,51 @@ public final class TargetingConditionsBatch {
             return List.of();
         }
 
+        return filterByDistance(filteredCandidates, conditions, source);
+    }
+
+    public static <T extends LivingEntity> List<T> filterNearbyInBox(
+        List<? extends T> candidates,
+        TargetingConditions conditions,
+        @Nullable LivingEntity source,
+        AABB box
+    ) {
+        if (source == null) {
+            return List.copyOf(candidates.stream()
+                .filter(candidate -> box.contains(candidate.getX(), candidate.getY(), candidate.getZ()))
+                .filter(candidate -> pretest(null, candidate, conditions))
+                .toList());
+        }
+
+        double[] positions = EntityPacking.packPositions(candidates);
+        int[] boxMatches = positions.length / 3 >= 32 && NativeBridge.isLoaded()
+            ? NativeBridge.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions)
+            : JavaComputeKernels.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions);
+
+        if (boxMatches.length == 0) {
+            return List.of();
+        }
+
+        List<T> boxedCandidates = new ArrayList<>(boxMatches.length);
+        for (int index : boxMatches) {
+            T candidate = candidates.get(index);
+            if (pretest(source, candidate, conditions)) {
+                boxedCandidates.add(candidate);
+            }
+        }
+
+        if (boxedCandidates.isEmpty()) {
+            return List.of();
+        }
+
+        return filterByDistance(boxedCandidates, conditions, source);
+    }
+
+    private static <T extends LivingEntity> List<T> filterByDistance(
+        List<T> filteredCandidates,
+        TargetingConditions conditions,
+        LivingEntity source
+    ) {
         double[] positions = EntityPacking.packPositions(filteredCandidates);
         TargetingConditionsAccessor accessor = (TargetingConditionsAccessor) conditions;
         double range = accessor.beryllium$range();

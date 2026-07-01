@@ -16,12 +16,14 @@ public final class BerylliumParityVerifier {
         verifyJavaNearestIndex();
         verifyJavaFilterAndSort();
         verifyJavaDoubleFilter();
+        verifyJavaAabbFilter();
         verifyJavaIntegerOverflowSemantics();
         verifyNativeBridgeFallback();
         verifyNativeBridgeFallbackDouble();
         verifyNativeBridgeNearestIndex();
         verifyNativeBridgeFilterAndSort();
         verifyNativeBridgeDoubleFilter();
+        verifyNativeBridgeAabbFilter();
         verifyNativeBridgeLargeFilterAndSort();
         verifyNativeBridgeIntegerOverflowSemantics();
         verifyInvalidInput();
@@ -87,6 +89,22 @@ public final class BerylliumParityVerifier {
         assertArrayEquals(range(4967, 5000), filtered, "Native bridge large double radius filter");
     }
 
+    private static void verifyNativeBridgeAabbFilter() {
+        double[] edgePositions = {
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0
+        };
+        int[] edgeFiltered = NativeBridge.filterWithinAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, edgePositions);
+        assertArrayEquals(new int[] {0}, edgeFiltered, "Native bridge AABB edge semantics");
+
+        double[] positions = descendingAxisPositionsDouble(5000);
+        int[] filtered = NativeBridge.filterWithinAabb(0.0, -1.0, -1.0, 33.0, 1.0, 1.0, positions);
+        assertArrayEquals(range(4967, 5000), filtered, "Native bridge large AABB filter");
+    }
+
     private static void verifyNativeBridgeLargeFilterAndSort() {
         int[] positions = descendingAxisPositions(5000);
         int[] filtered = NativeBridge.filterWithinRadius(0, 0, 0, 1024, positions);
@@ -114,6 +132,22 @@ public final class BerylliumParityVerifier {
         double[] positions = descendingAxisPositionsDouble(5000);
         int[] filtered = JavaComputeKernels.filterWithinRadius(0.0, 0.0, 0.0, 1024.0, positions);
         assertArrayEquals(range(4967, 5000), filtered, "Java large double radius filter");
+    }
+
+    private static void verifyJavaAabbFilter() {
+        double[] edgePositions = {
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0
+        };
+        int[] edgeFiltered = JavaComputeKernels.filterWithinAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, edgePositions);
+        assertArrayEquals(new int[] {0}, edgeFiltered, "Java AABB edge semantics");
+
+        double[] positions = descendingAxisPositionsDouble(5000);
+        int[] filtered = JavaComputeKernels.filterWithinAabb(0.0, -1.0, -1.0, 33.0, 1.0, 1.0, positions);
+        assertArrayEquals(range(4967, 5000), filtered, "Java large AABB filter");
     }
 
     private static void verifyJavaNearestIndex() {

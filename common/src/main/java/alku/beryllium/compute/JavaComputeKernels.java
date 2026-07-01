@@ -68,6 +68,29 @@ public final class JavaComputeKernels {
         return Arrays.copyOf(matches, count);
     }
 
+    public static int[] filterWithinAabb(
+        double minX,
+        double minY,
+        double minZ,
+        double maxX,
+        double maxY,
+        double maxZ,
+        double[] positions
+    ) {
+        validatePositions(positions);
+
+        int[] matches = new int[positions.length / 3];
+        int count = 0;
+        for (int index = 0; index < matches.length; index++) {
+            if (containsAabb(minX, minY, minZ, maxX, maxY, maxZ, positions, index)) {
+                matches[count] = index;
+                count++;
+            }
+        }
+
+        return Arrays.copyOf(matches, count);
+    }
+
     public static int[] filterWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {
         validatePositions(positions);
         if (radiusSquared < 0) {
@@ -134,5 +157,22 @@ public final class JavaComputeKernels {
         double dy = positions[offset + 1] - originY;
         double dz = positions[offset + 2] - originZ;
         return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static boolean containsAabb(
+        double minX,
+        double minY,
+        double minZ,
+        double maxX,
+        double maxY,
+        double maxZ,
+        double[] positions,
+        int index
+    ) {
+        int offset = index * 3;
+        double x = positions[offset];
+        double y = positions[offset + 1];
+        double z = positions[offset + 2];
+        return x >= minX && x < maxX && y >= minY && y < maxY && z >= minZ && z < maxZ;
     }
 }

@@ -151,12 +151,7 @@ public interface EntityGetterMixin {
      */
     @Overwrite
     default List<Player> getNearbyPlayers(TargetingConditions conditions, LivingEntity source, AABB box) {
-        return TargetingConditionsBatch.filterNearby(
-            this.players(),
-            conditions,
-            source,
-            player -> box.contains(player.getX(), player.getY(), player.getZ())
-        );
+        return TargetingConditionsBatch.filterNearbyInBox(this.players(), conditions, source, box);
     }
 
     /**
