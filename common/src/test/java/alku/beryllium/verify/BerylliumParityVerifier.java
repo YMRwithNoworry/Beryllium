@@ -15,6 +15,7 @@ public final class BerylliumParityVerifier {
         verifyJavaKernelDouble();
         verifyJavaNearestIndex();
         verifyJavaNearestIndexTieAndUnbounded();
+        verifyJavaNearestIndexExclusive();
         verifyJavaFilterAndSort();
         verifyJavaDoubleFilter();
         verifyJavaAabbFilter();
@@ -23,6 +24,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeFallbackDouble();
         verifyNativeBridgeNearestIndex();
         verifyNativeBridgeNearestIndexTieAndUnbounded();
+        verifyNativeBridgeNearestIndexExclusive();
         verifyNativeBridgeFilterAndSort();
         verifyNativeBridgeDoubleFilter();
         verifyNativeBridgeAabbFilter();
@@ -86,6 +88,14 @@ public final class BerylliumParityVerifier {
         int unbounded = NativeBridge.findNearestIndex(0.0, 0.0, 0.0, -1.0, new double[] {9.0, 0.0, 0.0});
         assertEquals(-1, bounded, "Native bridge nearest bounded rejection");
         assertEquals(0, unbounded, "Native bridge nearest unbounded acceptance");
+    }
+
+    private static void verifyNativeBridgeNearestIndexExclusive() {
+        int boundary = NativeBridge.findNearestIndexExclusive(0.0, 0.0, 0.0, 4.0, new double[] {2.0, 0.0, 0.0, 1.0, 0.0, 0.0});
+        assertEquals(1, boundary, "Native bridge exclusive nearest boundary");
+
+        int unbounded = NativeBridge.findNearestIndexExclusive(0.0, 0.0, 0.0, -1.0, new double[] {2.0, 0.0, 0.0});
+        assertEquals(0, unbounded, "Native bridge exclusive nearest unbounded");
     }
 
     private static void verifyNativeBridgeFilterAndSort() {
@@ -185,6 +195,14 @@ public final class BerylliumParityVerifier {
         int unbounded = JavaComputeKernels.findNearestIndex(0.0, 0.0, 0.0, -1.0, new double[] {9.0, 0.0, 0.0});
         assertEquals(-1, bounded, "Java nearest bounded rejection");
         assertEquals(0, unbounded, "Java nearest unbounded acceptance");
+    }
+
+    private static void verifyJavaNearestIndexExclusive() {
+        int boundary = JavaComputeKernels.findNearestIndexExclusive(0.0, 0.0, 0.0, 4.0, new double[] {2.0, 0.0, 0.0, 1.0, 0.0, 0.0});
+        assertEquals(1, boundary, "Java exclusive nearest boundary");
+
+        int unbounded = JavaComputeKernels.findNearestIndexExclusive(0.0, 0.0, 0.0, -1.0, new double[] {2.0, 0.0, 0.0});
+        assertEquals(0, unbounded, "Java exclusive nearest unbounded");
     }
 
     private static void verifyJavaIntegerOverflowSemantics() {

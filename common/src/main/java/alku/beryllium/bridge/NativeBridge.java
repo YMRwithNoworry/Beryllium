@@ -105,6 +105,27 @@ public final class NativeBridge {
         return nativeIndex;
     }
 
+    public static int findNearestIndexExclusive(double originX, double originY, double originZ, double maxDistanceSquared, double[] positions) {
+        JavaComputeKernels.validatePositions(positions);
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.findNearestIndexExclusive(originX, originY, originZ, maxDistanceSquared, positions);
+        }
+
+        int nativeIndex = findNearestIndexExclusiveDoubleNative(
+            originX,
+            originY,
+            originZ,
+            maxDistanceSquared,
+            positions
+        );
+        if (nativeIndex < -1) {
+            return JavaComputeKernels.findNearestIndexExclusive(originX, originY, originZ, maxDistanceSquared, positions);
+        }
+
+        return nativeIndex;
+    }
+
     public static int[] filterWithinRadius(double originX, double originY, double originZ, double radiusSquared, double[] positions) {
         JavaComputeKernels.validatePositions(positions);
         if (radiusSquared < 0.0) {
@@ -247,6 +268,14 @@ public final class NativeBridge {
     );
 
     private static native int findNearestIndexDoubleNative(
+        double originX,
+        double originY,
+        double originZ,
+        double maxDistanceSquared,
+        double[] positions
+    );
+
+    private static native int findNearestIndexExclusiveDoubleNative(
         double originX,
         double originY,
         double originZ,

@@ -70,6 +70,29 @@ public final class NearestEntitySearch {
         double originY,
         double originZ
     ) {
+        return findNearestWithinDistance(candidates, predicate, maxDistanceSquared, true, originX, originY, originZ);
+    }
+
+    public static <T extends LivingEntity> T findNearestWithinExclusiveDistance(
+        List<? extends T> candidates,
+        Predicate<? super T> predicate,
+        double maxDistanceSquared,
+        double originX,
+        double originY,
+        double originZ
+    ) {
+        return findNearestWithinDistance(candidates, predicate, maxDistanceSquared, false, originX, originY, originZ);
+    }
+
+    private static <T extends LivingEntity> T findNearestWithinDistance(
+        List<? extends T> candidates,
+        Predicate<? super T> predicate,
+        double maxDistanceSquared,
+        boolean includeMaxDistance,
+        double originX,
+        double originY,
+        double originZ
+    ) {
         if (candidates.isEmpty()) {
             return null;
         }
@@ -81,8 +104,8 @@ public final class NearestEntitySearch {
 
         double[] positions = EntityPacking.packPositions(filteredCandidates);
         int nearestIndex = positions.length / 3 >= NATIVE_BATCH_THRESHOLD && NativeBridge.isLoaded()
-            ? NativeBridge.findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions)
-            : JavaComputeKernels.findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions);
+            ? findNearestIndexNative(originX, originY, originZ, maxDistanceSquared, includeMaxDistance, positions)
+            : findNearestIndexJava(originX, originY, originZ, maxDistanceSquared, includeMaxDistance, positions);
 
         return nearestIndex >= 0 ? filteredCandidates.get(nearestIndex) : null;
     }
@@ -155,5 +178,31 @@ public final class NearestEntitySearch {
 
         double maxDistance = Math.max(range, 2.0);
         return maxDistance * maxDistance;
+    }
+
+    private static int findNearestIndexNative(
+        double originX,
+        double originY,
+        double originZ,
+        double maxDistanceSquared,
+        boolean includeMaxDistance,
+        double[] positions
+    ) {
+        return includeMaxDistance
+            ? NativeBridge.findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions)
+            : NativeBridge.findNearestIndexExclusive(originX, originY, originZ, maxDistanceSquared, positions);
+    }
+
+    private static int findNearestIndexJava(
+        double originX,
+        double originY,
+        double originZ,
+        double maxDistanceSquared,
+        boolean includeMaxDistance,
+        double[] positions
+    ) {
+        return includeMaxDistance
+            ? JavaComputeKernels.findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions)
+            : JavaComputeKernels.findNearestIndexExclusive(originX, originY, originZ, maxDistanceSquared, positions);
     }
 }

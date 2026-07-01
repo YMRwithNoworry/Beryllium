@@ -76,6 +76,42 @@ pub fn find_nearest_index_f64(
     max_distance_squared: f64,
     positions: &[f64],
 ) -> Result<Option<usize>, NativeError> {
+    find_nearest_index_f64_by_limit(
+        origin_x,
+        origin_y,
+        origin_z,
+        max_distance_squared,
+        positions,
+        within_max_distance,
+    )
+}
+
+/// Finds the nearest packed f64 x/y/z triple within an optional exclusive squared radius.
+pub fn find_nearest_index_f64_exclusive(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    max_distance_squared: f64,
+    positions: &[f64],
+) -> Result<Option<usize>, NativeError> {
+    find_nearest_index_f64_by_limit(
+        origin_x,
+        origin_y,
+        origin_z,
+        max_distance_squared,
+        positions,
+        within_max_distance_exclusive,
+    )
+}
+
+fn find_nearest_index_f64_by_limit(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    max_distance_squared: f64,
+    positions: &[f64],
+    within_limit: fn(f64, f64) -> bool,
+) -> Result<Option<usize>, NativeError> {
     if positions.len() % 3 != 0 {
         return Err(NativeError::InvalidInput);
     }
@@ -91,7 +127,7 @@ pub fn find_nearest_index_f64(
             .filter_map(|index| {
                 let distance =
                     squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
-                if within_max_distance(distance, max_distance_squared) {
+                if within_limit(distance, max_distance_squared) {
                     Some((index, distance))
                 } else {
                     None
@@ -105,7 +141,7 @@ pub fn find_nearest_index_f64(
     let mut nearest_distance = 0.0;
     for index in 0..position_count {
         let distance = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
-        if !within_max_distance(distance, max_distance_squared) {
+        if !within_limit(distance, max_distance_squared) {
             continue;
         }
         if nearest_index.is_none() || distance < nearest_distance {
@@ -427,6 +463,10 @@ fn within_max_distance(distance: f64, max_distance_squared: f64) -> bool {
     max_distance_squared < 0.0 || distance <= max_distance_squared
 }
 
+fn within_max_distance_exclusive(distance: f64, max_distance_squared: f64) -> bool {
+    max_distance_squared < 0.0 || distance < max_distance_squared
+}
+
 fn nearest_distance_pair(left: (usize, f64), right: (usize, f64)) -> (usize, f64) {
     if right.1 < left.1 || (right.1 == left.1 && right.0 < left.0) {
         right
@@ -527,6 +567,27 @@ mod tests {
         let positions = [3.0, 0.0, 0.0];
         let nearest = find_nearest_index_f64(0.0, 0.0, 0.0, 4.0, &positions).unwrap();
         assert_eq!(nearest, None);
+    }
+
+    #[test]
+    fn find_nearest_index_f64_should_include_radius_boundary() {
+        let positions = [2.0, 0.0, 0.0];
+        let nearest = find_nearest_index_f64(0.0, 0.0, 0.0, 4.0, &positions).unwrap();
+        assert_eq!(nearest, Some(0));
+    }
+
+    #[test]
+    fn find_nearest_index_f64_exclusive_should_reject_radius_boundary() {
+        let positions = [2.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let nearest = find_nearest_index_f64_exclusive(0.0, 0.0, 0.0, 4.0, &positions).unwrap();
+        assert_eq!(nearest, Some(1));
+    }
+
+    #[test]
+    fn find_nearest_index_f64_exclusive_should_accept_unbounded_positions() {
+        let positions = [2.0, 0.0, 0.0];
+        let nearest = find_nearest_index_f64_exclusive(0.0, 0.0, 0.0, -1.0, &positions).unwrap();
+        assert_eq!(nearest, Some(0));
     }
 
     #[test]

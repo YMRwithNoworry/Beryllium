@@ -32,13 +32,28 @@ public final class JavaComputeKernels {
     }
 
     public static int findNearestIndex(double originX, double originY, double originZ, double maxDistanceSquared, double[] positions) {
+        return findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions, true);
+    }
+
+    public static int findNearestIndexExclusive(double originX, double originY, double originZ, double maxDistanceSquared, double[] positions) {
+        return findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions, false);
+    }
+
+    private static int findNearestIndex(
+        double originX,
+        double originY,
+        double originZ,
+        double maxDistanceSquared,
+        double[] positions,
+        boolean includeMaxDistance
+    ) {
         validatePositions(positions);
 
         int nearestIndex = -1;
         double nearestDistance = -1.0;
         for (int index = 0; index < positions.length / 3; index++) {
             double distance = squaredDistanceAt(originX, originY, originZ, positions, index);
-            if (maxDistanceSquared >= 0.0 && distance > maxDistanceSquared) {
+            if (maxDistanceSquared >= 0.0 && exceedsMaxDistance(distance, maxDistanceSquared, includeMaxDistance)) {
                 continue;
             }
             if (nearestIndex == -1 || distance < nearestDistance) {
@@ -157,6 +172,10 @@ public final class JavaComputeKernels {
         double dy = positions[offset + 1] - originY;
         double dz = positions[offset + 2] - originZ;
         return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static boolean exceedsMaxDistance(double distance, double maxDistanceSquared, boolean includeMaxDistance) {
+        return includeMaxDistance ? distance > maxDistanceSquared : distance >= maxDistanceSquared;
     }
 
     private static boolean containsAabb(
