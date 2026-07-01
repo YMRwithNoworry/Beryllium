@@ -4,9 +4,9 @@ use jni::JNIEnv;
 
 use crate::{
     kernel::compute_squared_distances, kernel::compute_squared_distances_f64,
-    kernel::filter_within_aabb_f64, kernel::filter_within_radius, kernel::filter_within_radius_f64,
-    kernel::find_nearest_index_f64, kernel::find_nearest_index_f64_exclusive,
-    kernel::sort_by_distance, NativeError,
+    kernel::filter_intersecting_aabb_f64, kernel::filter_within_aabb_f64,
+    kernel::filter_within_radius, kernel::filter_within_radius_f64, kernel::find_nearest_index_f64,
+    kernel::find_nearest_index_f64_exclusive, kernel::sort_by_distance, NativeError,
 };
 
 /// Result code returned by the FFI layer.
@@ -121,6 +121,32 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinAabbD
 ) -> jint {
     filter_within_aabb_double_jni(
         env, min_x, min_y, min_z, max_x, max_y, max_z, positions, output,
+    )
+}
+
+#[no_mangle]
+pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterIntersectingAabbDoubleNative(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    query_min_x: jdouble,
+    query_min_y: jdouble,
+    query_min_z: jdouble,
+    query_max_x: jdouble,
+    query_max_y: jdouble,
+    query_max_z: jdouble,
+    boxes: JDoubleArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    filter_intersecting_aabb_double_jni(
+        env,
+        query_min_x,
+        query_min_y,
+        query_min_z,
+        query_max_x,
+        query_max_y,
+        query_max_z,
+        boxes,
+        output,
     )
 }
 
@@ -404,6 +430,59 @@ fn filter_within_aabb_double_jni(
         max_y,
         max_z,
         &positions_buffer,
+        &mut output_buffer,
+    ) {
+        Ok(value) => value,
+        Err(error) => return native_count_error_code(error.into()),
+    };
+
+    if env
+        .set_int_array_region(&output, 0, &output_buffer[..count])
+        .is_err()
+    {
+        return native_count_error_code(NativeStatus::Jni);
+    }
+
+    count as jint
+}
+
+fn filter_intersecting_aabb_double_jni(
+    env: JNIEnv<'_>,
+    query_min_x: jdouble,
+    query_min_y: jdouble,
+    query_min_z: jdouble,
+    query_max_x: jdouble,
+    query_max_y: jdouble,
+    query_max_z: jdouble,
+    boxes: JDoubleArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    let boxes_len = match env.get_array_length(&boxes) {
+        Ok(value) => value as usize,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+    let output_len = match env.get_array_length(&output) {
+        Ok(value) => value as usize,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+
+    let mut boxes_buffer = vec![0.0; boxes_len];
+    if env
+        .get_double_array_region(&boxes, 0, &mut boxes_buffer)
+        .is_err()
+    {
+        return native_count_error_code(NativeStatus::Jni);
+    }
+
+    let mut output_buffer = vec![0; output_len];
+    let count = match filter_intersecting_aabb_f64(
+        query_min_x,
+        query_min_y,
+        query_min_z,
+        query_max_x,
+        query_max_y,
+        query_max_z,
+        &boxes_buffer,
         &mut output_buffer,
     ) {
         Ok(value) => value,

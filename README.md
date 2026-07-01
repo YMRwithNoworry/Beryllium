@@ -20,6 +20,7 @@ Beryllium 是一个基于 Architectury 的 Minecraft 多加载器性能模组，
 - Native nearest-index kernel：最近玩家、存活玩家检测、无源 TargetingConditions 查询，以及不需要逐实体可见度距离修正的 TargetingConditions 最近实体查询可直接在 Rust 中返回最近候选索引，减少 Java 侧整批距离数组扫描。
 - TargetingConditions 批量过滤：不需要隐身可见度修正的固定范围查询会直接走 native double 半径过滤，保留需要逐实体可见度计算的原逻辑。
 - Native AABB filter：附近玩家查询会把玩家坐标批量传入 Rust 执行 AABB contains 过滤，空源和有源 TargetingConditions 路径共用批量 AABB helper，并保持原版 `min <= value < max` 边界语义。
+- Native entity-section intersection：底层 `EntitySection` 的实体包围盒相交查询会在候选数足够大时批量传入 Rust 过滤，再按原顺序调用原版 consumer，保留 abort 行为和 `AABB.intersects` 边界语义。
 
 ## 目录结构
 

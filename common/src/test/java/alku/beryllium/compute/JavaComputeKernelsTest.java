@@ -29,4 +29,23 @@ class JavaComputeKernelsTest {
     void squaredDistancesDoubleShouldRejectUnpackedPositions() {
         assertThrows(IllegalArgumentException.class, () -> JavaComputeKernels.squaredDistances(0.0, 0.0, 0.0, new double[] {1.0, 2.0}));
     }
+
+    @Test
+    void filterIntersectingAabbShouldUseVanillaEdgeSemantics() {
+        double[] boxes = {
+            0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+            1.0, 0.0, 0.0, 2.0, 1.0, 1.0,
+            -1.0, -1.0, -1.0, 0.0, 0.0, 0.0,
+            0.5, 0.5, 0.5, 1.5, 1.5, 1.5
+        };
+
+        int[] result = JavaComputeKernels.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, boxes);
+
+        assertArrayEquals(new int[] {0, 3}, result);
+    }
+
+    @Test
+    void filterIntersectingAabbShouldRejectUnpackedBoxes() {
+        assertThrows(IllegalArgumentException.class, () -> JavaComputeKernels.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, new double[] {1.0, 2.0, 3.0}));
+    }
 }

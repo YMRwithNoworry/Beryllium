@@ -22,6 +22,7 @@ public final class BerylliumNativeRuntimeVerifier {
         verifyNativeNearestIndexExclusive();
         verifyNativeRadiusFilters();
         verifyNativeAabbFilter();
+        verifyNativeAabbIntersectionFilter();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
         verifyNativeSort();
     }
@@ -88,6 +89,16 @@ public final class BerylliumNativeRuntimeVerifier {
             0.5, 0.5, 0.5
         });
         assertArrayEquals(new int[] {0, 2}, matches, "native AABB filter");
+    }
+
+    private static void verifyNativeAabbIntersectionFilter() {
+        int[] matches = NativeBridge.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, new double[] {
+            0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+            1.0, 0.0, 0.0, 2.0, 1.0, 1.0,
+            -1.0, -1.0, -1.0, 0.0, 0.0, 0.0,
+            0.5, 0.5, 0.5, 1.5, 1.5, 1.5
+        });
+        assertArrayEquals(new int[] {0, 3}, matches, "native AABB intersection filter");
     }
 
     private static void verifyNativeSort() {

@@ -106,6 +106,29 @@ public final class JavaComputeKernels {
         return Arrays.copyOf(matches, count);
     }
 
+    public static int[] filterIntersectingAabb(
+        double queryMinX,
+        double queryMinY,
+        double queryMinZ,
+        double queryMaxX,
+        double queryMaxY,
+        double queryMaxZ,
+        double[] boxes
+    ) {
+        validateBoxes(boxes);
+
+        int[] matches = new int[boxes.length / 6];
+        int count = 0;
+        for (int index = 0; index < matches.length; index++) {
+            if (intersectsAabb(queryMinX, queryMinY, queryMinZ, queryMaxX, queryMaxY, queryMaxZ, boxes, index)) {
+                matches[count] = index;
+                count++;
+            }
+        }
+
+        return Arrays.copyOf(matches, count);
+    }
+
     public static int[] filterWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {
         validatePositions(positions);
         if (radiusSquared < 0) {
@@ -158,6 +181,12 @@ public final class JavaComputeKernels {
         }
     }
 
+    public static void validateBoxes(double[] boxes) {
+        if (boxes == null || boxes.length % 6 != 0) {
+            throw new IllegalArgumentException("boxes must contain min/max x/y/z sextuples");
+        }
+    }
+
     private static long squaredDistanceAt(int originX, int originY, int originZ, int[] positions, int index) {
         int offset = index * 3;
         long dx = (long) positions[offset] - originX;
@@ -193,5 +222,24 @@ public final class JavaComputeKernels {
         double y = positions[offset + 1];
         double z = positions[offset + 2];
         return x >= minX && x < maxX && y >= minY && y < maxY && z >= minZ && z < maxZ;
+    }
+
+    private static boolean intersectsAabb(
+        double queryMinX,
+        double queryMinY,
+        double queryMinZ,
+        double queryMaxX,
+        double queryMaxY,
+        double queryMaxZ,
+        double[] boxes,
+        int index
+    ) {
+        int offset = index * 6;
+        return boxes[offset + 3] > queryMinX
+            && boxes[offset] < queryMaxX
+            && boxes[offset + 4] > queryMinY
+            && boxes[offset + 1] < queryMaxY
+            && boxes[offset + 5] > queryMinZ
+            && boxes[offset + 2] < queryMaxZ;
     }
 }

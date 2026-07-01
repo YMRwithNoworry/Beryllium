@@ -20,6 +20,7 @@ public final class BerylliumParityVerifier {
         verifyJavaFilterAndSort();
         verifyJavaDoubleFilter();
         verifyJavaAabbFilter();
+        verifyJavaAabbIntersectionFilter();
         verifyJavaIntegerOverflowSemantics();
         verifyNativeBridgeFallback();
         verifyNativeBridgeFallbackDouble();
@@ -29,6 +30,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeFilterAndSort();
         verifyNativeBridgeDoubleFilter();
         verifyNativeBridgeAabbFilter();
+        verifyNativeBridgeAabbIntersectionFilter();
         verifyNativeBridgeLargeFilterAndSort();
         verifyNativeBridgeIntegerOverflowSemantics();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
@@ -130,6 +132,21 @@ public final class BerylliumParityVerifier {
         assertArrayEquals(range(4967, 5000), filtered, "Native bridge large AABB filter");
     }
 
+    private static void verifyNativeBridgeAabbIntersectionFilter() {
+        double[] boxes = {
+            0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+            1.0, 0.0, 0.0, 2.0, 1.0, 1.0,
+            -1.0, -1.0, -1.0, 0.0, 0.0, 0.0,
+            0.5, 0.5, 0.5, 1.5, 1.5, 1.5
+        };
+        int[] edgeFiltered = NativeBridge.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, boxes);
+        assertArrayEquals(new int[] {0, 3}, edgeFiltered, "Native bridge AABB intersection edge semantics");
+
+        double[] largeBoxes = descendingAxisBoxesDouble(5000);
+        int[] filtered = NativeBridge.filterIntersectingAabb(0.25, -1.0, -1.0, 33.25, 2.0, 2.0, largeBoxes);
+        assertArrayEquals(range(4966, 5000), filtered, "Native bridge large AABB intersection filter");
+    }
+
     private static void verifyNativeBridgeLargeFilterAndSort() {
         int[] positions = descendingAxisPositions(5000);
         int[] filtered = NativeBridge.filterWithinRadius(0, 0, 0, 1024, positions);
@@ -173,6 +190,21 @@ public final class BerylliumParityVerifier {
         double[] positions = descendingAxisPositionsDouble(5000);
         int[] filtered = JavaComputeKernels.filterWithinAabb(0.0, -1.0, -1.0, 33.0, 1.0, 1.0, positions);
         assertArrayEquals(range(4967, 5000), filtered, "Java large AABB filter");
+    }
+
+    private static void verifyJavaAabbIntersectionFilter() {
+        double[] boxes = {
+            0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+            1.0, 0.0, 0.0, 2.0, 1.0, 1.0,
+            -1.0, -1.0, -1.0, 0.0, 0.0, 0.0,
+            0.5, 0.5, 0.5, 1.5, 1.5, 1.5
+        };
+        int[] edgeFiltered = JavaComputeKernels.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, boxes);
+        assertArrayEquals(new int[] {0, 3}, edgeFiltered, "Java AABB intersection edge semantics");
+
+        double[] largeBoxes = descendingAxisBoxesDouble(5000);
+        int[] filtered = JavaComputeKernels.filterIntersectingAabb(0.25, -1.0, -1.0, 33.25, 2.0, 2.0, largeBoxes);
+        assertArrayEquals(range(4966, 5000), filtered, "Java large AABB intersection filter");
     }
 
     private static void verifyJavaNearestIndex() {
@@ -261,6 +293,21 @@ public final class BerylliumParityVerifier {
             positions[index * 3] = count - 1 - index;
         }
         return positions;
+    }
+
+    private static double[] descendingAxisBoxesDouble(int count) {
+        double[] boxes = new double[count * 6];
+        for (int index = 0; index < count; index++) {
+            double min = count - 1 - index;
+            int offset = index * 6;
+            boxes[offset] = min;
+            boxes[offset + 1] = 0.0;
+            boxes[offset + 2] = 0.0;
+            boxes[offset + 3] = min + 0.5;
+            boxes[offset + 4] = 1.0;
+            boxes[offset + 5] = 1.0;
+        }
+        return boxes;
     }
 
     private static int[] range(int startInclusive, int endExclusive) {

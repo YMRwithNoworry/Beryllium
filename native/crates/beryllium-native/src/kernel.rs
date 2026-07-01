@@ -275,6 +275,81 @@ pub fn filter_within_aabb_f64(
     Ok(count)
 }
 
+/// Filters packed f64 AABB min/max sextuples by intersection with one query AABB.
+pub fn filter_intersecting_aabb_f64(
+    query_min_x: f64,
+    query_min_y: f64,
+    query_min_z: f64,
+    query_max_x: f64,
+    query_max_y: f64,
+    query_max_z: f64,
+    boxes: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    if boxes.len() % 6 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let box_count = boxes.len() / 6;
+    if output.len() < box_count {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    if box_count >= PARALLEL_THRESHOLD {
+        let matches: Vec<Option<i32>> = boxes
+            .par_chunks_exact(6)
+            .enumerate()
+            .map(|(index, entity_box)| {
+                if intersects_aabb_box(
+                    query_min_x,
+                    query_min_y,
+                    query_min_z,
+                    query_max_x,
+                    query_max_y,
+                    query_max_z,
+                    entity_box,
+                ) {
+                    Some(index as i32)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut count = 0;
+        for index in matches.into_iter().flatten() {
+            output[count] = index;
+            count += 1;
+        }
+
+        return Ok(count);
+    }
+
+    let mut count = 0;
+    for index in 0..box_count {
+        let offset = index * 6;
+        if intersects_aabb(
+            query_min_x,
+            query_min_y,
+            query_min_z,
+            query_max_x,
+            query_max_y,
+            query_max_z,
+            boxes[offset],
+            boxes[offset + 1],
+            boxes[offset + 2],
+            boxes[offset + 3],
+            boxes[offset + 4],
+            boxes[offset + 5],
+        ) {
+            output[count] = index as i32;
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
 /// Filters packed x/y/z triples by squared radius and returns the matching indices.
 pub fn filter_within_radius(
     origin_x: i32,
@@ -457,6 +532,53 @@ fn contains_aabb(
     z: f64,
 ) -> bool {
     x >= min_x && x < max_x && y >= min_y && y < max_y && z >= min_z && z < max_z
+}
+
+fn intersects_aabb_box(
+    query_min_x: f64,
+    query_min_y: f64,
+    query_min_z: f64,
+    query_max_x: f64,
+    query_max_y: f64,
+    query_max_z: f64,
+    entity_box: &[f64],
+) -> bool {
+    intersects_aabb(
+        query_min_x,
+        query_min_y,
+        query_min_z,
+        query_max_x,
+        query_max_y,
+        query_max_z,
+        entity_box[0],
+        entity_box[1],
+        entity_box[2],
+        entity_box[3],
+        entity_box[4],
+        entity_box[5],
+    )
+}
+
+fn intersects_aabb(
+    query_min_x: f64,
+    query_min_y: f64,
+    query_min_z: f64,
+    query_max_x: f64,
+    query_max_y: f64,
+    query_max_z: f64,
+    box_min_x: f64,
+    box_min_y: f64,
+    box_min_z: f64,
+    box_max_x: f64,
+    box_max_y: f64,
+    box_max_z: f64,
+) -> bool {
+    box_max_x > query_min_x
+        && box_min_x < query_max_x
+        && box_max_y > query_min_y
+        && box_min_y < query_max_y
+        && box_max_z > query_min_z
+        && box_min_z < query_max_z
 }
 
 fn within_max_distance(distance: f64, max_distance_squared: f64) -> bool {
@@ -646,6 +768,36 @@ mod tests {
                 .unwrap();
         assert_eq!(count, 33);
         assert_eq!(&output[..count], &(4967..5000).collect::<Vec<_>>()[..]);
+    }
+
+    #[test]
+    fn filter_intersecting_aabb_f64_should_match_reference_indices() {
+        let boxes = [
+            0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 2.0, 1.0, 1.0, -1.0, -1.0, -1.0, 0.0, 0.0,
+            0.0, 0.5, 0.5, 0.5, 1.5, 1.5, 1.5,
+        ];
+        let mut output = [0; 4];
+        let count = filter_intersecting_aabb_f64(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, &boxes, &mut output)
+            .unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(&output[..count], &[0, 3]);
+    }
+
+    #[test]
+    fn filter_intersecting_aabb_f64_should_match_parallel_reference_indices() {
+        let boxes: Vec<f64> = (0..5000)
+            .flat_map(|index| {
+                let min = (4999 - index) as f64;
+                [min, 0.0, 0.0, min + 0.5, 1.0, 1.0]
+            })
+            .collect();
+        let mut output = vec![0; 5000];
+
+        let count =
+            filter_intersecting_aabb_f64(0.25, -1.0, -1.0, 33.25, 2.0, 2.0, &boxes, &mut output)
+                .unwrap();
+        assert_eq!(count, 34);
+        assert_eq!(&output[..count], &(4966..5000).collect::<Vec<_>>()[..]);
     }
 
     #[test]
