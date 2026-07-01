@@ -126,6 +126,27 @@ public final class NativeBridge {
         return nativeIndex;
     }
 
+    public static boolean hasAnyWithinRadiusExclusive(double originX, double originY, double originZ, double maxDistanceSquared, double[] positions) {
+        JavaComputeKernels.validatePositions(positions);
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.hasAnyWithinRadiusExclusive(originX, originY, originZ, maxDistanceSquared, positions);
+        }
+
+        int nativeResult = hasAnyWithinRadiusExclusiveDoubleNative(
+            originX,
+            originY,
+            originZ,
+            maxDistanceSquared,
+            positions
+        );
+        if (nativeResult < 0) {
+            return JavaComputeKernels.hasAnyWithinRadiusExclusive(originX, originY, originZ, maxDistanceSquared, positions);
+        }
+
+        return nativeResult != 0;
+    }
+
     public static int findNearestBlockCenterIndex(double originX, double originY, double originZ, int[] positions) {
         JavaComputeKernels.validatePositions(positions);
 
@@ -345,6 +366,14 @@ public final class NativeBridge {
     );
 
     private static native int findNearestIndexExclusiveDoubleNative(
+        double originX,
+        double originY,
+        double originZ,
+        double maxDistanceSquared,
+        double[] positions
+    );
+
+    private static native int hasAnyWithinRadiusExclusiveDoubleNative(
         double originX,
         double originY,
         double originZ,

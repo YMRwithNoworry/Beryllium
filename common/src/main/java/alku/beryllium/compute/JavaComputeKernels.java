@@ -39,6 +39,19 @@ public final class JavaComputeKernels {
         return findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions, false);
     }
 
+    public static boolean hasAnyWithinRadiusExclusive(double originX, double originY, double originZ, double maxDistanceSquared, double[] positions) {
+        validatePositions(positions);
+
+        for (int index = 0; index < positions.length / 3; index++) {
+            double distance = squaredDistanceAt(originX, originY, originZ, positions, index);
+            if (maxDistanceSquared < 0.0 || distance < maxDistanceSquared) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static int findNearestBlockCenterIndex(double originX, double originY, double originZ, int[] positions) {
         validatePositions(positions);
 

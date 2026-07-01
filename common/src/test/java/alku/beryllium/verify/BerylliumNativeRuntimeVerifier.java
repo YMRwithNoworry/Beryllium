@@ -23,6 +23,7 @@ public final class BerylliumNativeRuntimeVerifier {
         verifyNativeDoubleDistance();
         verifyNativeNearestIndex();
         verifyNativeNearestIndexExclusive();
+        verifyNativeAnyWithinRadiusExclusive();
         verifyNativeNearestBlockCenterIndex();
         verifyNativeRadiusFilters();
         verifyNativeAabbFilter();
@@ -75,6 +76,19 @@ public final class BerylliumNativeRuntimeVerifier {
             2.0, 0.0, 0.0
         });
         assertEquals(0, unbounded, "native exclusive nearest unbounded");
+    }
+
+    private static void verifyNativeAnyWithinRadiusExclusive() {
+        boolean boundary = NativeBridge.hasAnyWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, new double[] {
+            2.0, 0.0, 0.0
+        });
+        assertEquals(false, boundary, "native exclusive any boundary");
+
+        boolean inner = NativeBridge.hasAnyWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, new double[] {
+            2.0, 0.0, 0.0,
+            1.0, 0.0, 0.0
+        });
+        assertEquals(true, inner, "native exclusive any inner position");
     }
 
     private static void verifyNativeNearestBlockCenterIndex() {
@@ -132,6 +146,12 @@ public final class BerylliumNativeRuntimeVerifier {
     }
 
     private static void assertEquals(int expected, int actual, String label) {
+        if (expected != actual) {
+            throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
+        }
+    }
+
+    private static void assertEquals(boolean expected, boolean actual, String label) {
         if (expected != actual) {
             throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
         }

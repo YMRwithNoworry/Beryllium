@@ -72,14 +72,14 @@ public interface EntityGetterMixin {
      */
     @Overwrite
     default boolean hasNearbyAlivePlayer(double x, double y, double z, double distance) {
-        return NearestEntitySearch.findNearestWithinExclusiveDistance(
+        return NearestEntitySearch.hasAnyWithinExclusiveDistance(
             this.players(),
             player -> EntitySelector.NO_SPECTATORS.test(player) && EntitySelector.LIVING_ENTITY_STILL_ALIVE.test(player),
             distance < 0.0 ? -1.0 : distance * distance,
             x,
             y,
             z
-        ) != null;
+        );
     }
 
     /**

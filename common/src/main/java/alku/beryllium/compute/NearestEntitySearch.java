@@ -82,6 +82,43 @@ public final class NearestEntitySearch {
         return findNearestWithinDistance(candidates, predicate, maxDistanceSquared, false, originX, originY, originZ);
     }
 
+    public static <T extends LivingEntity> boolean hasAnyWithinExclusiveDistance(
+        List<? extends T> candidates,
+        Predicate<? super T> predicate,
+        double maxDistanceSquared,
+        double originX,
+        double originY,
+        double originZ
+    ) {
+        if (candidates.isEmpty()) {
+            return false;
+        }
+
+        if (!NativeBatching.shouldUseNativeEntityBatch(candidates.size())) {
+            for (T candidate : candidates) {
+                if (
+                    predicate.test(candidate)
+                        && (maxDistanceSquared < 0.0 || candidate.distanceToSqr(originX, originY, originZ) < maxDistanceSquared)
+                ) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        List<T> filteredCandidates = filterCandidates(candidates, predicate);
+        if (filteredCandidates.isEmpty()) {
+            return false;
+        }
+        if (maxDistanceSquared < 0.0) {
+            return true;
+        }
+
+        double[] positions = EntityPacking.packPositions(filteredCandidates);
+        return NativeBridge.hasAnyWithinRadiusExclusive(originX, originY, originZ, maxDistanceSquared, positions);
+    }
+
     private static <T extends LivingEntity> T findNearestWithinDistance(
         List<? extends T> candidates,
         Predicate<? super T> predicate,

@@ -104,6 +104,39 @@ pub fn find_nearest_index_f64_exclusive(
     )
 }
 
+/// Returns whether any packed f64 x/y/z triple is within an optional exclusive squared radius.
+pub fn has_any_within_radius_f64_exclusive(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    max_distance_squared: f64,
+    positions: &[f64],
+) -> Result<bool, NativeError> {
+    if !positions.len().is_multiple_of(3) {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if position_count == 0 {
+        return Ok(false);
+    }
+    if max_distance_squared < 0.0 {
+        return Ok(true);
+    }
+
+    if position_count >= PARALLEL_THRESHOLD {
+        return Ok(positions.par_chunks_exact(3).any(|position| {
+            squared_distance_at_f64_slice(origin_x, origin_y, origin_z, position)
+                < max_distance_squared
+        }));
+    }
+
+    Ok((0..position_count).any(|index| {
+        squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index)
+            < max_distance_squared
+    }))
+}
+
 /// Finds the nearest packed block position by squared distance to its block center.
 pub fn find_nearest_block_center_index(
     origin_x: f64,
@@ -805,6 +838,41 @@ mod tests {
         let positions = [2.0, 0.0, 0.0];
         let nearest = find_nearest_index_f64_exclusive(0.0, 0.0, 0.0, -1.0, &positions).unwrap();
         assert_eq!(nearest, Some(0));
+    }
+
+    #[test]
+    fn has_any_within_radius_f64_exclusive_should_reject_radius_boundary() {
+        let positions = [2.0, 0.0, 0.0];
+        let has_match =
+            has_any_within_radius_f64_exclusive(0.0, 0.0, 0.0, 4.0, &positions).unwrap();
+        assert!(!has_match);
+    }
+
+    #[test]
+    fn has_any_within_radius_f64_exclusive_should_accept_inner_position() {
+        let positions = [2.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let has_match =
+            has_any_within_radius_f64_exclusive(0.0, 0.0, 0.0, 4.0, &positions).unwrap();
+        assert!(has_match);
+    }
+
+    #[test]
+    fn has_any_within_radius_f64_exclusive_should_accept_unbounded_positions() {
+        let positions = [9.0, 0.0, 0.0];
+        let has_match =
+            has_any_within_radius_f64_exclusive(0.0, 0.0, 0.0, -1.0, &positions).unwrap();
+        assert!(has_match);
+    }
+
+    #[test]
+    fn has_any_within_radius_f64_exclusive_should_match_parallel_reference() {
+        let positions: Vec<f64> = (0..5000)
+            .flat_map(|index| [(4999 - index) as f64, 0.0, 0.0])
+            .collect();
+
+        let has_match =
+            has_any_within_radius_f64_exclusive(0.0, 0.0, 0.0, 4.0, &positions).unwrap();
+        assert!(has_match);
     }
 
     #[test]

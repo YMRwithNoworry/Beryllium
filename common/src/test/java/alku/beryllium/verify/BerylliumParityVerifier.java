@@ -20,6 +20,7 @@ public final class BerylliumParityVerifier {
         verifyJavaNearestIndex();
         verifyJavaNearestIndexTieAndUnbounded();
         verifyJavaNearestIndexExclusive();
+        verifyJavaAnyWithinRadiusExclusive();
         verifyJavaNearestBlockCenterIndex();
         verifyJavaFilterAndSort();
         verifyJavaDoubleFilter();
@@ -31,6 +32,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeNearestIndex();
         verifyNativeBridgeNearestIndexTieAndUnbounded();
         verifyNativeBridgeNearestIndexExclusive();
+        verifyNativeBridgeAnyWithinRadiusExclusive();
         verifyNativeBridgeNearestBlockCenterIndex();
         verifyNativeBridgeFilterAndSort();
         verifyNativeBridgeDoubleFilter();
@@ -112,6 +114,18 @@ public final class BerylliumParityVerifier {
 
         int unbounded = NativeBridge.findNearestIndexExclusive(0.0, 0.0, 0.0, -1.0, new double[] {2.0, 0.0, 0.0});
         assertEquals(0, unbounded, "Native bridge exclusive nearest unbounded");
+    }
+
+    private static void verifyNativeBridgeAnyWithinRadiusExclusive() {
+        boolean boundary = NativeBridge.hasAnyWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, new double[] {2.0, 0.0, 0.0});
+        boolean inner = NativeBridge.hasAnyWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, new double[] {2.0, 0.0, 0.0, 1.0, 0.0, 0.0});
+        boolean unbounded = NativeBridge.hasAnyWithinRadiusExclusive(0.0, 0.0, 0.0, -1.0, new double[] {9.0, 0.0, 0.0});
+        boolean emptyUnbounded = NativeBridge.hasAnyWithinRadiusExclusive(0.0, 0.0, 0.0, -1.0, new double[] {});
+
+        assertEquals(false, boundary, "Native bridge exclusive any boundary");
+        assertEquals(true, inner, "Native bridge exclusive any inner position");
+        assertEquals(true, unbounded, "Native bridge exclusive any unbounded");
+        assertEquals(false, emptyUnbounded, "Native bridge exclusive any empty unbounded");
     }
 
     private static void verifyNativeBridgeNearestBlockCenterIndex() {
@@ -259,6 +273,18 @@ public final class BerylliumParityVerifier {
         assertEquals(0, unbounded, "Java exclusive nearest unbounded");
     }
 
+    private static void verifyJavaAnyWithinRadiusExclusive() {
+        boolean boundary = JavaComputeKernels.hasAnyWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, new double[] {2.0, 0.0, 0.0});
+        boolean inner = JavaComputeKernels.hasAnyWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, new double[] {2.0, 0.0, 0.0, 1.0, 0.0, 0.0});
+        boolean unbounded = JavaComputeKernels.hasAnyWithinRadiusExclusive(0.0, 0.0, 0.0, -1.0, new double[] {9.0, 0.0, 0.0});
+        boolean emptyUnbounded = JavaComputeKernels.hasAnyWithinRadiusExclusive(0.0, 0.0, 0.0, -1.0, new double[] {});
+
+        assertEquals(false, boundary, "Java exclusive any boundary");
+        assertEquals(true, inner, "Java exclusive any inner position");
+        assertEquals(true, unbounded, "Java exclusive any unbounded");
+        assertEquals(false, emptyUnbounded, "Java exclusive any empty unbounded");
+    }
+
     private static void verifyJavaNearestBlockCenterIndex() {
         int nearest = JavaComputeKernels.findNearestBlockCenterIndex(0.5, 0.5, 0.5, new int[] {1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 1});
         assertEquals(2, nearest, "Java nearest block center tie order");
@@ -284,6 +310,12 @@ public final class BerylliumParityVerifier {
     }
 
     private static void assertEquals(int expected, int actual, String label) {
+        if (expected != actual) {
+            throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
+        }
+    }
+
+    private static void assertEquals(boolean expected, boolean actual, String label) {
         if (expected != actual) {
             throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
         }
