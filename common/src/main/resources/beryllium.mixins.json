@@ -13,6 +13,7 @@
     "NearestItemSensorMixin",
     "NearestLivingEntitySensorMixin",
     "PlayerSensorMixin",
+    "TemptingSensorMixin",
     "TargetingConditionsAccessor"
   ],
   "injectors": {
