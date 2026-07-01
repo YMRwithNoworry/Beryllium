@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "crates/beryllium-native",
+]
+resolver = "2"

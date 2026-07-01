@@ -1,0 +1,59 @@
+architectury {
+    common rootProject.enabled_platforms.split(',')
+}
+
+def nativeLibraryName = System.mapLibraryName('beryllium_native')
+def nativeOsName = System.getProperty('os.name').toLowerCase()
+def nativeArchName = System.getProperty('os.arch').toLowerCase()
+def nativeResourceOs = nativeOsName.contains('win') ? 'windows' : (nativeOsName.contains('mac') || nativeOsName.contains('darwin') ? 'macos' : 'linux')
+def nativeResourceArch = (nativeArchName == 'amd64' || nativeArchName == 'x86_64') ? 'x86_64' : (nativeArchName == 'aarch64' || nativeArchName == 'arm64' ? 'aarch64' : nativeArchName)
+def nativeGeneratedResources = file("$buildDir/generated/nativeResources")
+
+tasks.register('cargoBuildNative', Exec) {
+    workingDir rootProject.file('native')
+    commandLine 'cargo', 'build', '--release'
+
+    inputs.files fileTree(rootProject.file('native')) {
+        include 'Cargo.toml'
+        include 'crates/**'
+        exclude 'target/**'
+    }
+    outputs.file rootProject.file("native/target/release/${nativeLibraryName}")
+}
+
+tasks.register('copyNativeLibrary', Copy) {
+    dependsOn tasks.named('cargoBuildNative')
+    from(rootProject.file('native/target/release')) {
+        include nativeLibraryName
+    }
+    into file("${nativeGeneratedResources}/assets/beryllium/native/${nativeResourceOs}/${nativeResourceArch}")
+}
+
+sourceSets.main.resources.srcDir nativeGeneratedResources
+processResources.dependsOn tasks.named('copyNativeLibrary')
+
+dependencies {
+    // We depend on Fabric Loader here to use the Fabric @Environment annotations,
+    // which get remapped to the correct annotations on each platform.
+    // Do NOT use other classes from Fabric Loader.
+    modImplementation "net.fabricmc:fabric-loader:$rootProject.fabric_loader_version"
+
+    modImplementation "dev.architectury:architectury:$rootProject.architectury_api_version"
+
+    testImplementation platform("org.junit:junit-bom:5.10.2")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+}
+
+tasks.withType(Test).configureEach {
+    enabled = false
+}
+
+tasks.register('javaParityTest', JavaExec) {
+    description = 'Runs Java parity checks without Loom test runner interference.'
+    group = 'verification'
+    dependsOn tasks.named('testClasses')
+    mainClass = 'alku.beryllium.verify.BerylliumParityVerifier'
+    classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
+}
+
+check.dependsOn tasks.named('javaParityTest')

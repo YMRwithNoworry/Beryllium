@@ -1,0 +1,13 @@
+[package]
+name = "beryllium-native"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni = "0.21"
+rayon = "1.10"
+thiserror = "1"
