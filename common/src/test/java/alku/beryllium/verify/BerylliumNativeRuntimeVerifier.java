@@ -4,6 +4,7 @@ import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
 import alku.beryllium.compute.NativeBatchingVerifier;
+import alku.beryllium.compute.SupportingBlockSearchVerifier;
 import alku.beryllium.compute.TargetingConditionsBatchVerifier;
 
 import java.util.Arrays;
@@ -31,6 +32,8 @@ public final class BerylliumNativeRuntimeVerifier {
         EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersecting();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersectingAbort();
+        SupportingBlockSearchVerifier.verifyFindNearest();
+        SupportingBlockSearchVerifier.verifyEmptyCandidates();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
         verifyNativeSort();
     }

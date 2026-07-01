@@ -12,7 +12,7 @@ pub fn compute_squared_distances(
     positions: &[i32],
     output: &mut [i64],
 ) -> Result<(), NativeError> {
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
