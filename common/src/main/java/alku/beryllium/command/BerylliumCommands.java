@@ -1,6 +1,7 @@
 package alku.beryllium.command;
 
 import alku.beryllium.bridge.NativeBridge;
+import alku.beryllium.compute.NativeBatching;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -26,7 +27,12 @@ public final class BerylliumCommands {
     }
 
     private static int showNativeStatus(CommandSourceStack source) {
-        source.sendSuccess(() -> Component.literal("Beryllium native backend: " + NativeBridge.status()), false);
+        source.sendSuccess(() -> Component.literal(
+            "Beryllium native backend: "
+                + NativeBridge.status()
+                + ", entity batch threshold: "
+                + NativeBatching.entityBatchThreshold()
+        ), false);
         return NativeBridge.isLoaded() ? 1 : 0;
     }
 

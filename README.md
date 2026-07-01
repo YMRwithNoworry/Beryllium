@@ -98,3 +98,7 @@ cargo build --manifest-path native/Cargo.toml --release
 2. mod jar 中的 `assets/beryllium/native/<os>/<arch>/` 资源
 3. `System.loadLibrary("beryllium_native")`
 4. 全部失败时使用 Java fallback
+
+## Native 调优参数
+
+- `-Dberyllium.native.entityBatchThreshold=<正整数>`：控制实体批处理跨 JNI 的最小候选数，默认 `32`。数值越低越激进，数值越高越保守。`/beryllium native` 会显示当前阈值。
