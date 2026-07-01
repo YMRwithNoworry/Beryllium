@@ -63,13 +63,18 @@ public final class EntitySectionBatchVerifier {
     public static void verifyTypedAcceptIntersecting() {
         List<SimpleEntityAccess> entities = sizedEntities(40);
         AABB query = new AABB(0.25, -1.0, -1.0, 33.25, 2.0, 2.0);
+        List<Integer> casts = new ArrayList<>();
         EntityTypeTest<EntityAccess, SimpleEntityAccess> evenIdType = new EntityTypeTest<>() {
             @Override
             public SimpleEntityAccess tryCast(EntityAccess entity) {
                 if (entity instanceof SimpleEntityAccess simpleEntity && simpleEntity.id % 2 == 0) {
+                    casts.add(simpleEntity.id);
                     return simpleEntity;
                 }
 
+                if (entity instanceof SimpleEntityAccess simpleEntity) {
+                    casts.add(simpleEntity.id);
+                }
                 return null;
             }
 
@@ -91,7 +96,44 @@ public final class EntitySectionBatchVerifier {
         );
 
         assertContinuation(AbortableIterationConsumer.Continuation.CONTINUE, continuation, "typed entity-section continue");
+        assertListEquals(descendingRange(33, 0), casts, "typed entity-section cast order");
         assertListEquals(List.of(32, 30, 28, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2, 0), accepted, "typed entity-section order");
+    }
+
+    public static void verifyTypedAcceptIntersectingAbort() {
+        List<SimpleEntityAccess> entities = sizedEntities(40);
+        AABB query = new AABB(0.25, -1.0, -1.0, 33.25, 2.0, 2.0);
+        List<Integer> casts = new ArrayList<>();
+        List<Integer> accepted = new ArrayList<>();
+        EntityTypeTest<EntityAccess, SimpleEntityAccess> identityType = new EntityTypeTest<>() {
+            @Override
+            public SimpleEntityAccess tryCast(EntityAccess entity) {
+                SimpleEntityAccess simpleEntity = (SimpleEntityAccess) entity;
+                casts.add(simpleEntity.id);
+                return simpleEntity;
+            }
+
+            @Override
+            public Class<? extends EntityAccess> getBaseClass() {
+                return EntityAccess.class;
+            }
+        };
+
+        AbortableIterationConsumer.Continuation continuation = EntitySectionBatch.acceptIntersecting(
+            entities,
+            identityType,
+            query,
+            entity -> {
+                accepted.add(entity.id);
+                return accepted.size() == 3
+                    ? AbortableIterationConsumer.Continuation.ABORT
+                    : AbortableIterationConsumer.Continuation.CONTINUE;
+            }
+        );
+
+        assertContinuation(AbortableIterationConsumer.Continuation.ABORT, continuation, "typed entity-section abort");
+        assertListEquals(List.of(33, 32, 31), casts, "typed entity-section abort cast order");
+        assertListEquals(List.of(33, 32, 31), accepted, "typed entity-section abort accepted order");
     }
 
     private static List<SimpleEntityAccess> sizedEntities(int count) {

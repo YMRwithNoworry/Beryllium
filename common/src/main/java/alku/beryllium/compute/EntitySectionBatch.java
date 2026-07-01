@@ -37,19 +37,24 @@ public final class EntitySectionBatch {
         AABB box,
         AbortableIterationConsumer<? super U> consumer
     ) {
-        List<U> entities = new ArrayList<>();
+        List<T> entities = new ArrayList<>();
         for (T candidate : candidates) {
-            U castCandidate = entityTypeTest.tryCast(candidate);
-            if (castCandidate != null) {
-                entities.add(castCandidate);
-            }
+            entities.add(candidate);
         }
 
         if (entities.isEmpty()) {
             return AbortableIterationConsumer.Continuation.CONTINUE;
         }
 
-        return acceptIntersecting(entities, box, consumer);
+        int[] matches = intersectingEntityIndices(box, entities);
+        for (int index : matches) {
+            U castCandidate = entityTypeTest.tryCast(entities.get(index));
+            if (castCandidate != null && consumer.accept(castCandidate).shouldAbort()) {
+                return AbortableIterationConsumer.Continuation.ABORT;
+            }
+        }
+
+        return AbortableIterationConsumer.Continuation.CONTINUE;
     }
 
     public static <T extends EntityAccess> int[] intersectingEntityIndices(AABB box, List<? extends T> entities) {

@@ -39,6 +39,7 @@ public final class BerylliumParityVerifier {
         EntitySectionBatchVerifier.verifyAcceptIntersecting();
         EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersecting();
+        EntitySectionBatchVerifier.verifyTypedAcceptIntersectingAbort();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
         verifyInvalidInput();
     }

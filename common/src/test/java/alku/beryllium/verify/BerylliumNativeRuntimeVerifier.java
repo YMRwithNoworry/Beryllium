@@ -29,6 +29,7 @@ public final class BerylliumNativeRuntimeVerifier {
         EntitySectionBatchVerifier.verifyAcceptIntersecting();
         EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersecting();
+        EntitySectionBatchVerifier.verifyTypedAcceptIntersectingAbort();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
         verifyNativeSort();
     }
