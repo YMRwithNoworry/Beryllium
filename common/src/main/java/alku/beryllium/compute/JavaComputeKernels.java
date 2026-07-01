@@ -39,6 +39,22 @@ public final class JavaComputeKernels {
         return findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions, false);
     }
 
+    public static int findNearestBlockCenterIndex(double originX, double originY, double originZ, int[] positions) {
+        validatePositions(positions);
+
+        int nearestIndex = -1;
+        double nearestDistance = Double.MAX_VALUE;
+        for (int index = 0; index < positions.length / 3; index++) {
+            double distance = blockCenterDistanceAt(originX, originY, originZ, positions, index);
+            if (distance < nearestDistance || (distance == nearestDistance && (nearestIndex == -1 || compareBlockPos(positions, nearestIndex, index) < 0))) {
+                nearestIndex = index;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearestIndex;
+    }
+
     private static int findNearestIndex(
         double originX,
         double originY,
@@ -201,6 +217,26 @@ public final class JavaComputeKernels {
         double dy = positions[offset + 1] - originY;
         double dz = positions[offset + 2] - originZ;
         return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static double blockCenterDistanceAt(double originX, double originY, double originZ, int[] positions, int index) {
+        int offset = index * 3;
+        double dx = positions[offset] + 0.5 - originX;
+        double dy = positions[offset + 1] + 0.5 - originY;
+        double dz = positions[offset + 2] + 0.5 - originZ;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static int compareBlockPos(int[] positions, int leftIndex, int rightIndex) {
+        int leftOffset = leftIndex * 3;
+        int rightOffset = rightIndex * 3;
+        int yComparison = positions[leftOffset + 1] - positions[rightOffset + 1];
+        if (yComparison != 0) {
+            return yComparison;
+        }
+
+        int zComparison = positions[leftOffset + 2] - positions[rightOffset + 2];
+        return zComparison != 0 ? zComparison : positions[leftOffset] - positions[rightOffset];
     }
 
     private static boolean exceedsMaxDistance(double distance, double maxDistanceSquared, boolean includeMaxDistance) {

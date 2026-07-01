@@ -19,6 +19,7 @@ public final class BerylliumParityVerifier {
         verifyJavaNearestIndex();
         verifyJavaNearestIndexTieAndUnbounded();
         verifyJavaNearestIndexExclusive();
+        verifyJavaNearestBlockCenterIndex();
         verifyJavaFilterAndSort();
         verifyJavaDoubleFilter();
         verifyJavaAabbFilter();
@@ -29,6 +30,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeNearestIndex();
         verifyNativeBridgeNearestIndexTieAndUnbounded();
         verifyNativeBridgeNearestIndexExclusive();
+        verifyNativeBridgeNearestBlockCenterIndex();
         verifyNativeBridgeFilterAndSort();
         verifyNativeBridgeDoubleFilter();
         verifyNativeBridgeAabbFilter();
@@ -107,6 +109,14 @@ public final class BerylliumParityVerifier {
 
         int unbounded = NativeBridge.findNearestIndexExclusive(0.0, 0.0, 0.0, -1.0, new double[] {2.0, 0.0, 0.0});
         assertEquals(0, unbounded, "Native bridge exclusive nearest unbounded");
+    }
+
+    private static void verifyNativeBridgeNearestBlockCenterIndex() {
+        int nearest = NativeBridge.findNearestBlockCenterIndex(0.5, 0.5, 0.5, new int[] {1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 1});
+        assertEquals(2, nearest, "Native bridge nearest block center tie order");
+
+        int missing = NativeBridge.findNearestBlockCenterIndex(0.0, 0.0, 0.0, new int[] {});
+        assertEquals(-1, missing, "Native bridge nearest block center empty input");
     }
 
     private static void verifyNativeBridgeFilterAndSort() {
@@ -244,6 +254,14 @@ public final class BerylliumParityVerifier {
 
         int unbounded = JavaComputeKernels.findNearestIndexExclusive(0.0, 0.0, 0.0, -1.0, new double[] {2.0, 0.0, 0.0});
         assertEquals(0, unbounded, "Java exclusive nearest unbounded");
+    }
+
+    private static void verifyJavaNearestBlockCenterIndex() {
+        int nearest = JavaComputeKernels.findNearestBlockCenterIndex(0.5, 0.5, 0.5, new int[] {1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 1});
+        assertEquals(2, nearest, "Java nearest block center tie order");
+
+        int missing = JavaComputeKernels.findNearestBlockCenterIndex(0.0, 0.0, 0.0, new int[] {});
+        assertEquals(-1, missing, "Java nearest block center empty input");
     }
 
     private static void verifyJavaIntegerOverflowSemantics() {

@@ -104,6 +104,56 @@ pub fn find_nearest_index_f64_exclusive(
     )
 }
 
+/// Finds the nearest packed block position by squared distance to its block center.
+pub fn find_nearest_block_center_index(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    positions: &[i32],
+) -> Result<Option<usize>, NativeError> {
+    if positions.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if position_count == 0 {
+        return Ok(None);
+    }
+
+    if position_count >= PARALLEL_THRESHOLD {
+        return Ok((0..position_count)
+            .into_par_iter()
+            .filter_map(|index| {
+                let distance =
+                    block_center_distance_at(origin_x, origin_y, origin_z, positions, index);
+                if distance.is_nan() {
+                    None
+                } else {
+                    Some((index, distance))
+                }
+            })
+            .reduce_with(|left, right| nearest_block_center_pair(left, right, positions))
+            .map(|(index, _)| index));
+    }
+
+    let mut nearest_index = None;
+    let mut nearest_distance = f64::MAX;
+    for index in 0..position_count {
+        let distance = block_center_distance_at(origin_x, origin_y, origin_z, positions, index);
+        if distance < nearest_distance
+            || (distance == nearest_distance
+                && nearest_index
+                    .map(|current| compare_block_pos(positions, current, index) < 0)
+                    .unwrap_or(true))
+        {
+            nearest_index = Some(index);
+            nearest_distance = distance;
+        }
+    }
+
+    Ok(nearest_index)
+}
+
 fn find_nearest_index_f64_by_limit(
     origin_x: f64,
     origin_y: f64,
@@ -498,6 +548,20 @@ fn squared_distance_at_f64_slice(
     dx * dx + dy * dy + dz * dz
 }
 
+fn block_center_distance_at(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    positions: &[i32],
+    index: usize,
+) -> f64 {
+    let offset = index * 3;
+    let dx = f64::from(positions[offset]) + 0.5 - origin_x;
+    let dy = f64::from(positions[offset + 1]) + 0.5 - origin_y;
+    let dz = f64::from(positions[offset + 2]) + 0.5 - origin_z;
+    dx * dx + dy * dy + dz * dz
+}
+
 fn contains_aabb_position(
     min_x: f64,
     min_y: f64,
@@ -595,6 +659,37 @@ fn nearest_distance_pair(left: (usize, f64), right: (usize, f64)) -> (usize, f64
     } else {
         left
     }
+}
+
+fn nearest_block_center_pair(
+    left: (usize, f64),
+    right: (usize, f64),
+    positions: &[i32],
+) -> (usize, f64) {
+    if right.1 < left.1 || (right.1 == left.1 && compare_block_pos(positions, left.0, right.0) < 0)
+    {
+        right
+    } else {
+        left
+    }
+}
+
+fn compare_block_pos(positions: &[i32], left_index: usize, right_index: usize) -> i32 {
+    let left_offset = left_index * 3;
+    let right_offset = right_index * 3;
+    let left_y = positions[left_offset + 1];
+    let right_y = positions[right_offset + 1];
+    if left_y != right_y {
+        return left_y.wrapping_sub(right_y);
+    }
+
+    let left_z = positions[left_offset + 2];
+    let right_z = positions[right_offset + 2];
+    if left_z != right_z {
+        return left_z.wrapping_sub(right_z);
+    }
+
+    positions[left_offset].wrapping_sub(positions[right_offset])
 }
 
 #[cfg(test)]
@@ -719,6 +814,28 @@ mod tests {
             .collect();
 
         let nearest = find_nearest_index_f64(0.0, 0.0, 0.0, 1024.0, &positions).unwrap();
+        assert_eq!(nearest, Some(4999));
+    }
+
+    #[test]
+    fn find_nearest_block_center_index_should_match_reference_index() {
+        let positions = [0, 0, 0, 3, 0, 0, -1, 0, 0];
+        let nearest = find_nearest_block_center_index(0.5, 0.5, 0.5, &positions).unwrap();
+        assert_eq!(nearest, Some(0));
+    }
+
+    #[test]
+    fn find_nearest_block_center_index_should_use_vanilla_tie_order() {
+        let positions = [1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 1, 1];
+        let nearest = find_nearest_block_center_index(0.5, 0.5, 0.5, &positions).unwrap();
+        assert_eq!(nearest, Some(2));
+    }
+
+    #[test]
+    fn find_nearest_block_center_index_should_match_parallel_reference_index() {
+        let positions: Vec<i32> = (0..5000).flat_map(|index| [0, 4999 - index, 0]).collect();
+
+        let nearest = find_nearest_block_center_index(0.5, 0.5, 0.5, &positions).unwrap();
         assert_eq!(nearest, Some(4999));
     }
 

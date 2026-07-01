@@ -6,6 +6,7 @@
   "client": [
   ],
   "mixins": [
+    "CollisionGetterMixin",
     "EntityGetterMixin",
     "EntitySectionAccessor",
     "EntitySectionMixin",

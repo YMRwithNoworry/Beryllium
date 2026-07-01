@@ -22,6 +22,7 @@ public final class BerylliumNativeRuntimeVerifier {
         verifyNativeDoubleDistance();
         verifyNativeNearestIndex();
         verifyNativeNearestIndexExclusive();
+        verifyNativeNearestBlockCenterIndex();
         verifyNativeRadiusFilters();
         verifyNativeAabbFilter();
         verifyNativeAabbIntersectionFilter();
@@ -71,6 +72,16 @@ public final class BerylliumNativeRuntimeVerifier {
             2.0, 0.0, 0.0
         });
         assertEquals(0, unbounded, "native exclusive nearest unbounded");
+    }
+
+    private static void verifyNativeNearestBlockCenterIndex() {
+        int nearest = NativeBridge.findNearestBlockCenterIndex(0.5, 0.5, 0.5, new int[] {
+            1, 0, 0,
+            -1, 0, 0,
+            0, 1, 0,
+            0, 1, 1
+        });
+        assertEquals(2, nearest, "native nearest block center tie order");
     }
 
     private static void verifyNativeRadiusFilters() {
