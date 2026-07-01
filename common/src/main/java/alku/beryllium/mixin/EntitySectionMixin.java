@@ -26,11 +26,11 @@ public class EntitySectionMixin<T extends EntityAccess> {
     @Overwrite
     public AbortableIterationConsumer.Continuation getEntities(AABB box, AbortableIterationConsumer<T> consumer) {
         ClassInstanceMultiMap<T> storage = ((EntitySectionAccessor<T>) this).beryllium$storage();
-        List<T> entities = snapshot(storage);
-        if (!shouldUseNativeBatch(entities.size())) {
-            return getEntitiesVanilla(entities, box, consumer);
+        if (!shouldUseNativeBatch(storage.size())) {
+            return getEntitiesVanilla(storage, box, consumer);
         }
 
+        List<T> entities = snapshot(storage);
         int[] matches = intersectingEntityIndices(box, entities);
         for (int index : matches) {
             if (consumer.accept(entities.get(index)).shouldAbort()) {
