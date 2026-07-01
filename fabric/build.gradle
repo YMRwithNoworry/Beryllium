@@ -51,3 +51,39 @@ shadowJar {
 remapJar {
     input.set shadowJar.archiveFile
 }
+
+tasks.register('verifyNativePackage') {
+    description = 'Verifies the remapped Fabric jar contains the native backend resources.'
+    group = 'verification'
+    dependsOn tasks.named('remapJar')
+
+    doLast {
+        def osName = System.getProperty('os.name').toLowerCase()
+        def archName = System.getProperty('os.arch').toLowerCase()
+        def resourceOs = osName.contains('win') ? 'windows' : (osName.contains('mac') || osName.contains('darwin') ? 'macos' : 'linux')
+        def resourceArch = (archName == 'amd64' || archName == 'x86_64') ? 'x86_64' : (archName == 'aarch64' || archName == 'arm64' ? 'aarch64' : archName)
+        def nativeEntry = "assets/beryllium/native/${resourceOs}/${resourceArch}/${System.mapLibraryName('beryllium_native')}"
+        def requiredEntries = [
+            nativeEntry,
+            'alku/beryllium/bridge/NativeBridge.class',
+            'alku/beryllium/compute/NearestEntitySearch.class',
+            'beryllium.mixins.json'
+        ]
+
+        def jarFile = tasks.named('remapJar').get().archiveFile.get().asFile
+        def zipFile = new java.util.zip.ZipFile(jarFile)
+        try {
+            requiredEntries.each { entry ->
+                if (zipFile.getEntry(entry) == null) {
+                    throw new GradleException("Missing required entry in ${jarFile.name}: ${entry}")
+                }
+            }
+        } finally {
+            zipFile.close()
+        }
+    }
+}
+
+tasks.named('build') {
+    dependsOn tasks.named('verifyNativePackage')
+}

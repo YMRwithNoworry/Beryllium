@@ -37,6 +37,8 @@ Beryllium 是一个基于 Architectury 的 Minecraft 多加载器性能模组，
 gradle :common:build :fabric:build :neoforge:build
 ```
 
+Fabric 和 NeoForge 的 `build` 会额外验证最终平台 jar 中包含 native 动态库、native bridge 类和 mixin 配置，避免产物意外退回 Java fallback。
+
 ### 运行 Fabric 客户端
 
 ```bash
