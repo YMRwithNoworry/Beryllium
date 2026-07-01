@@ -17,6 +17,8 @@ import java.util.function.Predicate;
  * Evaluates TargetingConditions using precomputed squared distances.
  */
 public final class TargetingConditionsBatch {
+    private static final int NATIVE_BATCH_THRESHOLD = 32;
+
     private TargetingConditionsBatch() {
     }
 
@@ -74,7 +76,14 @@ public final class TargetingConditionsBatch {
         Predicate<? super T> candidatePredicate
     ) {
         if (source == null) {
-            return List.copyOf(candidates.stream().filter(candidatePredicate::test).filter(candidate -> pretest(null, candidate, conditions)).toList());
+            List<T> filteredCandidates = new ArrayList<>(candidates.size());
+            for (T candidate : candidates) {
+                if (candidatePredicate.test(candidate) && pretest(null, candidate, conditions)) {
+                    filteredCandidates.add(candidate);
+                }
+            }
+
+            return filteredCandidates.isEmpty() ? List.of() : List.copyOf(filteredCandidates);
         }
 
         List<T> filteredCandidates = new ArrayList<>(candidates.size());
@@ -97,15 +106,56 @@ public final class TargetingConditionsBatch {
         @Nullable LivingEntity source,
         AABB box
     ) {
-        if (source == null) {
-            return List.copyOf(candidates.stream()
-                .filter(candidate -> box.contains(candidate.getX(), candidate.getY(), candidate.getZ()))
-                .filter(candidate -> pretest(null, candidate, conditions))
-                .toList());
+        List<T> boxedCandidates = filterCandidatesWithinAabb(
+            candidates,
+            candidate -> candidate.getX(),
+            candidate -> candidate.getY(),
+            candidate -> candidate.getZ(),
+            box
+        );
+
+        if (boxedCandidates.isEmpty()) {
+            return List.of();
         }
 
-        double[] positions = EntityPacking.packPositions(candidates);
-        int[] boxMatches = positions.length / 3 >= 32 && NativeBridge.isLoaded()
+        if (source == null) {
+            List<T> filteredCandidates = new ArrayList<>(boxedCandidates.size());
+            for (T candidate : boxedCandidates) {
+                if (pretest(null, candidate, conditions)) {
+                    filteredCandidates.add(candidate);
+                }
+            }
+
+            return filteredCandidates.isEmpty() ? List.of() : List.copyOf(filteredCandidates);
+        }
+
+        List<T> filteredCandidates = new ArrayList<>(boxedCandidates.size());
+        for (T candidate : boxedCandidates) {
+            if (pretest(source, candidate, conditions)) {
+                filteredCandidates.add(candidate);
+            }
+        }
+
+        if (filteredCandidates.isEmpty()) {
+            return List.of();
+        }
+
+        return filterByDistance(filteredCandidates, conditions, source);
+    }
+
+    static <T> List<T> filterCandidatesWithinAabb(
+        List<? extends T> candidates,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter,
+        AABB box
+    ) {
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+
+        double[] positions = EntityPacking.packPositions(candidates, xGetter, yGetter, zGetter);
+        int[] boxMatches = positions.length / 3 >= NATIVE_BATCH_THRESHOLD && NativeBridge.isLoaded()
             ? NativeBridge.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions)
             : JavaComputeKernels.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions);
 
@@ -115,17 +165,10 @@ public final class TargetingConditionsBatch {
 
         List<T> boxedCandidates = new ArrayList<>(boxMatches.length);
         for (int index : boxMatches) {
-            T candidate = candidates.get(index);
-            if (pretest(source, candidate, conditions)) {
-                boxedCandidates.add(candidate);
-            }
+            boxedCandidates.add(candidates.get(index));
         }
 
-        if (boxedCandidates.isEmpty()) {
-            return List.of();
-        }
-
-        return filterByDistance(boxedCandidates, conditions, source);
+        return boxedCandidates;
     }
 
     private static <T extends LivingEntity> List<T> filterByDistance(
@@ -142,7 +185,7 @@ public final class TargetingConditionsBatch {
 
         if (!accessor.beryllium$testInvisible()) {
             double maxDistance = Math.max(range, 2.0);
-            int[] matches = positions.length / 3 >= 32 && NativeBridge.isLoaded()
+            int[] matches = positions.length / 3 >= NATIVE_BATCH_THRESHOLD && NativeBridge.isLoaded()
                 ? NativeBridge.filterWithinRadius(source.getX(), source.getY(), source.getZ(), maxDistance * maxDistance, positions)
                 : JavaComputeKernels.filterWithinRadius(source.getX(), source.getY(), source.getZ(), maxDistance * maxDistance, positions);
 
@@ -153,7 +196,7 @@ public final class TargetingConditionsBatch {
             return result;
         }
 
-        double[] distances = positions.length / 3 >= 32 && NativeBridge.isLoaded()
+        double[] distances = positions.length / 3 >= NATIVE_BATCH_THRESHOLD && NativeBridge.isLoaded()
             ? NativeBridge.computeSquaredDistances(source.getX(), source.getY(), source.getZ(), positions)
             : JavaComputeKernels.squaredDistances(source.getX(), source.getY(), source.getZ(), positions);
 
