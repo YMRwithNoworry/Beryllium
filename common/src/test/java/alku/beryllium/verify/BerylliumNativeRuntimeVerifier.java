@@ -3,6 +3,7 @@ package alku.beryllium.verify;
 import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
+import alku.beryllium.compute.EntityDistanceSortVerifier;
 import alku.beryllium.compute.NativeBatchingVerifier;
 import alku.beryllium.compute.SupportingBlockSearchVerifier;
 import alku.beryllium.compute.TargetingConditionsBatchVerifier;
@@ -33,11 +34,14 @@ public final class BerylliumNativeRuntimeVerifier {
         EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersecting();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersectingAbort();
+        EntityDistanceSortVerifier.verifySortByDistance();
+        EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         SupportingBlockSearchVerifier.verifyFindNearest();
         SupportingBlockSearchVerifier.verifyEmptyCandidates();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
         TargetingConditionsBatchVerifier.verifyFilterByConstantDistanceBeforePosttest();
         verifyNativeSort();
+        verifyNativeDoubleSort();
     }
 
     private static void verifyNativeDistance() {
@@ -144,6 +148,15 @@ public final class BerylliumNativeRuntimeVerifier {
             -1, 63, -2
         });
         assertArrayEquals(new int[] {0, 2, 1}, order, "native distance sort");
+    }
+
+    private static void verifyNativeDoubleSort() {
+        int[] order = NativeBridge.sortByDistance(0.0, 64.0, 0.0, new double[] {
+            0.0, 64.0, 0.0,
+            3.0, 68.0, 4.0,
+            -1.0, 63.0, -2.0
+        });
+        assertArrayEquals(new int[] {0, 2, 1}, order, "native double distance sort");
     }
 
     private static void assertEquals(int expected, int actual, String label) {

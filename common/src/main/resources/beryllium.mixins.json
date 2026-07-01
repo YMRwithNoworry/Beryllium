@@ -10,6 +10,9 @@
     "EntityGetterMixin",
     "EntitySectionAccessor",
     "EntitySectionMixin",
+    "NearestItemSensorMixin",
+    "NearestLivingEntitySensorMixin",
+    "PlayerSensorMixin",
     "TargetingConditionsAccessor"
   ],
   "injectors": {

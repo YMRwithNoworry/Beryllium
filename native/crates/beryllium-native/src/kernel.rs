@@ -1,4 +1,5 @@
 use rayon::prelude::*;
+use std::cmp::Ordering;
 
 use crate::NativeError;
 
@@ -528,6 +529,48 @@ pub fn sort_by_distance(
     Ok(())
 }
 
+/// Sorts packed f64 x/y/z triples by squared distance and writes the index order.
+pub fn sort_by_distance_f64(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<(), NativeError> {
+    if positions.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if output.len() != position_count {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    let mut indices: Vec<i32> = (0..position_count as i32).collect();
+    if position_count >= PARALLEL_THRESHOLD {
+        indices.par_sort_by(|left, right| {
+            compare_distance_order_f64(
+                *left,
+                squared_distance_at_f64(origin_x, origin_y, origin_z, positions, *left as usize),
+                *right,
+                squared_distance_at_f64(origin_x, origin_y, origin_z, positions, *right as usize),
+            )
+        });
+    } else {
+        indices.sort_by(|left, right| {
+            compare_distance_order_f64(
+                *left,
+                squared_distance_at_f64(origin_x, origin_y, origin_z, positions, *left as usize),
+                *right,
+                squared_distance_at_f64(origin_x, origin_y, origin_z, positions, *right as usize),
+            )
+        });
+    }
+
+    output.copy_from_slice(&indices);
+    Ok(())
+}
+
 fn squared_distance_at(
     origin_x: i32,
     origin_y: i32,
@@ -723,6 +766,34 @@ fn compare_block_pos(positions: &[i32], left_index: usize, right_index: usize) -
     }
 
     positions[left_offset].wrapping_sub(positions[right_offset])
+}
+
+fn compare_distance_order_f64(
+    left_index: i32,
+    left_distance: f64,
+    right_index: i32,
+    right_distance: f64,
+) -> Ordering {
+    let distance_order = compare_java_double(left_distance, right_distance);
+    if distance_order == Ordering::Equal {
+        left_index.cmp(&right_index)
+    } else {
+        distance_order
+    }
+}
+
+fn compare_java_double(left: f64, right: f64) -> Ordering {
+    if left < right {
+        Ordering::Less
+    } else if left > right {
+        Ordering::Greater
+    } else if left.is_nan() && !right.is_nan() {
+        Ordering::Greater
+    } else if !left.is_nan() && right.is_nan() {
+        Ordering::Less
+    } else {
+        Ordering::Equal
+    }
 }
 
 #[cfg(test)]
@@ -1022,6 +1093,35 @@ mod tests {
         let mut output = vec![0; 5000];
 
         sort_by_distance(0, 0, 0, &positions, &mut output).unwrap();
+        let expected: Vec<i32> = (0..5000).rev().map(|index| index as i32).collect();
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn sort_by_distance_f64_should_match_reference_order() {
+        let positions = [0.0, 64.0, 0.0, 3.0, 68.0, 4.0, -1.0, 63.0, -2.0];
+        let mut output = [0; 3];
+        sort_by_distance_f64(0.0, 64.0, 0.0, &positions, &mut output).unwrap();
+        assert_eq!(output, [0, 2, 1]);
+    }
+
+    #[test]
+    fn sort_by_distance_f64_should_preserve_tie_order() {
+        let positions = [1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 2.0, 0.0, 0.0];
+        let mut output = [0; 3];
+        sort_by_distance_f64(0.0, 0.0, 0.0, &positions, &mut output).unwrap();
+        assert_eq!(output, [0, 1, 2]);
+    }
+
+    #[test]
+    fn sort_by_distance_f64_should_match_parallel_reference_order() {
+        let positions: Vec<f64> = (0..5000)
+            .flat_map(|index| [(4999 - index) as f64, 0.0, 0.0])
+            .collect();
+        let mut output = vec![0; 5000];
+
+        sort_by_distance_f64(0.0, 0.0, 0.0, &positions, &mut output).unwrap();
+
         let expected: Vec<i32> = (0..5000).rev().map(|index| index as i32).collect();
         assert_eq!(output, expected);
     }

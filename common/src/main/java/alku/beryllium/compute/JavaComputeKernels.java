@@ -198,6 +198,28 @@ public final class JavaComputeKernels {
         return result;
     }
 
+    public static int[] sortByDistance(double originX, double originY, double originZ, double[] positions) {
+        validatePositions(positions);
+
+        Integer[] boxed = new Integer[positions.length / 3];
+        for (int index = 0; index < boxed.length; index++) {
+            boxed[index] = index;
+        }
+
+        Arrays.sort(boxed, (left, right) -> {
+            double leftDistance = squaredDistanceAt(originX, originY, originZ, positions, left);
+            double rightDistance = squaredDistanceAt(originX, originY, originZ, positions, right);
+            int distanceComparison = Double.compare(leftDistance, rightDistance);
+            return distanceComparison != 0 ? distanceComparison : Integer.compare(left, right);
+        });
+
+        int[] result = new int[boxed.length];
+        for (int index = 0; index < boxed.length; index++) {
+            result[index] = boxed[index];
+        }
+        return result;
+    }
+
     public static void validatePositions(int[] positions) {
         if (positions == null || positions.length % 3 != 0) {
             throw new IllegalArgumentException("positions must contain x/y/z triples");

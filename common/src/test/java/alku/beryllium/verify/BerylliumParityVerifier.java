@@ -3,6 +3,7 @@ package alku.beryllium.verify;
 import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
+import alku.beryllium.compute.EntityDistanceSortVerifier;
 import alku.beryllium.compute.JavaComputeKernels;
 import alku.beryllium.compute.NativeBatchingVerifier;
 import alku.beryllium.compute.SupportingBlockSearchVerifier;
@@ -23,6 +24,7 @@ public final class BerylliumParityVerifier {
         verifyJavaAnyWithinRadiusExclusive();
         verifyJavaNearestBlockCenterIndex();
         verifyJavaFilterAndSort();
+        verifyJavaDoubleSort();
         verifyJavaDoubleFilter();
         verifyJavaAabbFilter();
         verifyJavaAabbIntersectionFilter();
@@ -35,6 +37,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeAnyWithinRadiusExclusive();
         verifyNativeBridgeNearestBlockCenterIndex();
         verifyNativeBridgeFilterAndSort();
+        verifyNativeBridgeDoubleSort();
         verifyNativeBridgeDoubleFilter();
         verifyNativeBridgeAabbFilter();
         verifyNativeBridgeAabbIntersectionFilter();
@@ -45,6 +48,8 @@ public final class BerylliumParityVerifier {
         EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersecting();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersectingAbort();
+        EntityDistanceSortVerifier.verifySortByDistance();
+        EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         SupportingBlockSearchVerifier.verifyFindNearest();
         SupportingBlockSearchVerifier.verifyEmptyCandidates();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
@@ -145,6 +150,12 @@ public final class BerylliumParityVerifier {
         assertArrayEquals(new int[] {0, 2, 1}, sorted, "Native bridge distance sort");
     }
 
+    private static void verifyNativeBridgeDoubleSort() {
+        double[] positions = {0.0, 64.0, 0.0, 3.0, 68.0, 4.0, -1.0, 63.0, -2.0};
+        int[] sorted = NativeBridge.sortByDistance(0.0, 64.0, 0.0, positions);
+        assertArrayEquals(new int[] {0, 2, 1}, sorted, "Native bridge double distance sort");
+    }
+
     private static void verifyNativeBridgeDoubleFilter() {
         double[] positions = descendingAxisPositionsDouble(5000);
         int[] filtered = NativeBridge.filterWithinRadius(0.0, 0.0, 0.0, 1024.0, positions);
@@ -203,6 +214,12 @@ public final class BerylliumParityVerifier {
         int[] sorted = JavaComputeKernels.sortByDistance(0, 64, 0, positions);
         assertArrayEquals(new int[] {0, 2}, filtered, "Java radius filter");
         assertArrayEquals(new int[] {0, 2, 1}, sorted, "Java distance sort");
+    }
+
+    private static void verifyJavaDoubleSort() {
+        double[] positions = {0.0, 64.0, 0.0, 3.0, 68.0, 4.0, -1.0, 63.0, -2.0};
+        int[] sorted = JavaComputeKernels.sortByDistance(0.0, 64.0, 0.0, positions);
+        assertArrayEquals(new int[] {0, 2, 1}, sorted, "Java double distance sort");
     }
 
     private static void verifyJavaDoubleFilter() {
