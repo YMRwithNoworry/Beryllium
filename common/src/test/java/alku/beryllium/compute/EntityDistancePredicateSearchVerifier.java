@@ -70,6 +70,44 @@ public final class EntityDistancePredicateSearchVerifier {
         assertListEquals(range(0, 40), posttested, "large exclusive posttest order");
     }
 
+    public static void verifyFindFirstWithinExclusiveDistanceBatchesDistanceGateBeforePosttest() {
+        List<SimplePoint> points = new ArrayList<>();
+        points.add(new SimplePoint(0, 12.0, 0.0, 0.0, true, true));
+        points.add(new SimplePoint(1, 1.0, 0.0, 0.0, false, true));
+        points.add(new SimplePoint(2, 10.0, 0.0, 0.0, true, true));
+        points.add(new SimplePoint(3, 9.0, 0.0, 0.0, true, false));
+        points.add(new SimplePoint(4, 1.0, 0.0, 0.0, true, true));
+        for (int index = 5; index < 40; index++) {
+            points.add(new SimplePoint(index, index, 0.0, 0.0, true, true));
+        }
+
+        List<Integer> pretested = new ArrayList<>();
+        List<Integer> posttested = new ArrayList<>();
+
+        Optional<SimplePoint> match = EntityDistancePredicateSearch.findFirstWithinExclusiveDistance(
+            points,
+            0.0,
+            0.0,
+            0.0,
+            100.0,
+            point -> {
+                pretested.add(point.id);
+                return point.pretest;
+            },
+            point -> {
+                posttested.add(point.id);
+                return point.posttest;
+            },
+            point -> point.x,
+            point -> point.y,
+            point -> point.z
+        );
+
+        assertEquals(4, match.orElseThrow().id, "large exclusive gated first match");
+        assertListEquals(List.of(0, 1, 2, 3, 4), pretested, "large exclusive pretest before distance gate order");
+        assertListEquals(List.of(3, 4), posttested, "large exclusive posttest after distance gate order");
+    }
+
     private static List<Integer> range(int startInclusive, int endExclusive) {
         List<Integer> result = new ArrayList<>(endExclusive - startInclusive);
         for (int value = startInclusive; value < endExclusive; value++) {

@@ -58,22 +58,23 @@ public final class EntityDistancePredicateSearch {
             return Optional.empty();
         }
 
-        double[] distances = null;
+        int[] distanceMatches = null;
         if (NativeBatching.shouldUseNativeEntityBatch(values.size())) {
             double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-            distances = NativeBridge.computeSquaredDistances(originX, originY, originZ, positions);
+            distanceMatches = NativeBridge.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
         }
 
+        int distanceMatchCursor = 0;
         for (int index = 0; index < values.size(); index++) {
             T value = values.get(index);
             if (!beforeDistance.test(value)) {
                 continue;
             }
 
-            double distance = distances == null
-                ? squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value)
-                : distances[index];
-            if (distance >= radiusSquared) {
+            if (distanceMatches != null) {
+                distanceMatchCursor = advanceDistanceMatchCursor(distanceMatches, distanceMatchCursor, index);
+            }
+            if (!isWithinDistance(distanceMatches, distanceMatchCursor, index, originX, originY, originZ, radiusSquared, xGetter, yGetter, zGetter, value)) {
                 continue;
             }
 
@@ -83,6 +84,33 @@ public final class EntityDistancePredicateSearch {
         }
 
         return Optional.empty();
+    }
+
+    private static <T> boolean isWithinDistance(
+        int[] distanceMatches,
+        int distanceMatchCursor,
+        int index,
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter,
+        T value
+    ) {
+        if (distanceMatches == null) {
+            return squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared;
+        }
+
+        return distanceMatchCursor < distanceMatches.length && distanceMatches[distanceMatchCursor] == index;
+    }
+
+    private static int advanceDistanceMatchCursor(int[] distanceMatches, int cursor, int index) {
+        while (cursor < distanceMatches.length && distanceMatches[cursor] < index) {
+            cursor++;
+        }
+        return cursor;
     }
 
     private static <T> double squaredDistance(
