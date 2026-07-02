@@ -80,6 +80,62 @@ public final class TargetingConditionsBatchVerifier {
         }
     }
 
+    public static void verifyFindNearestAfterVariableDistanceAndPosttest() {
+        List<SimplePoint> points = List.of(
+            new SimplePoint(0, 9.0, 0.0, 0.0),
+            new SimplePoint(1, 1.0, 0.0, 0.0),
+            new SimplePoint(2, 0.0, 2.0, 0.0),
+            new SimplePoint(3, 0.0, 0.0, 4.0),
+            new SimplePoint(4, 0.0, 0.0, 0.5)
+        );
+        double[] radiiSquared = {4.0, 1.0, 4.0, 16.0, 0.20};
+        List<Integer> posttested = new ArrayList<>();
+
+        SimplePoint actual = NearestEntitySearch.findNearestAfterVariableDistanceAndPosttest(
+            points,
+            EntityPacking.packPositions(points, point -> point.x, point -> point.y, point -> point.z),
+            0.0,
+            0.0,
+            0.0,
+            radiiSquared,
+            point -> {
+                posttested.add(point.id);
+                return point.id != 2;
+            }
+        );
+
+        if (!points.get(1).equals(actual)) {
+            throw new AssertionError("variable-distance nearest mismatch, expected " + points.get(1) + " but got " + actual);
+        }
+
+        List<Integer> expectedPosttested = List.of(1, 2, 3);
+        if (!expectedPosttested.equals(posttested)) {
+            throw new AssertionError("variable-distance nearest posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
+        }
+    }
+
+    public static void verifyFindNearestAfterPrecomputedDistanceAcceptsNaNRadius() {
+        List<SimplePoint> points = List.of(
+            new SimplePoint(0, 3.0, 0.0, 0.0),
+            new SimplePoint(1, 1.0, 0.0, 0.0)
+        );
+        double[] radiiSquared = {Double.NaN, 0.25};
+
+        SimplePoint actual = NearestEntitySearch.findNearestAfterPrecomputedDistanceAndPosttest(
+            points,
+            EntityPacking.packPositions(points, point -> point.x, point -> point.y, point -> point.z),
+            0.0,
+            0.0,
+            0.0,
+            radiiSquared,
+            point -> true
+        );
+
+        if (!points.get(0).equals(actual)) {
+            throw new AssertionError("NaN radius nearest mismatch, expected " + points.get(0) + " but got " + actual);
+        }
+    }
+
     private static void verifyFilterCandidatesWithinAabb(List<SimplePoint> points, int minInclusive, int maxExclusive) {
         double min = minInclusive;
         double max = maxExclusive;

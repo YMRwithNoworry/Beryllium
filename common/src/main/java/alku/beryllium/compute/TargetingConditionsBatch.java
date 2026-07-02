@@ -236,6 +236,18 @@ public final class TargetingConditionsBatch {
         return result;
     }
 
+    static <T> int[] filterIndicesByVariableDistance(
+        double[] positions,
+        double originX,
+        double originY,
+        double originZ,
+        double[] radiiSquared
+    ) {
+        return NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+            ? NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared)
+            : JavaComputeKernels.filterWithinRadii(originX, originY, originZ, positions, radiiSquared);
+    }
+
     private static <T extends LivingEntity> List<T> filterByDistance(
         List<T> filteredCandidates,
         TargetingConditions conditions,
@@ -301,7 +313,7 @@ public final class TargetingConditionsBatch {
         return result;
     }
 
-    private static <T extends LivingEntity> double[] packVisibilityAdjustedRadii(List<T> candidates, LivingEntity source, double range) {
+    static <T extends LivingEntity> double[] packVisibilityAdjustedRadii(List<T> candidates, LivingEntity source, double range) {
         double[] radiiSquared = new double[candidates.size()];
         for (int index = 0; index < candidates.size(); index++) {
             double maxDistance = Math.max(range * candidates.get(index).getVisibilityPercent(source), 2.0);
@@ -310,7 +322,7 @@ public final class TargetingConditionsBatch {
         return radiiSquared;
     }
 
-    private static boolean containsNaN(double[] values) {
+    static boolean containsNaN(double[] values) {
         for (double value : values) {
             if (Double.isNaN(value)) {
                 return true;
@@ -319,7 +331,7 @@ public final class TargetingConditionsBatch {
         return false;
     }
 
-    private static boolean withinPrecomputedRadius(double distanceSquared, double radiusSquared) {
+    static boolean withinPrecomputedRadius(double distanceSquared, double radiusSquared) {
         return Double.isNaN(radiusSquared) || distanceSquared <= radiusSquared;
     }
 }

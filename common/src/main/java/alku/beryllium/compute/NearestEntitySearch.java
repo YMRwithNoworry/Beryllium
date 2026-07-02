@@ -63,15 +63,50 @@ public final class NearestEntitySearch {
             );
         }
 
-        return findNearest(
+        List<T> filteredCandidates = filterCandidates(
             candidates,
-            candidate -> TargetingConditionsBatch.pretestBeforeDistance(source, candidate, conditions),
-            (candidate, distanceSquared) ->
-                TargetingConditionsBatch.testDistance(source, candidate, conditions, distanceSquared)
-                    && TargetingConditionsBatch.posttestAfterDistance(source, candidate, conditions),
+            candidate -> TargetingConditionsBatch.pretestBeforeDistance(source, candidate, conditions)
+        );
+        if (filteredCandidates.isEmpty()) {
+            return null;
+        }
+
+        double[] positions = EntityPacking.packPositions(filteredCandidates);
+        double[] radiiSquared = accessor.beryllium$testInvisible()
+            ? TargetingConditionsBatch.packVisibilityAdjustedRadii(filteredCandidates, source, accessor.beryllium$range())
+            : null;
+
+        if (radiiSquared == null) {
+            return findNearestAfterConstantDistanceAndPosttest(
+                filteredCandidates,
+                positions,
+                originX,
+                originY,
+                originZ,
+                constantMaxDistanceSquared(conditions),
+                candidate -> TargetingConditionsBatch.posttestAfterDistance(source, candidate, conditions)
+            );
+        }
+        if (!TargetingConditionsBatch.containsNaN(radiiSquared)) {
+            return findNearestAfterVariableDistanceAndPosttest(
+                filteredCandidates,
+                positions,
+                originX,
+                originY,
+                originZ,
+                radiiSquared,
+                candidate -> TargetingConditionsBatch.posttestAfterDistance(source, candidate, conditions)
+            );
+        }
+
+        return findNearestAfterPrecomputedDistanceAndPosttest(
+            filteredCandidates,
+            positions,
             originX,
             originY,
-            originZ
+            originZ,
+            radiiSquared,
+            candidate -> TargetingConditionsBatch.posttestAfterDistance(source, candidate, conditions)
         );
     }
 
@@ -210,6 +245,102 @@ public final class NearestEntitySearch {
         return nearest;
     }
 
+    static <T> T findNearestAfterConstantDistanceAndPosttest(
+        List<T> filteredCandidates,
+        double[] positions,
+        double originX,
+        double originY,
+        double originZ,
+        double maxDistanceSquared,
+        Predicate<? super T> posttest
+    ) {
+        int[] matches = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+            ? NativeBridge.filterWithinRadius(originX, originY, originZ, maxDistanceSquared, positions)
+            : JavaComputeKernels.filterWithinRadius(originX, originY, originZ, maxDistanceSquared, positions);
+
+        return findNearestFromMatchingIndices(filteredCandidates, positions, originX, originY, originZ, matches, posttest);
+    }
+
+    static <T> T findNearestAfterVariableDistanceAndPosttest(
+        List<T> filteredCandidates,
+        double[] positions,
+        double originX,
+        double originY,
+        double originZ,
+        double[] radiiSquared,
+        Predicate<? super T> posttest
+    ) {
+        int[] matches = TargetingConditionsBatch.filterIndicesByVariableDistance(
+            positions,
+            originX,
+            originY,
+            originZ,
+            radiiSquared
+        );
+
+        return findNearestFromMatchingIndices(filteredCandidates, positions, originX, originY, originZ, matches, posttest);
+    }
+
+    static <T> T findNearestAfterPrecomputedDistanceAndPosttest(
+        List<T> filteredCandidates,
+        double[] positions,
+        double originX,
+        double originY,
+        double originZ,
+        double[] radiiSquared,
+        Predicate<? super T> posttest
+    ) {
+        double[] distances = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+            ? NativeBridge.computeSquaredDistances(originX, originY, originZ, positions)
+            : JavaComputeKernels.squaredDistances(originX, originY, originZ, positions);
+
+        T nearest = null;
+        double nearestDistance = -1.0;
+        for (int index = 0; index < filteredCandidates.size(); index++) {
+            double candidateDistance = distances[index];
+            if (!TargetingConditionsBatch.withinPrecomputedRadius(candidateDistance, radiiSquared[index])) {
+                continue;
+            }
+            T candidate = filteredCandidates.get(index);
+            if (!posttest.test(candidate)) {
+                continue;
+            }
+            if (nearestDistance == -1.0 || candidateDistance < nearestDistance) {
+                nearestDistance = candidateDistance;
+                nearest = candidate;
+            }
+        }
+
+        return nearest;
+    }
+
+    private static <T> T findNearestFromMatchingIndices(
+        List<T> filteredCandidates,
+        double[] positions,
+        double originX,
+        double originY,
+        double originZ,
+        int[] matches,
+        Predicate<? super T> posttest
+    ) {
+        T nearest = null;
+        double nearestDistance = -1.0;
+        for (int index : matches) {
+            T candidate = filteredCandidates.get(index);
+            if (!posttest.test(candidate)) {
+                continue;
+            }
+
+            double candidateDistance = squaredDistanceAt(originX, originY, originZ, positions, index);
+            if (nearestDistance == -1.0 || candidateDistance < nearestDistance) {
+                nearestDistance = candidateDistance;
+                nearest = candidate;
+            }
+        }
+
+        return nearest;
+    }
+
     private static <T extends LivingEntity> List<T> filterCandidates(
         List<? extends T> candidates,
         Predicate<? super T> predicate
@@ -259,5 +390,13 @@ public final class NearestEntitySearch {
         return includeMaxDistance
             ? JavaComputeKernels.findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions)
             : JavaComputeKernels.findNearestIndexExclusive(originX, originY, originZ, maxDistanceSquared, positions);
+    }
+
+    private static double squaredDistanceAt(double originX, double originY, double originZ, double[] positions, int index) {
+        int offset = index * 3;
+        double dx = positions[offset] - originX;
+        double dy = positions[offset + 1] - originY;
+        double dz = positions[offset + 2] - originZ;
+        return dx * dx + dy * dy + dz * dz;
     }
 }
