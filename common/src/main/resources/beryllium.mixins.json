@@ -17,7 +17,8 @@
     "PlayerSensorMixin",
     "PoiManagerMixin",
     "TemptingSensorMixin",
-    "TargetingConditionsAccessor"
+    "TargetingConditionsAccessor",
+    "VillagerHostilesSensorAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

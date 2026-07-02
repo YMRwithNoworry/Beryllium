@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Filters entity-like lists by exclusive squared radius, matching Entity.closerThan semantics.
+ * Filters entity-like lists by squared radius while preserving encounter order.
  */
 public final class EntityDistanceFilter {
     private EntityDistanceFilter() {
