@@ -1,0 +1,46 @@
+package alku.beryllium.mixin;
+
+import alku.beryllium.compute.BlockDistanceSort;
+import com.mojang.datafixers.util.Pair;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.world.entity.ai.village.poi.PoiManager;
+import net.minecraft.world.entity.ai.village.poi.PoiType;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Overwrite;
+import org.spongepowered.asm.mixin.Shadow;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
+
+@Mixin(PoiManager.class)
+public abstract class PoiManagerMixin {
+    @Shadow
+    public abstract Stream<Pair<Holder<PoiType>, BlockPos>> findAllWithType(
+        Predicate<Holder<PoiType>> typePredicate,
+        Predicate<BlockPos> positionPredicate,
+        BlockPos origin,
+        int radius,
+        PoiManager.Occupancy occupancy
+    );
+
+    /**
+     * @reason Batch POI block-distance ordering through the native block sort kernel.
+     * @author YMRwithNoworry
+     */
+    @Overwrite
+    public Stream<Pair<Holder<PoiType>, BlockPos>> findAllClosestFirstWithType(
+        Predicate<Holder<PoiType>> typePredicate,
+        Predicate<BlockPos> positionPredicate,
+        BlockPos origin,
+        int radius,
+        PoiManager.Occupancy occupancy
+    ) {
+        List<Pair<Holder<PoiType>, BlockPos>> pointsOfInterest = new ArrayList<>();
+        this.findAllWithType(typePredicate, positionPredicate, origin, radius, occupancy).forEach(pointsOfInterest::add);
+        BlockDistanceSort.sortByDistance(pointsOfInterest, origin, Pair::getSecond);
+        return pointsOfInterest.stream();
+    }
+}

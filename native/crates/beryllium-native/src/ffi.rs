@@ -8,7 +8,8 @@ use crate::{
     kernel::filter_within_radius, kernel::filter_within_radius_f64,
     kernel::find_nearest_block_center_index, kernel::find_nearest_index_f64,
     kernel::find_nearest_index_f64_exclusive, kernel::has_any_within_radius_f64_exclusive,
-    kernel::sort_by_distance, kernel::sort_by_distance_f64, NativeError,
+    kernel::sort_by_block_distance, kernel::sort_by_distance, kernel::sort_by_distance_f64,
+    NativeError,
 };
 
 /// Result code returned by the FFI layer.
@@ -235,6 +236,19 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_sortByDistanceNat
     output: JIntArray<'_>,
 ) -> jint {
     sort_by_distance_jni(env, origin_x, origin_y, origin_z, positions, output).code()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_sortByBlockDistanceNative(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    origin_x: jint,
+    origin_y: jint,
+    origin_z: jint,
+    positions: JIntArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    sort_by_block_distance_jni(env, origin_x, origin_y, origin_z, positions, output).code()
 }
 
 #[no_mangle]
@@ -702,6 +716,52 @@ fn sort_by_distance_jni(
 
     let mut output_buffer = vec![0; output_len];
     if let Err(error) = sort_by_distance(
+        origin_x,
+        origin_y,
+        origin_z,
+        &positions_buffer,
+        &mut output_buffer,
+    ) {
+        return error.into();
+    }
+
+    if env
+        .set_int_array_region(&output, 0, &output_buffer)
+        .is_err()
+    {
+        return NativeStatus::Jni;
+    }
+
+    NativeStatus::Ok
+}
+
+fn sort_by_block_distance_jni(
+    env: JNIEnv<'_>,
+    origin_x: jint,
+    origin_y: jint,
+    origin_z: jint,
+    positions: JIntArray<'_>,
+    output: JIntArray<'_>,
+) -> NativeStatus {
+    let positions_len = match env.get_array_length(&positions) {
+        Ok(value) => value as usize,
+        Err(_) => return NativeStatus::Jni,
+    };
+    let output_len = match env.get_array_length(&output) {
+        Ok(value) => value as usize,
+        Err(_) => return NativeStatus::Jni,
+    };
+
+    let mut positions_buffer = vec![0; positions_len];
+    if env
+        .get_int_array_region(&positions, 0, &mut positions_buffer)
+        .is_err()
+    {
+        return NativeStatus::Jni;
+    }
+
+    let mut output_buffer = vec![0; output_len];
+    if let Err(error) = sort_by_block_distance(
         origin_x,
         origin_y,
         origin_z,

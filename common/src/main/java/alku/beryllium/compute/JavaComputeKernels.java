@@ -198,6 +198,28 @@ public final class JavaComputeKernels {
         return result;
     }
 
+    public static int[] sortByBlockDistance(int originX, int originY, int originZ, int[] positions) {
+        validatePositions(positions);
+
+        Integer[] boxed = new Integer[positions.length / 3];
+        for (int index = 0; index < boxed.length; index++) {
+            boxed[index] = index;
+        }
+
+        Arrays.sort(boxed, (left, right) -> {
+            double leftDistance = blockCornerDistanceAt(originX, originY, originZ, positions, left);
+            double rightDistance = blockCornerDistanceAt(originX, originY, originZ, positions, right);
+            int distanceComparison = Double.compare(leftDistance, rightDistance);
+            return distanceComparison != 0 ? distanceComparison : Integer.compare(left, right);
+        });
+
+        int[] result = new int[boxed.length];
+        for (int index = 0; index < boxed.length; index++) {
+            result[index] = boxed[index];
+        }
+        return result;
+    }
+
     public static int[] sortByDistance(double originX, double originY, double originZ, double[] positions) {
         validatePositions(positions);
 
@@ -259,6 +281,14 @@ public final class JavaComputeKernels {
         double dx = positions[offset] + 0.5 - originX;
         double dy = positions[offset + 1] + 0.5 - originY;
         double dz = positions[offset + 2] + 0.5 - originZ;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static double blockCornerDistanceAt(int originX, int originY, int originZ, int[] positions, int index) {
+        int offset = index * 3;
+        double dx = (double) positions[offset] - originX;
+        double dy = (double) positions[offset + 1] - originY;
+        double dz = (double) positions[offset + 2] - originZ;
         return dx * dx + dy * dy + dz * dz;
     }
 

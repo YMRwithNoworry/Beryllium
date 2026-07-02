@@ -529,6 +529,48 @@ pub fn sort_by_distance(
     Ok(())
 }
 
+/// Sorts packed block positions by squared distance to the block low corner and writes the index order.
+pub fn sort_by_block_distance(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    positions: &[i32],
+    output: &mut [i32],
+) -> Result<(), NativeError> {
+    if positions.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if output.len() != position_count {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    let mut indices: Vec<i32> = (0..position_count as i32).collect();
+    if position_count >= PARALLEL_THRESHOLD {
+        indices.par_sort_by(|left, right| {
+            compare_distance_order_f64(
+                *left,
+                block_corner_distance_at(origin_x, origin_y, origin_z, positions, *left as usize),
+                *right,
+                block_corner_distance_at(origin_x, origin_y, origin_z, positions, *right as usize),
+            )
+        });
+    } else {
+        indices.sort_by(|left, right| {
+            compare_distance_order_f64(
+                *left,
+                block_corner_distance_at(origin_x, origin_y, origin_z, positions, *left as usize),
+                *right,
+                block_corner_distance_at(origin_x, origin_y, origin_z, positions, *right as usize),
+            )
+        });
+    }
+
+    output.copy_from_slice(&indices);
+    Ok(())
+}
+
 /// Sorts packed f64 x/y/z triples by squared distance and writes the index order.
 pub fn sort_by_distance_f64(
     origin_x: f64,
@@ -635,6 +677,20 @@ fn block_center_distance_at(
     let dx = f64::from(positions[offset]) + 0.5 - origin_x;
     let dy = f64::from(positions[offset + 1]) + 0.5 - origin_y;
     let dz = f64::from(positions[offset + 2]) + 0.5 - origin_z;
+    dx * dx + dy * dy + dz * dz
+}
+
+fn block_corner_distance_at(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    positions: &[i32],
+    index: usize,
+) -> f64 {
+    let offset = index * 3;
+    let dx = f64::from(positions[offset]) - f64::from(origin_x);
+    let dy = f64::from(positions[offset + 1]) - f64::from(origin_y);
+    let dz = f64::from(positions[offset + 2]) - f64::from(origin_z);
     dx * dx + dy * dy + dz * dz
 }
 
@@ -1093,6 +1149,34 @@ mod tests {
         let mut output = vec![0; 5000];
 
         sort_by_distance(0, 0, 0, &positions, &mut output).unwrap();
+        let expected: Vec<i32> = (0..5000).rev().map(|index| index as i32).collect();
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn sort_by_block_distance_should_match_reference_order() {
+        let positions = [0, 64, 0, 3, 68, 4, -1, 63, -2];
+        let mut output = [0; 3];
+        sort_by_block_distance(0, 64, 0, &positions, &mut output).unwrap();
+        assert_eq!(output, [0, 2, 1]);
+    }
+
+    #[test]
+    fn sort_by_block_distance_should_preserve_tie_order() {
+        let positions = [1, 0, 0, -1, 0, 0, 2, 0, 0];
+        let mut output = [0; 3];
+        sort_by_block_distance(0, 0, 0, &positions, &mut output).unwrap();
+        assert_eq!(output, [0, 1, 2]);
+    }
+
+    #[test]
+    fn sort_by_block_distance_should_match_parallel_reference_order() {
+        let positions: Vec<i32> = (0..5000)
+            .flat_map(|index| [(4999 - index) as i32, 0, 0])
+            .collect();
+        let mut output = vec![0; 5000];
+
+        sort_by_block_distance(0, 0, 0, &positions, &mut output).unwrap();
         let expected: Vec<i32> = (0..5000).rev().map(|index| index as i32).collect();
         assert_eq!(output, expected);
     }

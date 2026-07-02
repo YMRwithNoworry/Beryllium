@@ -323,6 +323,28 @@ public final class NativeBridge {
         return output;
     }
 
+    public static int[] sortByBlockDistance(int originX, int originY, int originZ, int[] positions) {
+        JavaComputeKernels.validatePositions(positions);
+
+        int[] output = new int[positions.length / 3];
+        if (!isLoaded()) {
+            return JavaComputeKernels.sortByBlockDistance(originX, originY, originZ, positions);
+        }
+
+        NativeStatus nativeStatus = NativeStatus.fromCode(sortByBlockDistanceNative(
+            originX,
+            originY,
+            originZ,
+            positions,
+            output
+        ));
+        if (!nativeStatus.isSuccess()) {
+            return JavaComputeKernels.sortByBlockDistance(originX, originY, originZ, positions);
+        }
+
+        return output;
+    }
+
     public static int[] sortByDistance(double originX, double originY, double originZ, double[] positions) {
         JavaComputeKernels.validatePositions(positions);
 
@@ -433,6 +455,14 @@ public final class NativeBridge {
     );
 
     private static native int sortByDistanceNative(
+        int originX,
+        int originY,
+        int originZ,
+        int[] positions,
+        int[] output
+    );
+
+    private static native int sortByBlockDistanceNative(
         int originX,
         int originY,
         int originZ,
