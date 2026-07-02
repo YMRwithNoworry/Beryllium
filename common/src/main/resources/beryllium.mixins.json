@@ -17,6 +17,8 @@
     "NearestVisibleLivingEntitySensorMixin",
     "PlayerSensorMixin",
     "PoiManagerMixin",
+    "PotentialCalculatorMixin",
+    "PotentialCalculatorPointChargeAccessor",
     "PrepareRamNearestTargetMixin",
     "TemptingSensorMixin",
     "TargetingConditionsAccessor",

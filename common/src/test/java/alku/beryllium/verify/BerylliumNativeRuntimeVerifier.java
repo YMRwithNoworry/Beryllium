@@ -11,6 +11,7 @@ import alku.beryllium.compute.EntityDistanceSortVerifier;
 import alku.beryllium.compute.EntityVariableRadiusFilterVerifier;
 import alku.beryllium.compute.NativeBatchingVerifier;
 import alku.beryllium.compute.NearestEntitySearchVerifier;
+import alku.beryllium.compute.PotentialEnergyBatchVerifier;
 import alku.beryllium.compute.SupportingBlockSearchVerifier;
 import alku.beryllium.compute.TargetingConditionsBatchVerifier;
 
@@ -36,6 +37,7 @@ public final class BerylliumNativeRuntimeVerifier {
         verifyNativeRadiusFilters();
         verifyNativeAabbFilter();
         verifyNativeAabbIntersectionFilter();
+        verifyNativePotentialEnergyChange();
         NativeBatchingVerifier.verifyDefaultThreshold();
         EntitySectionBatchVerifier.verifyAcceptIntersecting();
         EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();
@@ -56,6 +58,11 @@ public final class BerylliumNativeRuntimeVerifier {
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistances();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesPreservesOrder();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesRejectsNegativeRadius();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyChangeMatchesVanillaPointChargeMath();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyChangeReturnsInfinityAtSamePosition();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyChangePreservesNegativeZeroMultiplierResult();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyBatchSkipsChargeAccessForZeroMultiplier();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyBatchPreservesExtractionOrder();
         EntityDistanceSortVerifier.verifySortByDistance();
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         EntityDistanceSortVerifier.verifyFilterWithinExclusiveDistanceSortedByDistance();
@@ -212,6 +219,27 @@ public final class BerylliumNativeRuntimeVerifier {
         assertArrayEquals(new int[] {0, 3}, matches, "native AABB intersection filter");
     }
 
+    private static void verifyNativePotentialEnergyChange() {
+        double actual = NativeBridge.computePotentialEnergyChange(
+            0,
+            0,
+            0,
+            new int[] {
+                3, 0, 4,
+                0, 0, 2,
+                -6, 0, 8
+            },
+            new double[] {
+                10.0,
+                -4.0,
+                2.5
+            },
+            -3.0
+        );
+
+        assertEquals(-0.75, actual, "native potential energy change");
+    }
+
     private static void verifyNativeSort() {
         int[] order = NativeBridge.sortByDistance(0, 64, 0, new int[] {
             0, 64, 0,
@@ -247,6 +275,12 @@ public final class BerylliumNativeRuntimeVerifier {
 
     private static void assertEquals(boolean expected, boolean actual, String label) {
         if (expected != actual) {
+            throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
+        }
+    }
+
+    private static void assertEquals(double expected, double actual, String label) {
+        if (Double.compare(expected, actual) != 0) {
             throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
         }
     }

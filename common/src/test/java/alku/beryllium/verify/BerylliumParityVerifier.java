@@ -12,6 +12,7 @@ import alku.beryllium.compute.EntityVariableRadiusFilterVerifier;
 import alku.beryllium.compute.JavaComputeKernels;
 import alku.beryllium.compute.NativeBatchingVerifier;
 import alku.beryllium.compute.NearestEntitySearchVerifier;
+import alku.beryllium.compute.PotentialEnergyBatchVerifier;
 import alku.beryllium.compute.SupportingBlockSearchVerifier;
 import alku.beryllium.compute.TargetingConditionsBatchVerifier;
 
@@ -36,6 +37,11 @@ public final class BerylliumParityVerifier {
         verifyJavaDoubleFilter();
         verifyJavaAabbFilter();
         verifyJavaAabbIntersectionFilter();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyChangeMatchesVanillaPointChargeMath();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyChangeReturnsInfinityAtSamePosition();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyChangePreservesNegativeZeroMultiplierResult();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyBatchSkipsChargeAccessForZeroMultiplier();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyBatchPreservesExtractionOrder();
         verifyJavaIntegerOverflowSemantics();
         verifyNativeBridgeFallback();
         verifyNativeBridgeFallbackDouble();
@@ -52,6 +58,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeVariableRadiusFilter();
         verifyNativeBridgeAabbFilter();
         verifyNativeBridgeAabbIntersectionFilter();
+        verifyNativeBridgePotentialEnergyChange();
         verifyNativeBridgeLargeFilterAndSort();
         verifyNativeBridgeLargeBlockSort();
         verifyNativeBridgeIntegerOverflowSemantics();
@@ -253,6 +260,19 @@ public final class BerylliumParityVerifier {
         assertArrayEquals(range(4966, 5000), filtered, "Native bridge large AABB intersection filter");
     }
 
+    private static void verifyNativeBridgePotentialEnergyChange() {
+        int[] positions = {
+            3, 0, 4,
+            0, 0, 2,
+            -6, 0, 8
+        };
+        double[] charges = {10.0, -4.0, 2.5};
+
+        double expected = JavaComputeKernels.potentialEnergyChange(0, 0, 0, positions, charges, -3.0);
+        double actual = NativeBridge.computePotentialEnergyChange(0, 0, 0, positions, charges, -3.0);
+        assertEquals(expected, actual, "Native bridge potential energy change");
+    }
+
     private static void verifyNativeBridgeLargeFilterAndSort() {
         int[] positions = descendingAxisPositions(5000);
         int[] filtered = NativeBridge.filterWithinRadius(0, 0, 0, 1024, positions);
@@ -432,6 +452,12 @@ public final class BerylliumParityVerifier {
 
     private static void assertEquals(boolean expected, boolean actual, String label) {
         if (expected != actual) {
+            throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
+        }
+    }
+
+    private static void assertEquals(double expected, double actual, String label) {
+        if (Double.compare(expected, actual) != 0) {
             throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
         }
     }

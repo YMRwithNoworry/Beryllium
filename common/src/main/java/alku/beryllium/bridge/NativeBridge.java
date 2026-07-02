@@ -84,6 +84,42 @@ public final class NativeBridge {
         return computeSquaredDistances(origin[0], origin[1], origin[2], positions);
     }
 
+    public static double computePotentialEnergyChange(
+        int originX,
+        int originY,
+        int originZ,
+        int[] positions,
+        double[] charges,
+        double chargeMultiplier
+    ) {
+        if (chargeMultiplier == 0.0) {
+            return 0.0;
+        }
+
+        JavaComputeKernels.validatePositions(positions);
+        JavaComputeKernels.validateCharges(positions, charges);
+
+        double[] output = new double[1];
+        if (!isLoaded()) {
+            return JavaComputeKernels.potentialEnergyChange(originX, originY, originZ, positions, charges, chargeMultiplier);
+        }
+
+        NativeStatus nativeStatus = NativeStatus.fromCode(computePotentialEnergyChangeNative(
+            originX,
+            originY,
+            originZ,
+            positions,
+            charges,
+            chargeMultiplier,
+            output
+        ));
+        if (!nativeStatus.isSuccess()) {
+            return JavaComputeKernels.potentialEnergyChange(originX, originY, originZ, positions, charges, chargeMultiplier);
+        }
+
+        return output[0];
+    }
+
     public static int findNearestIndex(double originX, double originY, double originZ, double maxDistanceSquared, double[] positions) {
         JavaComputeKernels.validatePositions(positions);
 
@@ -476,6 +512,16 @@ public final class NativeBridge {
         double originY,
         double originZ,
         double[] positions,
+        double[] output
+    );
+
+    private static native int computePotentialEnergyChangeNative(
+        int originX,
+        int originY,
+        int originZ,
+        int[] positions,
+        double[] charges,
+        double chargeMultiplier,
         double[] output
     );
 

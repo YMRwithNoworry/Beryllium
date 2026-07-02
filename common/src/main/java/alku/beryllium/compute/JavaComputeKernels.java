@@ -31,6 +31,30 @@ public final class JavaComputeKernels {
         return result;
     }
 
+    public static double potentialEnergyChange(
+        int originX,
+        int originY,
+        int originZ,
+        int[] positions,
+        double[] charges,
+        double chargeMultiplier
+    ) {
+        if (chargeMultiplier == 0.0) {
+            return 0.0;
+        }
+
+        validatePositions(positions);
+        validateCharges(positions, charges);
+
+        double energy = 0.0;
+        for (int index = 0; index < charges.length; index++) {
+            double distance = blockCornerDistanceAt(originX, originY, originZ, positions, index);
+            energy += distance == 0.0 ? Double.POSITIVE_INFINITY : charges[index] / Math.sqrt(distance);
+        }
+
+        return energy * chargeMultiplier;
+    }
+
     public static int findNearestIndex(double originX, double originY, double originZ, double maxDistanceSquared, double[] positions) {
         return findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions, true);
     }
@@ -347,6 +371,13 @@ public final class JavaComputeKernels {
         validatePositions(positions);
         if (radiiSquared == null || radiiSquared.length != positions.length / 3) {
             throw new IllegalArgumentException("radiiSquared must contain one value per position");
+        }
+    }
+
+    public static void validateCharges(int[] positions, double[] charges) {
+        validatePositions(positions);
+        if (charges == null || charges.length != positions.length / 3) {
+            throw new IllegalArgumentException("charges must contain one value per position");
         }
     }
 

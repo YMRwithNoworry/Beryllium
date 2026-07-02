@@ -69,6 +69,40 @@ pub fn compute_squared_distances_f64(
     Ok(())
 }
 
+/// Computes the vanilla PotentialCalculator point-charge energy change.
+pub fn potential_energy_change(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    positions: &[i32],
+    charges: &[f64],
+    charge_multiplier: f64,
+) -> Result<f64, NativeError> {
+    if charge_multiplier == 0.0 {
+        return Ok(0.0);
+    }
+
+    if !positions.len().is_multiple_of(3) {
+        return Err(NativeError::InvalidInput);
+    }
+
+    if charges.len() != positions.len() / 3 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let mut energy = 0.0;
+    for (index, charge) in charges.iter().enumerate() {
+        let distance = block_corner_distance_at(origin_x, origin_y, origin_z, positions, index);
+        energy += if distance == 0.0 {
+            f64::INFINITY
+        } else {
+            *charge / distance.sqrt()
+        };
+    }
+
+    Ok(energy * charge_multiplier)
+}
+
 /// Finds the nearest packed f64 x/y/z triple within an optional squared radius.
 pub fn find_nearest_index_f64(
     origin_x: f64,
@@ -1159,6 +1193,39 @@ mod tests {
             })
             .collect();
         assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn potential_energy_change_should_match_reference_values() {
+        let positions = [3, 0, 4, 0, 0, 2, -6, 0, 8];
+        let charges = [10.0, -4.0, 2.5];
+        let result = potential_energy_change(0, 0, 0, &positions, &charges, -3.0).unwrap();
+        assert_eq!(result, -0.75);
+    }
+
+    #[test]
+    fn potential_energy_change_should_return_infinity_at_same_position() {
+        let positions = [0, 0, 0];
+        let charges = [7.0];
+        let result = potential_energy_change(0, 0, 0, &positions, &charges, 2.0).unwrap();
+        assert_eq!(result, f64::INFINITY);
+    }
+
+    #[test]
+    fn potential_energy_change_should_skip_validation_for_zero_multiplier() {
+        let positions = [1, 2];
+        let charges = [];
+        let result = potential_energy_change(0, 0, 0, &positions, &charges, -0.0).unwrap();
+        assert_eq!(result, 0.0);
+        assert_eq!(result.to_bits(), 0.0f64.to_bits());
+    }
+
+    #[test]
+    fn potential_energy_change_should_reject_wrong_charge_count() {
+        let positions = [1, 2, 3, 4, 5, 6];
+        let charges = [1.0];
+        let result = potential_energy_change(0, 0, 0, &positions, &charges, 1.0);
+        assert_eq!(result, Err(NativeError::InvalidInput));
     }
 
     #[test]

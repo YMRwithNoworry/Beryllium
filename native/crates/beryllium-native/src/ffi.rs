@@ -9,8 +9,8 @@ use crate::{
     kernel::filter_within_radius_f64, kernel::filter_within_radius_f64_exclusive,
     kernel::find_nearest_block_center_index, kernel::find_nearest_block_corner_index,
     kernel::find_nearest_index_f64, kernel::find_nearest_index_f64_exclusive,
-    kernel::has_any_within_radius_f64_exclusive, kernel::sort_by_block_distance,
-    kernel::sort_by_distance, kernel::sort_by_distance_f64,
+    kernel::has_any_within_radius_f64_exclusive, kernel::potential_energy_change,
+    kernel::sort_by_block_distance, kernel::sort_by_distance, kernel::sort_by_distance_f64,
     kernel::sort_within_radius_f64_exclusive, NativeError,
 };
 
@@ -65,6 +65,31 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_computeSquaredDis
 ) -> jint {
     compute_squared_distances_double_jni(env, origin_x, origin_y, origin_z, positions, output)
         .code()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_computePotentialEnergyChangeNative(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    origin_x: jint,
+    origin_y: jint,
+    origin_z: jint,
+    positions: JIntArray<'_>,
+    charges: JDoubleArray<'_>,
+    charge_multiplier: jdouble,
+    output: JDoubleArray<'_>,
+) -> jint {
+    compute_potential_energy_change_jni(
+        env,
+        origin_x,
+        origin_y,
+        origin_z,
+        positions,
+        charges,
+        charge_multiplier,
+        output,
+    )
+    .code()
 }
 
 #[no_mangle]
@@ -430,6 +455,68 @@ fn compute_squared_distances_double_jni(
         .set_double_array_region(&output, 0, &output_buffer)
         .is_err()
     {
+        return NativeStatus::Jni;
+    }
+
+    NativeStatus::Ok
+}
+
+fn compute_potential_energy_change_jni(
+    env: JNIEnv<'_>,
+    origin_x: jint,
+    origin_y: jint,
+    origin_z: jint,
+    positions: JIntArray<'_>,
+    charges: JDoubleArray<'_>,
+    charge_multiplier: jdouble,
+    output: JDoubleArray<'_>,
+) -> NativeStatus {
+    let positions_len = match env.get_array_length(&positions) {
+        Ok(value) => value as usize,
+        Err(_) => return NativeStatus::Jni,
+    };
+    let charges_len = match env.get_array_length(&charges) {
+        Ok(value) => value as usize,
+        Err(_) => return NativeStatus::Jni,
+    };
+    let output_len = match env.get_array_length(&output) {
+        Ok(value) => value as usize,
+        Err(_) => return NativeStatus::Jni,
+    };
+
+    if output_len != 1 {
+        return NativeStatus::OutputLengthMismatch;
+    }
+
+    let mut positions_buffer = vec![0; positions_len];
+    if env
+        .get_int_array_region(&positions, 0, &mut positions_buffer)
+        .is_err()
+    {
+        return NativeStatus::Jni;
+    }
+
+    let mut charges_buffer = vec![0.0; charges_len];
+    if env
+        .get_double_array_region(&charges, 0, &mut charges_buffer)
+        .is_err()
+    {
+        return NativeStatus::Jni;
+    }
+
+    let energy = match potential_energy_change(
+        origin_x,
+        origin_y,
+        origin_z,
+        &positions_buffer,
+        &charges_buffer,
+        charge_multiplier,
+    ) {
+        Ok(value) => value,
+        Err(error) => return error.into(),
+    };
+
+    if env.set_double_array_region(&output, 0, &[energy]).is_err() {
         return NativeStatus::Jni;
     }
 
