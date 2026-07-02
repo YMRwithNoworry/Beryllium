@@ -80,6 +80,42 @@ public final class BlockDistanceSearch {
         return nearest;
     }
 
+    public static <T> List<T> filterByDistanceWithinInclusiveRadius(
+        List<T> values,
+        BlockPos origin,
+        int radius,
+        Function<? super T, BlockPos> positionGetter,
+        Predicate<? super T> afterDistancePredicate
+    ) {
+        if (values.isEmpty()) {
+            return List.of();
+        }
+
+        int radiusSquared = radius * radius;
+        if (radiusSquared < 0) {
+            return List.of();
+        }
+
+        int[] positions = packPositions(values, positionGetter);
+        int[] matchingIndices = NativeBatching.shouldUseNativeEntityBatch(values.size())
+            ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions)
+            : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions);
+
+        if (matchingIndices.length == 0) {
+            return List.of();
+        }
+
+        List<T> result = new ArrayList<>(matchingIndices.length);
+        for (int index : matchingIndices) {
+            T value = values.get(index);
+            if (afterDistancePredicate.test(value)) {
+                result.add(value);
+            }
+        }
+
+        return result;
+    }
+
     public static <T> BlockPos findNearestPositionByDistance(
         Iterable<? extends T> values,
         BlockPos origin,

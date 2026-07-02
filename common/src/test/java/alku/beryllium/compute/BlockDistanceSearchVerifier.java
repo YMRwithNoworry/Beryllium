@@ -141,6 +141,54 @@ public final class BlockDistanceSearchVerifier {
         assertEquals(new BlockPos(1, 0, 0), nearest, "filtered inclusive radius block tie order");
     }
 
+    public static void verifyFilterWithinInclusiveBlockDistancePreservesEncounterOrderAfterRadius() {
+        List<SimpleBlock> blocks = new ArrayList<>();
+        blocks.add(new SimpleBlock(0, new BlockPos(3, 0, 0)));
+        blocks.add(new SimpleBlock(1, new BlockPos(2, 0, 0)));
+        blocks.add(new SimpleBlock(2, new BlockPos(1, 0, 0)));
+        blocks.add(new SimpleBlock(3, new BlockPos(-2, 0, 0)));
+
+        List<Integer> tested = new ArrayList<>();
+        List<SimpleBlock> matches = BlockDistanceSearch.filterByDistanceWithinInclusiveRadius(
+            blocks,
+            BlockPos.ZERO,
+            2,
+            block -> block.position,
+            block -> {
+                tested.add(block.id);
+                return block.id != 1;
+            }
+        );
+
+        assertListEquals(List.of(2, 3), ids(matches), "inclusive radius filtered block order");
+        assertListEquals(List.of(1, 2, 3), tested, "inclusive radius filtered predicate order");
+    }
+
+    public static void verifyFilterWithinInclusiveBlockDistanceBatchesRadiusBeforePredicate() {
+        List<SimpleBlock> blocks = new ArrayList<>();
+        for (int index = 0; index < 40; index++) {
+            blocks.add(new SimpleBlock(index, new BlockPos(100 + index, 0, 0)));
+        }
+        blocks.set(33, new SimpleBlock(33, new BlockPos(2, 0, 0)));
+        blocks.set(34, new SimpleBlock(34, new BlockPos(-2, 0, 0)));
+        blocks.set(35, new SimpleBlock(35, new BlockPos(1, 0, 0)));
+
+        List<Integer> tested = new ArrayList<>();
+        List<SimpleBlock> matches = BlockDistanceSearch.filterByDistanceWithinInclusiveRadius(
+            blocks,
+            BlockPos.ZERO,
+            2,
+            block -> block.position,
+            block -> {
+                tested.add(block.id);
+                return block.id != 34;
+            }
+        );
+
+        assertListEquals(List.of(33, 35), ids(matches), "large inclusive radius filtered block order");
+        assertListEquals(List.of(33, 34, 35), tested, "large inclusive radius filtered predicate order");
+    }
+
     private static List<SimpleBlock> descendingAxisBlocks(int count) {
         List<SimpleBlock> blocks = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
@@ -157,6 +205,14 @@ public final class BlockDistanceSearchVerifier {
         }
 
         throw new AssertionError("Unknown block position: " + position);
+    }
+
+    private static List<Integer> ids(List<SimpleBlock> blocks) {
+        List<Integer> ids = new ArrayList<>(blocks.size());
+        for (SimpleBlock block : blocks) {
+            ids.add(block.id);
+        }
+        return ids;
     }
 
     private static void assertEquals(BlockPos expected, BlockPos actual, String label) {

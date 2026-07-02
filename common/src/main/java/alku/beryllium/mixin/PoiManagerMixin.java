@@ -21,29 +21,58 @@ import java.util.stream.Stream;
 @Mixin(PoiManager.class)
 public abstract class PoiManagerMixin {
     @Shadow
-    public abstract Stream<Pair<Holder<PoiType>, BlockPos>> findAllWithType(
-        Predicate<Holder<PoiType>> typePredicate,
-        Predicate<BlockPos> positionPredicate,
-        BlockPos origin,
-        int radius,
-        PoiManager.Occupancy occupancy
-    );
-
-    @Shadow
-    public abstract Stream<PoiRecord> getInRange(
-        Predicate<Holder<PoiType>> typePredicate,
-        BlockPos origin,
-        int radius,
-        PoiManager.Occupancy occupancy
-    );
-
-    @Shadow
     public abstract Stream<PoiRecord> getInSquare(
         Predicate<Holder<PoiType>> typePredicate,
         BlockPos origin,
         int radius,
         PoiManager.Occupancy occupancy
     );
+
+    /**
+     * @reason Batch POI radius filtering before applying the vanilla position predicate.
+     * @author YMRwithNoworry
+     */
+    @Overwrite
+    public Stream<BlockPos> findAll(
+        Predicate<Holder<PoiType>> typePredicate,
+        Predicate<BlockPos> positionPredicate,
+        BlockPos origin,
+        int radius,
+        PoiManager.Occupancy occupancy
+    ) {
+        List<PoiRecord> records = new ArrayList<>();
+        this.getInSquare(typePredicate, origin, radius, occupancy).forEach(records::add);
+        return BlockDistanceSearch.filterByDistanceWithinInclusiveRadius(
+            records,
+            origin,
+            radius,
+            PoiRecord::getPos,
+            record -> positionPredicate.test(record.getPos())
+        ).stream().map(PoiRecord::getPos);
+    }
+
+    /**
+     * @reason Batch typed POI radius filtering before applying the vanilla position predicate.
+     * @author YMRwithNoworry
+     */
+    @Overwrite
+    public Stream<Pair<Holder<PoiType>, BlockPos>> findAllWithType(
+        Predicate<Holder<PoiType>> typePredicate,
+        Predicate<BlockPos> positionPredicate,
+        BlockPos origin,
+        int radius,
+        PoiManager.Occupancy occupancy
+    ) {
+        List<PoiRecord> records = new ArrayList<>();
+        this.getInSquare(typePredicate, origin, radius, occupancy).forEach(records::add);
+        return BlockDistanceSearch.filterByDistanceWithinInclusiveRadius(
+            records,
+            origin,
+            radius,
+            PoiRecord::getPos,
+            record -> positionPredicate.test(record.getPos())
+        ).stream().map(record -> Pair.of(record.getPoiType(), record.getPos()));
+    }
 
     /**
      * @reason Batch POI block-distance ordering through the native block sort kernel.
