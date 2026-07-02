@@ -52,6 +52,8 @@ public final class BerylliumNativeRuntimeVerifier {
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesRejectsNegativeRadius();
         EntityDistanceSortVerifier.verifySortByDistance();
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
+        EntityDistanceSortVerifier.verifyFilterWithinExclusiveDistanceSortedByDistance();
+        EntityDistanceSortVerifier.verifyFilterWithinExclusiveDistanceSortedByDistanceTieOrder();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
         BlockDistanceSearchVerifier.verifyFindNearestByBlockDistance();
@@ -159,6 +161,13 @@ public final class BerylliumNativeRuntimeVerifier {
             1.0, 0.0, 0.0
         });
         assertArrayEquals(new int[] {1}, exclusiveMatches, "native exclusive double radius filter");
+
+        int[] sortedExclusiveMatches = NativeBridge.sortWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, new double[] {
+            2.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0
+        });
+        assertArrayEquals(new int[] {1, 2}, sortedExclusiveMatches, "native sorted exclusive double radius filter");
 
         int[] variableMatches = NativeBridge.filterWithinRadii(0.0, 0.0, 0.0, new double[] {
             0.0, 8.0, 0.0,

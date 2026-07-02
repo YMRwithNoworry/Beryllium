@@ -395,6 +395,68 @@ pub fn filter_within_radius_f64_exclusive(
     Ok(count)
 }
 
+/// Filters packed f64 x/y/z triples by exclusive squared radius, then sorts matches by squared distance.
+pub fn sort_within_radius_f64_exclusive(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    if radius_squared < 0.0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    if positions.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if output.len() < position_count {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    let mut matches: Vec<(i32, f64)> = if position_count >= PARALLEL_THRESHOLD {
+        positions
+            .par_chunks_exact(3)
+            .enumerate()
+            .filter_map(|(index, position)| {
+                let distance =
+                    squared_distance_at_f64_slice(origin_x, origin_y, origin_z, position);
+                if distance < radius_squared {
+                    Some((index as i32, distance))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    } else {
+        let mut values = Vec::new();
+        for index in 0..position_count {
+            let distance = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
+            if distance < radius_squared {
+                values.push((index as i32, distance));
+            }
+        }
+        values
+    };
+
+    if matches.len() >= PARALLEL_THRESHOLD {
+        matches.par_sort_by(|left, right| {
+            compare_distance_order_f64(left.0, left.1, right.0, right.1)
+        });
+    } else {
+        matches.sort_by(|left, right| compare_distance_order_f64(left.0, left.1, right.0, right.1));
+    }
+
+    for (output_index, (index, _distance)) in matches.iter().enumerate() {
+        output[output_index] = *index;
+    }
+
+    Ok(matches.len())
+}
+
 /// Filters packed f64 x/y/z triples by one inclusive squared radius per position.
 pub fn filter_within_radii_f64(
     origin_x: f64,
@@ -1270,6 +1332,33 @@ mod tests {
                 .unwrap();
         assert_eq!(count, 32);
         assert_eq!(&output[..count], &(4968..5000).collect::<Vec<_>>()[..]);
+    }
+
+    #[test]
+    fn sort_within_radius_f64_exclusive_should_filter_and_sort_by_distance() {
+        let positions = [2.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0];
+        let mut output = [0; 3];
+        let count =
+            sort_within_radius_f64_exclusive(0.0, 0.0, 0.0, 4.0, &positions, &mut output).unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(&output[..count], &[1, 2]);
+    }
+
+    #[test]
+    fn sort_within_radius_f64_exclusive_should_match_parallel_reference_order() {
+        let positions: Vec<f64> = (0..5000)
+            .flat_map(|index| [(4999 - index) as f64, 0.0, 0.0])
+            .collect();
+        let mut output = vec![0; 5000];
+
+        let count =
+            sort_within_radius_f64_exclusive(0.0, 0.0, 0.0, 1024.0, &positions, &mut output)
+                .unwrap();
+        assert_eq!(count, 32);
+        assert_eq!(
+            &output[..count],
+            &(4968..5000).rev().collect::<Vec<_>>()[..]
+        );
     }
 
     #[test]

@@ -146,6 +146,35 @@ public final class JavaComputeKernels {
         return Arrays.copyOf(matches, count);
     }
 
+    public static int[] sortWithinRadiusExclusive(double originX, double originY, double originZ, double radiusSquared, double[] positions) {
+        validatePositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+
+        Integer[] matches = new Integer[positions.length / 3];
+        int count = 0;
+        for (int index = 0; index < matches.length; index++) {
+            if (squaredDistanceAt(originX, originY, originZ, positions, index) < radiusSquared) {
+                matches[count] = index;
+                count++;
+            }
+        }
+
+        Arrays.sort(matches, 0, count, (left, right) -> {
+            double leftDistance = squaredDistanceAt(originX, originY, originZ, positions, left);
+            double rightDistance = squaredDistanceAt(originX, originY, originZ, positions, right);
+            int distanceComparison = Double.compare(leftDistance, rightDistance);
+            return distanceComparison != 0 ? distanceComparison : Integer.compare(left, right);
+        });
+
+        int[] result = new int[count];
+        for (int index = 0; index < count; index++) {
+            result[index] = matches[index];
+        }
+        return result;
+    }
+
     public static int[] filterWithinRadii(double originX, double originY, double originZ, double[] positions, double[] radiiSquared) {
         validatePositions(positions);
         validateRadii(positions, radiiSquared);

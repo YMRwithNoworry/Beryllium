@@ -71,6 +71,8 @@ public final class BerylliumParityVerifier {
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesRejectsNegativeRadius();
         EntityDistanceSortVerifier.verifySortByDistance();
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
+        EntityDistanceSortVerifier.verifyFilterWithinExclusiveDistanceSortedByDistance();
+        EntityDistanceSortVerifier.verifyFilterWithinExclusiveDistanceSortedByDistanceTieOrder();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
         BlockDistanceSearchVerifier.verifyFindNearestByBlockDistance();
@@ -202,8 +204,10 @@ public final class BerylliumParityVerifier {
         double[] positions = descendingAxisPositionsDouble(5000);
         int[] filtered = NativeBridge.filterWithinRadius(0.0, 0.0, 0.0, 1024.0, positions);
         int[] exclusiveFiltered = NativeBridge.filterWithinRadiusExclusive(0.0, 0.0, 0.0, 1024.0, positions);
+        int[] sortedExclusiveFiltered = NativeBridge.sortWithinRadiusExclusive(0.0, 0.0, 0.0, 1024.0, positions);
         assertArrayEquals(range(4967, 5000), filtered, "Native bridge large double radius filter");
         assertArrayEquals(range(4968, 5000), exclusiveFiltered, "Native bridge large exclusive double radius filter");
+        assertArrayEquals(descendingRange(4999, 4968), sortedExclusiveFiltered, "Native bridge sorted exclusive double radius filter");
     }
 
     private static void verifyNativeBridgeAabbFilter() {
@@ -283,8 +287,10 @@ public final class BerylliumParityVerifier {
         double[] positions = descendingAxisPositionsDouble(5000);
         int[] filtered = JavaComputeKernels.filterWithinRadius(0.0, 0.0, 0.0, 1024.0, positions);
         int[] exclusiveFiltered = JavaComputeKernels.filterWithinRadiusExclusive(0.0, 0.0, 0.0, 1024.0, positions);
+        int[] sortedExclusiveFiltered = JavaComputeKernels.sortWithinRadiusExclusive(0.0, 0.0, 0.0, 1024.0, positions);
         assertArrayEquals(range(4967, 5000), filtered, "Java large double radius filter");
         assertArrayEquals(range(4968, 5000), exclusiveFiltered, "Java large exclusive double radius filter");
+        assertArrayEquals(descendingRange(4999, 4968), sortedExclusiveFiltered, "Java sorted exclusive double radius filter");
     }
 
     private static void verifyNativeBridgeVariableRadiusFilter() {

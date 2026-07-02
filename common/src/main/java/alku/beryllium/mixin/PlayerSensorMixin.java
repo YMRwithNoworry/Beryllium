@@ -1,6 +1,5 @@
 package alku.beryllium.mixin;
 
-import alku.beryllium.compute.EntityDistanceFilter;
 import alku.beryllium.compute.EntityDistanceSort;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -32,8 +31,16 @@ public class PlayerSensorMixin {
                 candidatePlayers.add(player);
             }
         }
-        List<Player> nearbyPlayers = EntityDistanceFilter.filterWithinExclusiveDistance(candidatePlayers, entity, 16.0);
-        EntityDistanceSort.sortByDistance(nearbyPlayers, entity);
+        List<Player> nearbyPlayers = EntityDistanceSort.filterWithinExclusiveDistanceSortedByDistance(
+            candidatePlayers,
+            entity.getX(),
+            entity.getY(),
+            entity.getZ(),
+            16.0,
+            Player::getX,
+            Player::getY,
+            Player::getZ
+        );
 
         Brain<?> brain = entity.getBrain();
         brain.setMemory(MemoryModuleType.NEAREST_PLAYERS, nearbyPlayers);

@@ -48,6 +48,44 @@ public final class EntityDistanceSort {
         reorder(values, NativeBridge.sortByDistance(originX, originY, originZ, positions));
     }
 
+    public static <T> List<T> filterWithinExclusiveDistanceSortedByDistance(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        double radius,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter
+    ) {
+        if (radius < 0.0) {
+            throw new IllegalArgumentException("radius must be non-negative");
+        }
+        if (values.isEmpty()) {
+            return List.of();
+        }
+
+        double radiusSquared = radius * radius;
+        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+            List<T> matches = new ArrayList<>();
+            for (T value : values) {
+                if (squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared) {
+                    matches.add(value);
+                }
+            }
+            sortByDistance(matches, originX, originY, originZ, xGetter, yGetter, zGetter);
+            return matches;
+        }
+
+        double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
+        int[] order = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
+        List<T> matches = new ArrayList<>(order.length);
+        for (int index : order) {
+            matches.add(values.get(index));
+        }
+        return matches;
+    }
+
     private static <T> void reorder(List<T> values, int[] order) {
         List<T> snapshot = new ArrayList<>(values);
         for (int index = 0; index < order.length; index++) {
