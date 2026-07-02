@@ -48,25 +48,17 @@ public final class VillagerHostileSearch {
         }
 
         Predicate<LivingEntity> lineOfSightTest = accessor.beryllium$lineOfSightTest();
-        List<HostileCandidate> closeCandidates = EntityVariableRadiusFilter.filterWithinInclusiveDistances(
+        return EntityVariableRadiusFilter.findFirstWithinInclusiveDistancesAfterDistance(
             hostileCandidates,
             source.getX(),
             source.getY(),
             source.getZ(),
             HostileCandidate::radiusSquared,
+            candidate -> lineOfSightTest.test(candidate.entity()),
             candidate -> candidate.entity().getX(),
             candidate -> candidate.entity().getY(),
             candidate -> candidate.entity().getZ()
-        );
-
-        for (HostileCandidate candidate : closeCandidates) {
-            LivingEntity entity = candidate.entity();
-            if (lineOfSightTest.test(entity)) {
-                return Optional.of(entity);
-            }
-        }
-
-        return Optional.empty();
+        ).map(HostileCandidate::entity);
     }
 
     private record HostileCandidate(LivingEntity entity, double radiusSquared) {

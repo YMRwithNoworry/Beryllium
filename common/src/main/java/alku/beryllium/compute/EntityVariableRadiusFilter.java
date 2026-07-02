@@ -5,6 +5,8 @@ import net.minecraft.world.entity.Entity;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * Filters entity-like lists against a per-candidate inclusive squared radius.
@@ -66,6 +68,47 @@ public final class EntityVariableRadiusFilter {
             matches.add(values.get(index));
         }
         return matches;
+    }
+
+    public static <T> Optional<T> findFirstWithinInclusiveDistancesAfterDistance(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        RadiusSquaredGetter<? super T> radiusSquaredGetter,
+        Predicate<? super T> afterDistance,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter
+    ) {
+        if (values.isEmpty()) {
+            return Optional.empty();
+        }
+
+        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+            for (T value : values) {
+                double radiusSquared = radiusSquaredGetter.get(value);
+                if (radiusSquared < 0.0) {
+                    throw new IllegalArgumentException("radiusSquared must be non-negative");
+                }
+                if (squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) <= radiusSquared
+                    && afterDistance.test(value)) {
+                    return Optional.of(value);
+                }
+            }
+            return Optional.empty();
+        }
+
+        double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
+        double[] radiiSquared = packRadii(values, radiusSquaredGetter);
+        int[] matchingIndices = NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared);
+        for (int index : matchingIndices) {
+            T value = values.get(index);
+            if (afterDistance.test(value)) {
+                return Optional.of(value);
+            }
+        }
+        return Optional.empty();
     }
 
     private static <T> double[] packRadii(List<? extends T> values, RadiusSquaredGetter<? super T> radiusSquaredGetter) {

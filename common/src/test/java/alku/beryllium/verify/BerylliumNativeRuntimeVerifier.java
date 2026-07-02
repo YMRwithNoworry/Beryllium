@@ -59,6 +59,8 @@ public final class BerylliumNativeRuntimeVerifier {
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistances();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesPreservesOrder();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesRejectsNegativeRadius();
+        EntityVariableRadiusFilterVerifier.verifyFindFirstWithinInclusiveDistancesAfterDistanceShortCircuitsPosttest();
+        EntityVariableRadiusFilterVerifier.verifyFindFirstWithinInclusiveDistancesAfterDistanceBatchesDistanceGateFirst();
         PotentialEnergyBatchVerifier.verifyPotentialEnergyChangeMatchesVanillaPointChargeMath();
         PotentialEnergyBatchVerifier.verifyPotentialEnergyChangeReturnsInfinityAtSamePosition();
         PotentialEnergyBatchVerifier.verifyPotentialEnergyChangePreservesNegativeZeroMultiplierResult();

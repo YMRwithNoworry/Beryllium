@@ -83,6 +83,8 @@ public final class BerylliumParityVerifier {
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistances();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesPreservesOrder();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesRejectsNegativeRadius();
+        EntityVariableRadiusFilterVerifier.verifyFindFirstWithinInclusiveDistancesAfterDistanceShortCircuitsPosttest();
+        EntityVariableRadiusFilterVerifier.verifyFindFirstWithinInclusiveDistancesAfterDistanceBatchesDistanceGateFirst();
         EntityDistanceSortVerifier.verifySortByDistance();
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         EntityDistanceSortVerifier.verifyFilterWithinExclusiveDistanceSortedByDistance();

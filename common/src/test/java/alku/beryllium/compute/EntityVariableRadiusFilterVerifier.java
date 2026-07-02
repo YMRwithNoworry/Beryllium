@@ -2,6 +2,7 @@ package alku.beryllium.compute;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public final class EntityVariableRadiusFilterVerifier {
     private EntityVariableRadiusFilterVerifier() {
@@ -67,6 +68,63 @@ public final class EntityVariableRadiusFilterVerifier {
         throw new AssertionError("Expected negative variable radius to be rejected");
     }
 
+    public static void verifyFindFirstWithinInclusiveDistancesAfterDistanceShortCircuitsPosttest() {
+        List<SimplePoint> points = List.of(
+            new SimplePoint(0, 8.0, 0.0, 0.0, 64.0),
+            new SimplePoint(1, 12.0, 0.0, 0.0, 144.0),
+            new SimplePoint(2, 1.0, 0.0, 0.0, 1.0)
+        );
+        List<Integer> posttested = new ArrayList<>();
+
+        Optional<SimplePoint> match = EntityVariableRadiusFilter.findFirstWithinInclusiveDistancesAfterDistance(
+            points,
+            0.0,
+            0.0,
+            0.0,
+            point -> point.radiusSquared,
+            point -> {
+                posttested.add(point.id);
+                return point.id == 1;
+            },
+            point -> point.x,
+            point -> point.y,
+            point -> point.z
+        );
+
+        assertEquals(1, match.orElseThrow().id, "variable inclusive first match");
+        assertListEquals(List.of(0, 1), posttested, "variable inclusive posttest short-circuit order");
+    }
+
+    public static void verifyFindFirstWithinInclusiveDistancesAfterDistanceBatchesDistanceGateFirst() {
+        List<SimplePoint> points = new ArrayList<>();
+        points.add(new SimplePoint(0, 12.0, 0.0, 0.0, 64.0));
+        points.add(new SimplePoint(1, 8.0, 0.0, 0.0, 64.0));
+        points.add(new SimplePoint(2, 10.0, 0.0, 0.0, 100.0));
+        for (int index = 3; index < 40; index++) {
+            points.add(new SimplePoint(index, 20.0 + index, 0.0, 0.0, 4.0));
+        }
+
+        List<Integer> posttested = new ArrayList<>();
+
+        Optional<SimplePoint> match = EntityVariableRadiusFilter.findFirstWithinInclusiveDistancesAfterDistance(
+            points,
+            0.0,
+            0.0,
+            0.0,
+            point -> point.radiusSquared,
+            point -> {
+                posttested.add(point.id);
+                return point.id == 2;
+            },
+            point -> point.x,
+            point -> point.y,
+            point -> point.z
+        );
+
+        assertEquals(2, match.orElseThrow().id, "large variable inclusive first match");
+        assertListEquals(List.of(1, 2), posttested, "large variable inclusive posttest after distance gate order");
+    }
+
     private static List<SimplePoint> descendingAxisPoints(int count) {
         List<SimplePoint> points = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
@@ -83,6 +141,12 @@ public final class EntityVariableRadiusFilterVerifier {
             result.add(point.id);
         }
         return result;
+    }
+
+    private static void assertEquals(int expected, int actual, String label) {
+        if (expected != actual) {
+            throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
+        }
     }
 
     private static void assertListEquals(List<Integer> expected, List<Integer> actual, String label) {
