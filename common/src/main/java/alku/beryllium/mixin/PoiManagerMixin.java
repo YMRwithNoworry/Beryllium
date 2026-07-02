@@ -100,11 +100,8 @@ public abstract class PoiManagerMixin {
         int radius,
         PoiManager.Occupancy occupancy
     ) {
-        List<BlockPos> positions = new ArrayList<>();
-        this.getInRange(typePredicate, origin, radius, occupancy)
-            .map(PoiRecord::getPos)
-            .filter(positionPredicate)
-            .forEach(positions::add);
-        return Optional.ofNullable(BlockDistanceSearch.findNearestByDistance(positions, origin, position -> position));
+        List<PoiRecord> records = new ArrayList<>();
+        this.getInRange(typePredicate, origin, radius, occupancy).forEach(records::add);
+        return Optional.ofNullable(BlockDistanceSearch.findNearestPositionByDistance(records, origin, PoiRecord::getPos, positionPredicate));
     }
 }

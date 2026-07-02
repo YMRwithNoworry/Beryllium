@@ -3,8 +3,10 @@ package alku.beryllium.compute;
 import alku.beryllium.bridge.NativeBridge;
 import net.minecraft.core.BlockPos;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * Finds block-like values by squared distance to BlockPos low corners while preserving encounter-order ties.
@@ -28,6 +30,23 @@ public final class BlockDistanceSearch {
             : JavaComputeKernels.findNearestBlockCornerIndex(origin.getX(), origin.getY(), origin.getZ(), positions);
 
         return nearestIndex >= 0 ? values.get(nearestIndex) : null;
+    }
+
+    public static <T> BlockPos findNearestPositionByDistance(
+        Iterable<? extends T> values,
+        BlockPos origin,
+        Function<? super T, BlockPos> positionGetter,
+        Predicate<? super BlockPos> positionPredicate
+    ) {
+        List<BlockPos> positions = new ArrayList<>();
+        for (T value : values) {
+            BlockPos position = positionGetter.apply(value);
+            if (positionPredicate.test(position)) {
+                positions.add(position);
+            }
+        }
+
+        return findNearestByDistance(positions, origin, position -> position);
     }
 
     private static <T> int[] packPositions(List<T> values, Function<? super T, BlockPos> positionGetter) {
