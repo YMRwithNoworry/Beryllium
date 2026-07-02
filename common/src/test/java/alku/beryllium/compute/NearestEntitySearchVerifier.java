@@ -104,6 +104,47 @@ public final class NearestEntitySearchVerifier {
         assertListEquals(evenRange(0, 40), distanceChecked, "exclusive any missing distance order");
     }
 
+    public static void verifyHasAnyWithinExclusiveDistanceBatchesPredicateBeforeDistance() {
+        List<SimplePoint> points = new ArrayList<>();
+        points.add(new SimplePoint(0, 1.0, 0.0, 0.0, false));
+        points.add(new SimplePoint(1, 3.0, 0.0, 0.0, true));
+        points.add(new SimplePoint(2, 1.0, 0.0, 0.0, true));
+        for (int index = 3; index < 40; index++) {
+            points.add(new SimplePoint(index, 20.0 + index, 0.0, 0.0, index % 2 == 0));
+        }
+        List<Integer> pretested = new ArrayList<>();
+        List<Integer> distancePacked = new ArrayList<>();
+
+        boolean match = NearestEntitySearch.hasAnyWithinExclusiveDistance(
+            points,
+            point -> {
+                pretested.add(point.id);
+                return point.pretest;
+            },
+            4.0,
+            0.0,
+            0.0,
+            0.0,
+            point -> {
+                distancePacked.add(point.id);
+                return point.x;
+            },
+            point -> point.y,
+            point -> point.z
+        );
+
+        assertEquals(true, match, "large exclusive any match");
+        assertListEquals(range(0, 40), pretested, "large exclusive any predicate order");
+        assertListEquals(pretestedCandidatesForBatch(), distancePacked, "large exclusive any distance packing order");
+    }
+
+    private static List<Integer> pretestedCandidatesForBatch() {
+        List<Integer> result = new ArrayList<>();
+        result.add(1);
+        result.addAll(evenRange(2, 40));
+        return result;
+    }
+
     private static List<Integer> range(int startInclusive, int endExclusive) {
         List<Integer> result = new ArrayList<>(endExclusive - startInclusive);
         for (int value = startInclusive; value < endExclusive; value++) {

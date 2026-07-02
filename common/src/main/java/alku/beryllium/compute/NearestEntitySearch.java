@@ -178,10 +178,35 @@ public final class NearestEntitySearch {
         EntityPacking.CoordinateGetter<? super T> yGetter,
         EntityPacking.CoordinateGetter<? super T> zGetter
     ) {
+        if (maxDistanceSquared < 0.0) {
+            for (T candidate : candidates) {
+                if (predicate.test(candidate)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if (NativeBatching.shouldUseNativeEntityBatch(candidates.size())) {
+            List<T> filteredCandidates = new ArrayList<>(candidates.size());
+            for (T candidate : candidates) {
+                if (predicate.test(candidate)) {
+                    filteredCandidates.add(candidate);
+                }
+            }
+            if (filteredCandidates.isEmpty()) {
+                return false;
+            }
+
+            double[] positions = EntityPacking.packPositions(filteredCandidates, xGetter, yGetter, zGetter);
+            return NativeBridge.hasAnyWithinRadiusExclusive(originX, originY, originZ, maxDistanceSquared, positions);
+        }
+
         for (T candidate : candidates) {
             if (
                 predicate.test(candidate)
-                    && (maxDistanceSquared < 0.0 || squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, candidate) < maxDistanceSquared)
+                    && squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, candidate) < maxDistanceSquared
             ) {
                 return true;
             }
