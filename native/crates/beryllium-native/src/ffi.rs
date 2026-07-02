@@ -5,12 +5,12 @@ use jni::JNIEnv;
 use crate::{
     kernel::compute_squared_distances, kernel::compute_squared_distances_f64,
     kernel::filter_intersecting_aabb_f64, kernel::filter_within_aabb_f64,
-    kernel::filter_within_radius, kernel::filter_within_radius_f64,
-    kernel::filter_within_radius_f64_exclusive, kernel::find_nearest_block_center_index,
-    kernel::find_nearest_block_corner_index, kernel::find_nearest_index_f64,
-    kernel::find_nearest_index_f64_exclusive, kernel::has_any_within_radius_f64_exclusive,
-    kernel::sort_by_block_distance, kernel::sort_by_distance, kernel::sort_by_distance_f64,
-    NativeError,
+    kernel::filter_within_radii_f64, kernel::filter_within_radius,
+    kernel::filter_within_radius_f64, kernel::filter_within_radius_f64_exclusive,
+    kernel::find_nearest_block_center_index, kernel::find_nearest_block_corner_index,
+    kernel::find_nearest_index_f64, kernel::find_nearest_index_f64_exclusive,
+    kernel::has_any_within_radius_f64_exclusive, kernel::sort_by_block_distance,
+    kernel::sort_by_distance, kernel::sort_by_distance_f64, NativeError,
 };
 
 /// Result code returned by the FFI layer.
@@ -128,6 +128,28 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinRadiu
         origin_z,
         radius_squared,
         positions,
+        output,
+    )
+}
+
+#[no_mangle]
+pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinRadiiDoubleNative(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    origin_x: jdouble,
+    origin_y: jdouble,
+    origin_z: jdouble,
+    positions: JDoubleArray<'_>,
+    radii_squared: JDoubleArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    filter_within_radii_double_jni(
+        env,
+        origin_x,
+        origin_y,
+        origin_z,
+        positions,
+        radii_squared,
         output,
     )
 }
@@ -522,6 +544,67 @@ fn filter_within_radius_exclusive_double_jni(
         origin_z,
         radius_squared,
         &positions_buffer,
+        &mut output_buffer,
+    ) {
+        Ok(value) => value,
+        Err(error) => return native_count_error_code(error.into()),
+    };
+
+    if env
+        .set_int_array_region(&output, 0, &output_buffer[..count])
+        .is_err()
+    {
+        return native_count_error_code(NativeStatus::Jni);
+    }
+
+    count as jint
+}
+
+fn filter_within_radii_double_jni(
+    env: JNIEnv<'_>,
+    origin_x: jdouble,
+    origin_y: jdouble,
+    origin_z: jdouble,
+    positions: JDoubleArray<'_>,
+    radii_squared: JDoubleArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    let positions_len = match env.get_array_length(&positions) {
+        Ok(value) => value as usize,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+    let radii_len = match env.get_array_length(&radii_squared) {
+        Ok(value) => value as usize,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+    let output_len = match env.get_array_length(&output) {
+        Ok(value) => value as usize,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+
+    let mut positions_buffer = vec![0.0; positions_len];
+    if env
+        .get_double_array_region(&positions, 0, &mut positions_buffer)
+        .is_err()
+    {
+        return native_count_error_code(NativeStatus::Jni);
+    }
+
+    let mut radii_squared_buffer = vec![0.0; radii_len];
+    if env
+        .get_double_array_region(&radii_squared, 0, &mut radii_squared_buffer)
+        .is_err()
+    {
+        return native_count_error_code(NativeStatus::Jni);
+    }
+
+    let mut output_buffer = vec![0; output_len];
+    let count = match filter_within_radii_f64(
+        origin_x,
+        origin_y,
+        origin_z,
+        &positions_buffer,
+        &radii_squared_buffer,
         &mut output_buffer,
     ) {
         Ok(value) => value,

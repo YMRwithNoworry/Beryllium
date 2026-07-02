@@ -146,6 +146,26 @@ public final class JavaComputeKernels {
         return Arrays.copyOf(matches, count);
     }
 
+    public static int[] filterWithinRadii(double originX, double originY, double originZ, double[] positions, double[] radiiSquared) {
+        validatePositions(positions);
+        validateRadii(positions, radiiSquared);
+
+        int[] matches = new int[positions.length / 3];
+        int count = 0;
+        for (int index = 0; index < matches.length; index++) {
+            double radiusSquared = radiiSquared[index];
+            if (radiusSquared < 0.0) {
+                throw new IllegalArgumentException("radiusSquared must be non-negative");
+            }
+            if (squaredDistanceAt(originX, originY, originZ, positions, index) <= radiusSquared) {
+                matches[count] = index;
+                count++;
+            }
+        }
+
+        return Arrays.copyOf(matches, count);
+    }
+
     public static int[] filterWithinAabb(
         double minX,
         double minY,
@@ -291,6 +311,13 @@ public final class JavaComputeKernels {
     public static void validateBoxes(double[] boxes) {
         if (boxes == null || boxes.length % 6 != 0) {
             throw new IllegalArgumentException("boxes must contain min/max x/y/z sextuples");
+        }
+    }
+
+    public static void validateRadii(double[] positions, double[] radiiSquared) {
+        validatePositions(positions);
+        if (radiiSquared == null || radiiSquared.length != positions.length / 3) {
+            throw new IllegalArgumentException("radiiSquared must contain one value per position");
         }
     }
 

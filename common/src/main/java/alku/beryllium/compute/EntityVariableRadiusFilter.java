@@ -59,19 +59,26 @@ public final class EntityVariableRadiusFilter {
         }
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-        double[] distances = NativeBridge.computeSquaredDistances(originX, originY, originZ, positions);
-        List<T> matches = new ArrayList<>(values.size());
+        double[] radiiSquared = packRadii(values, radiusSquaredGetter);
+        int[] matchingIndices = NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared);
+        List<T> matches = new ArrayList<>(matchingIndices.length);
+        for (int index : matchingIndices) {
+            matches.add(values.get(index));
+        }
+        return matches;
+    }
+
+    private static <T> double[] packRadii(List<? extends T> values, RadiusSquaredGetter<? super T> radiusSquaredGetter) {
+        double[] radiiSquared = new double[values.size()];
         for (int index = 0; index < values.size(); index++) {
             T value = values.get(index);
             double radiusSquared = radiusSquaredGetter.get(value);
             if (radiusSquared < 0.0) {
                 throw new IllegalArgumentException("radiusSquared must be non-negative");
             }
-            if (distances[index] <= radiusSquared) {
-                matches.add(value);
-            }
+            radiiSquared[index] = radiusSquared;
         }
-        return matches;
+        return radiiSquared;
     }
 
     private static <T> double squaredDistance(

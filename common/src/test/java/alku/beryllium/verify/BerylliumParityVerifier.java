@@ -48,6 +48,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeBlockSort();
         verifyNativeBridgeDoubleSort();
         verifyNativeBridgeDoubleFilter();
+        verifyNativeBridgeVariableRadiusFilter();
         verifyNativeBridgeAabbFilter();
         verifyNativeBridgeAabbIntersectionFilter();
         verifyNativeBridgeLargeFilterAndSort();
@@ -66,6 +67,7 @@ public final class BerylliumParityVerifier {
         EntityDistancePredicateSearchVerifier.verifyFindFirstWithinExclusiveDistanceBatchesLargeLists();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistances();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesPreservesOrder();
+        EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesRejectsNegativeRadius();
         EntityDistanceSortVerifier.verifySortByDistance();
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
@@ -279,6 +281,18 @@ public final class BerylliumParityVerifier {
         int[] exclusiveFiltered = JavaComputeKernels.filterWithinRadiusExclusive(0.0, 0.0, 0.0, 1024.0, positions);
         assertArrayEquals(range(4967, 5000), filtered, "Java large double radius filter");
         assertArrayEquals(range(4968, 5000), exclusiveFiltered, "Java large exclusive double radius filter");
+    }
+
+    private static void verifyNativeBridgeVariableRadiusFilter() {
+        double[] positions = {
+            0.0, 8.0, 0.0,
+            10.0, 0.0, 0.0,
+            12.0, 0.0, 0.0,
+            15.1, 0.0, 0.0
+        };
+        double[] radiiSquared = {64.0, 64.0, 144.0, 225.0};
+        int[] filtered = NativeBridge.filterWithinRadii(0.0, 0.0, 0.0, positions, radiiSquared);
+        assertArrayEquals(new int[] {0, 2}, filtered, "Native bridge variable radius filter");
     }
 
     private static void verifyJavaAabbFilter() {

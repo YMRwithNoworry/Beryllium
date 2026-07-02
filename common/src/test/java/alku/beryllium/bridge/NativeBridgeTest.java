@@ -37,4 +37,28 @@ class NativeBridgeTest {
     void computeSquaredDistancesDoubleShouldRejectUnpackedPositions() {
         assertThrows(IllegalArgumentException.class, () -> NativeBridge.computeSquaredDistances(0.0, 0.0, 0.0, new double[] {1.0, 2.0}));
     }
+
+    @Test
+    void filterWithinRadiiShouldFallBackToJavaWhenNativeLibraryIsMissing() {
+        double[] positions = {
+            0.0, 8.0, 0.0,
+            10.0, 0.0, 0.0,
+            12.0, 0.0, 0.0,
+            15.1, 0.0, 0.0
+        };
+        double[] radiiSquared = {64.0, 64.0, 144.0, 225.0};
+        int[] result = NativeBridge.filterWithinRadii(0.0, 0.0, 0.0, positions, radiiSquared);
+        assertArrayEquals(new int[] {0, 2}, result);
+    }
+
+    @Test
+    void filterWithinRadiiShouldRejectMismatchedRadii() {
+        assertThrows(IllegalArgumentException.class, () -> NativeBridge.filterWithinRadii(
+            0.0,
+            0.0,
+            0.0,
+            new double[] {0.0, 0.0, 0.0},
+            new double[] {1.0, 2.0}
+        ));
+    }
 }

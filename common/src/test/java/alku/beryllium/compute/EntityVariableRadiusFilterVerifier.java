@@ -46,6 +46,27 @@ public final class EntityVariableRadiusFilterVerifier {
         assertListEquals(List.of(0, 10, 20, 30, 39), ids(matches), "variable inclusive distance filter order");
     }
 
+    public static void verifyFilterWithinInclusiveDistancesRejectsNegativeRadius() {
+        List<SimplePoint> points = List.of(new SimplePoint(0, 0.0, 0.0, 0.0, -1.0));
+
+        try {
+            EntityVariableRadiusFilter.filterWithinInclusiveDistances(
+                points,
+                0.0,
+                0.0,
+                0.0,
+                point -> point.radiusSquared,
+                point -> point.x,
+                point -> point.y,
+                point -> point.z
+            );
+        } catch (IllegalArgumentException expected) {
+            return;
+        }
+
+        throw new AssertionError("Expected negative variable radius to be rejected");
+    }
+
     private static List<SimplePoint> descendingAxisPoints(int count) {
         List<SimplePoint> points = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
