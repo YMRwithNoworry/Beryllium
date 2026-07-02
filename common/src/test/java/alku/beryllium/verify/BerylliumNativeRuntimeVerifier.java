@@ -81,6 +81,9 @@ public final class BerylliumNativeRuntimeVerifier {
         TargetingConditionsBatchVerifier.verifyFilterByConstantDistanceBeforePosttest();
         TargetingConditionsBatchVerifier.verifyFilterByVariableDistanceBeforePosttest();
         TargetingConditionsBatchVerifier.verifyFindNearestAfterVariableDistanceAndPosttest();
+        TargetingConditionsBatchVerifier.verifyFindNearestAfterConstantDistanceUsesSeparateDistanceOrigin();
+        TargetingConditionsBatchVerifier.verifyFindNearestAfterVariableDistanceUsesSeparateDistanceOrigin();
+        TargetingConditionsBatchVerifier.verifyFindNearestAfterPrecomputedDistanceUsesSeparateDistanceOrigin();
         TargetingConditionsBatchVerifier.verifyFindNearestAfterPrecomputedDistanceAcceptsNaNRadius();
         verifyNativeSort();
         verifyNativeBlockSort();

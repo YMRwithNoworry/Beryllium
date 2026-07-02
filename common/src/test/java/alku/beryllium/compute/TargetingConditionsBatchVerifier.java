@@ -114,6 +114,110 @@ public final class TargetingConditionsBatchVerifier {
         }
     }
 
+    public static void verifyFindNearestAfterConstantDistanceUsesSeparateDistanceOrigin() {
+        List<SimplePoint> points = List.of(
+            new SimplePoint(0, 4.0, 0.0, 0.0),
+            new SimplePoint(1, 6.0, 0.0, 0.0),
+            new SimplePoint(2, 3.0, 0.0, 0.0)
+        );
+        List<Integer> posttested = new ArrayList<>();
+
+        SimplePoint actual = NearestEntitySearch.findNearestAfterConstantDistanceAndPosttest(
+            points,
+            EntityPacking.packPositions(points, point -> point.x, point -> point.y, point -> point.z),
+            0.0,
+            0.0,
+            0.0,
+            100.0,
+            0.0,
+            0.0,
+            25.0,
+            point -> {
+                posttested.add(point.id);
+                return true;
+            }
+        );
+
+        if (!points.get(0).equals(actual)) {
+            throw new AssertionError("separate-origin constant nearest mismatch, expected " + points.get(0) + " but got " + actual);
+        }
+
+        List<Integer> expectedPosttested = List.of(0, 2);
+        if (!expectedPosttested.equals(posttested)) {
+            throw new AssertionError("separate-origin constant posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
+        }
+    }
+
+    public static void verifyFindNearestAfterVariableDistanceUsesSeparateDistanceOrigin() {
+        List<SimplePoint> points = List.of(
+            new SimplePoint(0, 4.0, 0.0, 0.0),
+            new SimplePoint(1, 6.0, 0.0, 0.0),
+            new SimplePoint(2, 3.0, 0.0, 0.0)
+        );
+        double[] radiiSquared = {25.0, 25.0, 25.0};
+        List<Integer> posttested = new ArrayList<>();
+
+        SimplePoint actual = NearestEntitySearch.findNearestAfterVariableDistanceAndPosttest(
+            points,
+            EntityPacking.packPositions(points, point -> point.x, point -> point.y, point -> point.z),
+            0.0,
+            0.0,
+            0.0,
+            100.0,
+            0.0,
+            0.0,
+            radiiSquared,
+            point -> {
+                posttested.add(point.id);
+                return true;
+            }
+        );
+
+        if (!points.get(0).equals(actual)) {
+            throw new AssertionError("separate-origin variable nearest mismatch, expected " + points.get(0) + " but got " + actual);
+        }
+
+        List<Integer> expectedPosttested = List.of(0, 2);
+        if (!expectedPosttested.equals(posttested)) {
+            throw new AssertionError("separate-origin variable posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
+        }
+    }
+
+    public static void verifyFindNearestAfterPrecomputedDistanceUsesSeparateDistanceOrigin() {
+        List<SimplePoint> points = List.of(
+            new SimplePoint(0, 4.0, 0.0, 0.0),
+            new SimplePoint(1, 6.0, 0.0, 0.0),
+            new SimplePoint(2, 3.0, 0.0, 0.0)
+        );
+        double[] radiiSquared = {25.0, Double.NaN, 25.0};
+        List<Integer> posttested = new ArrayList<>();
+
+        SimplePoint actual = NearestEntitySearch.findNearestAfterPrecomputedDistanceAndPosttest(
+            points,
+            EntityPacking.packPositions(points, point -> point.x, point -> point.y, point -> point.z),
+            0.0,
+            0.0,
+            0.0,
+            100.0,
+            0.0,
+            0.0,
+            radiiSquared,
+            point -> {
+                posttested.add(point.id);
+                return true;
+            }
+        );
+
+        if (!points.get(1).equals(actual)) {
+            throw new AssertionError("separate-origin precomputed nearest mismatch, expected " + points.get(1) + " but got " + actual);
+        }
+
+        List<Integer> expectedPosttested = List.of(0, 1, 2);
+        if (!expectedPosttested.equals(posttested)) {
+            throw new AssertionError("separate-origin precomputed posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
+        }
+    }
+
     public static void verifyFindNearestAfterPrecomputedDistanceAcceptsNaNRadius() {
         List<SimplePoint> points = List.of(
             new SimplePoint(0, 3.0, 0.0, 0.0),

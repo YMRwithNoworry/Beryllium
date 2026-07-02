@@ -102,6 +102,9 @@ public final class BerylliumParityVerifier {
         TargetingConditionsBatchVerifier.verifyFilterByConstantDistanceBeforePosttest();
         TargetingConditionsBatchVerifier.verifyFilterByVariableDistanceBeforePosttest();
         TargetingConditionsBatchVerifier.verifyFindNearestAfterVariableDistanceAndPosttest();
+        TargetingConditionsBatchVerifier.verifyFindNearestAfterConstantDistanceUsesSeparateDistanceOrigin();
+        TargetingConditionsBatchVerifier.verifyFindNearestAfterVariableDistanceUsesSeparateDistanceOrigin();
+        TargetingConditionsBatchVerifier.verifyFindNearestAfterPrecomputedDistanceUsesSeparateDistanceOrigin();
         TargetingConditionsBatchVerifier.verifyFindNearestAfterPrecomputedDistanceAcceptsNaNRadius();
         verifyInvalidInput();
     }
