@@ -4,6 +4,7 @@ import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
 import alku.beryllium.compute.BlockDistanceSearchVerifier;
 import alku.beryllium.compute.BlockDistanceSortVerifier;
+import alku.beryllium.compute.EntityDistanceFilterVerifier;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
 import alku.beryllium.compute.EntityDistanceSortVerifier;
 import alku.beryllium.compute.NativeBatchingVerifier;
@@ -37,6 +38,8 @@ public final class BerylliumNativeRuntimeVerifier {
         EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersecting();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersectingAbort();
+        EntityDistanceFilterVerifier.verifyFilterWithinExclusiveDistance();
+        EntityDistanceFilterVerifier.verifyFilterWithinExclusiveDistanceRejectsBoundary();
         EntityDistanceSortVerifier.verifySortByDistance();
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
@@ -137,6 +140,12 @@ public final class BerylliumNativeRuntimeVerifier {
             -1.0, 63.0, -2.0
         });
         assertArrayEquals(new int[] {0, 2}, doubleMatches, "native double radius filter");
+
+        int[] exclusiveMatches = NativeBridge.filterWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, new double[] {
+            2.0, 0.0, 0.0,
+            1.0, 0.0, 0.0
+        });
+        assertArrayEquals(new int[] {1}, exclusiveMatches, "native exclusive double radius filter");
     }
 
     private static void verifyNativeAabbFilter() {

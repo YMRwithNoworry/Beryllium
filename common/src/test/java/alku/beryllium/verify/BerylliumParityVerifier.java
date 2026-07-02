@@ -4,6 +4,7 @@ import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
 import alku.beryllium.compute.BlockDistanceSearchVerifier;
 import alku.beryllium.compute.BlockDistanceSortVerifier;
+import alku.beryllium.compute.EntityDistanceFilterVerifier;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
 import alku.beryllium.compute.EntityDistanceSortVerifier;
 import alku.beryllium.compute.JavaComputeKernels;
@@ -55,6 +56,8 @@ public final class BerylliumParityVerifier {
         EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersecting();
         EntitySectionBatchVerifier.verifyTypedAcceptIntersectingAbort();
+        EntityDistanceFilterVerifier.verifyFilterWithinExclusiveDistance();
+        EntityDistanceFilterVerifier.verifyFilterWithinExclusiveDistanceRejectsBoundary();
         EntityDistanceSortVerifier.verifySortByDistance();
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
@@ -184,7 +187,9 @@ public final class BerylliumParityVerifier {
     private static void verifyNativeBridgeDoubleFilter() {
         double[] positions = descendingAxisPositionsDouble(5000);
         int[] filtered = NativeBridge.filterWithinRadius(0.0, 0.0, 0.0, 1024.0, positions);
+        int[] exclusiveFiltered = NativeBridge.filterWithinRadiusExclusive(0.0, 0.0, 0.0, 1024.0, positions);
         assertArrayEquals(range(4967, 5000), filtered, "Native bridge large double radius filter");
+        assertArrayEquals(range(4968, 5000), exclusiveFiltered, "Native bridge large exclusive double radius filter");
     }
 
     private static void verifyNativeBridgeAabbFilter() {
@@ -263,7 +268,9 @@ public final class BerylliumParityVerifier {
     private static void verifyJavaDoubleFilter() {
         double[] positions = descendingAxisPositionsDouble(5000);
         int[] filtered = JavaComputeKernels.filterWithinRadius(0.0, 0.0, 0.0, 1024.0, positions);
+        int[] exclusiveFiltered = JavaComputeKernels.filterWithinRadiusExclusive(0.0, 0.0, 0.0, 1024.0, positions);
         assertArrayEquals(range(4967, 5000), filtered, "Java large double radius filter");
+        assertArrayEquals(range(4968, 5000), exclusiveFiltered, "Java large exclusive double radius filter");
     }
 
     private static void verifyJavaAabbFilter() {

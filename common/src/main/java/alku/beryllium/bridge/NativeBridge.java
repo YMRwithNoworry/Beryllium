@@ -213,6 +213,32 @@ public final class NativeBridge {
         return java.util.Arrays.copyOf(output, nativeCount);
     }
 
+    public static int[] filterWithinRadiusExclusive(double originX, double originY, double originZ, double radiusSquared, double[] positions) {
+        JavaComputeKernels.validatePositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+
+        int[] output = new int[positions.length / 3];
+        if (!isLoaded()) {
+            return JavaComputeKernels.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
+        }
+
+        int nativeCount = filterWithinRadiusExclusiveDoubleNative(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            output
+        );
+        if (nativeCount < 0) {
+            return JavaComputeKernels.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
+        }
+
+        return java.util.Arrays.copyOf(output, nativeCount);
+    }
+
     public static int[] filterWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {
         JavaComputeKernels.validatePositions(positions);
         if (radiusSquared < 0) {
@@ -413,6 +439,15 @@ public final class NativeBridge {
     );
 
     private static native int filterWithinRadiusDoubleNative(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    );
+
+    private static native int filterWithinRadiusExclusiveDoubleNative(
         double originX,
         double originY,
         double originZ,

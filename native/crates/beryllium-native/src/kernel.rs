@@ -337,6 +337,64 @@ pub fn filter_within_radius_f64(
     Ok(count)
 }
 
+/// Filters packed f64 x/y/z triples by exclusive squared radius and returns the matching indices.
+pub fn filter_within_radius_f64_exclusive(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    if radius_squared < 0.0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    if positions.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if output.len() < position_count {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    if position_count >= PARALLEL_THRESHOLD {
+        let matches: Vec<Option<i32>> = positions
+            .par_chunks_exact(3)
+            .enumerate()
+            .map(|(index, position)| {
+                if squared_distance_at_f64_slice(origin_x, origin_y, origin_z, position)
+                    < radius_squared
+                {
+                    Some(index as i32)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut count = 0;
+        for index in matches.into_iter().flatten() {
+            output[count] = index;
+            count += 1;
+        }
+
+        return Ok(count);
+    }
+
+    let mut count = 0;
+    for index in 0..position_count {
+        if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index) < radius_squared
+        {
+            output[count] = index as i32;
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
 /// Filters packed f64 x/y/z triples by AABB containment and returns the matching indices.
 pub fn filter_within_aabb_f64(
     min_x: f64,
@@ -1121,6 +1179,30 @@ mod tests {
             filter_within_radius_f64(0.0, 0.0, 0.0, 1024.0, &positions, &mut output).unwrap();
         assert_eq!(count, 33);
         assert_eq!(&output[..count], &(4967..5000).collect::<Vec<_>>()[..]);
+    }
+
+    #[test]
+    fn filter_within_radius_f64_exclusive_should_reject_radius_boundary() {
+        let positions = [2.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let mut output = [0; 2];
+        let count = filter_within_radius_f64_exclusive(0.0, 0.0, 0.0, 4.0, &positions, &mut output)
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(&output[..count], &[1]);
+    }
+
+    #[test]
+    fn filter_within_radius_f64_exclusive_should_match_parallel_reference_indices() {
+        let positions: Vec<f64> = (0..5000)
+            .flat_map(|index| [(4999 - index) as f64, 0.0, 0.0])
+            .collect();
+        let mut output = vec![0; 5000];
+
+        let count =
+            filter_within_radius_f64_exclusive(0.0, 0.0, 0.0, 1024.0, &positions, &mut output)
+                .unwrap();
+        assert_eq!(count, 32);
+        assert_eq!(&output[..count], &(4968..5000).collect::<Vec<_>>()[..]);
     }
 
     #[test]

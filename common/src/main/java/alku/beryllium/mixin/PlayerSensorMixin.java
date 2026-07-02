@@ -1,5 +1,6 @@
 package alku.beryllium.mixin;
 
+import alku.beryllium.compute.EntityDistanceFilter;
 import alku.beryllium.compute.EntityDistanceSort;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -25,12 +26,13 @@ public class PlayerSensorMixin {
      */
     @Overwrite
     protected void doTick(ServerLevel level, LivingEntity entity) {
-        List<Player> nearbyPlayers = new ArrayList<>();
+        List<Player> candidatePlayers = new ArrayList<>();
         for (ServerPlayer player : level.players()) {
-            if (EntitySelector.NO_SPECTATORS.test(player) && entity.closerThan(player, 16.0)) {
-                nearbyPlayers.add(player);
+            if (EntitySelector.NO_SPECTATORS.test(player)) {
+                candidatePlayers.add(player);
             }
         }
+        List<Player> nearbyPlayers = EntityDistanceFilter.filterWithinExclusiveDistance(candidatePlayers, entity, 16.0);
         EntityDistanceSort.sortByDistance(nearbyPlayers, entity);
 
         Brain<?> brain = entity.getBrain();

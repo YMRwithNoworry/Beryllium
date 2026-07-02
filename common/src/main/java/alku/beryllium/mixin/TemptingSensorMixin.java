@@ -1,5 +1,6 @@
 package alku.beryllium.mixin;
 
+import alku.beryllium.compute.EntityDistanceFilter;
 import alku.beryllium.compute.EntityDistanceSort;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -37,15 +38,16 @@ public class TemptingSensorMixin {
     @Overwrite
     protected void doTick(ServerLevel level, PathfinderMob mob) {
         Brain<?> brain = mob.getBrain();
-        List<ServerPlayer> temptingPlayers = new ArrayList<>();
+        List<ServerPlayer> targetingPlayers = new ArrayList<>();
         for (ServerPlayer player : level.players()) {
-            if (
-                EntitySelector.NO_SPECTATORS.test(player)
-                    && TEMPT_TARGETING.test(mob, player)
-                    && mob.closerThan(player, 10.0)
-                    && this.beryllium$playerHoldingTemptation(player)
-                    && !mob.hasPassenger(player)
-            ) {
+            if (EntitySelector.NO_SPECTATORS.test(player) && TEMPT_TARGETING.test(mob, player)) {
+                targetingPlayers.add(player);
+            }
+        }
+
+        List<ServerPlayer> temptingPlayers = new ArrayList<>();
+        for (ServerPlayer player : EntityDistanceFilter.filterWithinExclusiveDistance(targetingPlayers, mob, 10.0)) {
+            if (this.beryllium$playerHoldingTemptation(player) && !mob.hasPassenger(player)) {
                 temptingPlayers.add(player);
             }
         }
