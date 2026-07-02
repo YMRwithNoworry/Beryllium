@@ -37,6 +37,14 @@ public abstract class PoiManagerMixin {
         PoiManager.Occupancy occupancy
     );
 
+    @Shadow
+    public abstract Stream<PoiRecord> getInSquare(
+        Predicate<Holder<PoiType>> typePredicate,
+        BlockPos origin,
+        int radius,
+        PoiManager.Occupancy occupancy
+    );
+
     /**
      * @reason Batch POI block-distance ordering through the native block sort kernel.
      * @author YMRwithNoworry
@@ -66,9 +74,15 @@ public abstract class PoiManagerMixin {
         int radius,
         PoiManager.Occupancy occupancy
     ) {
-        List<BlockPos> positions = new ArrayList<>();
-        this.getInRange(typePredicate, origin, radius, occupancy).map(PoiRecord::getPos).forEach(positions::add);
-        return Optional.ofNullable(BlockDistanceSearch.findNearestByDistance(positions, origin, position -> position));
+        List<PoiRecord> records = new ArrayList<>();
+        this.getInSquare(typePredicate, origin, radius, occupancy).forEach(records::add);
+        PoiRecord nearestRecord = BlockDistanceSearch.findNearestByDistanceWithinInclusiveRadius(
+            records,
+            origin,
+            radius,
+            PoiRecord::getPos
+        );
+        return nearestRecord == null ? Optional.empty() : Optional.of(nearestRecord.getPos());
     }
 
     /**
@@ -83,8 +97,13 @@ public abstract class PoiManagerMixin {
         PoiManager.Occupancy occupancy
     ) {
         List<PoiRecord> records = new ArrayList<>();
-        this.getInRange(typePredicate, origin, radius, occupancy).forEach(records::add);
-        PoiRecord nearestRecord = BlockDistanceSearch.findNearestByDistance(records, origin, PoiRecord::getPos);
+        this.getInSquare(typePredicate, origin, radius, occupancy).forEach(records::add);
+        PoiRecord nearestRecord = BlockDistanceSearch.findNearestByDistanceWithinInclusiveRadius(
+            records,
+            origin,
+            radius,
+            PoiRecord::getPos
+        );
         return nearestRecord == null ? Optional.empty() : Optional.of(Pair.of(nearestRecord.getPoiType(), nearestRecord.getPos()));
     }
 
@@ -101,7 +120,13 @@ public abstract class PoiManagerMixin {
         PoiManager.Occupancy occupancy
     ) {
         List<PoiRecord> records = new ArrayList<>();
-        this.getInRange(typePredicate, origin, radius, occupancy).forEach(records::add);
-        return Optional.ofNullable(BlockDistanceSearch.findNearestPositionByDistance(records, origin, PoiRecord::getPos, positionPredicate));
+        this.getInSquare(typePredicate, origin, radius, occupancy).forEach(records::add);
+        return Optional.ofNullable(BlockDistanceSearch.findNearestPositionByDistanceWithinInclusiveRadius(
+            records,
+            origin,
+            radius,
+            PoiRecord::getPos,
+            positionPredicate
+        ));
     }
 }
