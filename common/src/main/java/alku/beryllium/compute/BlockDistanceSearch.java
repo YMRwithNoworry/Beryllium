@@ -116,6 +116,29 @@ public final class BlockDistanceSearch {
         return result;
     }
 
+    public static <T> long countByDistanceWithinInclusiveRadius(
+        List<T> values,
+        BlockPos origin,
+        int radius,
+        Function<? super T, BlockPos> positionGetter
+    ) {
+        if (values.isEmpty()) {
+            return 0L;
+        }
+
+        int radiusSquared = radius * radius;
+        if (radiusSquared < 0) {
+            return 0L;
+        }
+
+        int[] positions = packPositions(values, positionGetter);
+        int[] matchingIndices = NativeBatching.shouldUseNativeEntityBatch(values.size())
+            ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions)
+            : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions);
+
+        return matchingIndices.length;
+    }
+
     public static <T> BlockPos findNearestPositionByDistance(
         Iterable<? extends T> values,
         BlockPos origin,

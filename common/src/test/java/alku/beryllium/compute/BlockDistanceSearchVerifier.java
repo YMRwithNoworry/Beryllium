@@ -189,6 +189,42 @@ public final class BlockDistanceSearchVerifier {
         assertListEquals(List.of(33, 34, 35), tested, "large inclusive radius filtered predicate order");
     }
 
+    public static void verifyCountWithinInclusiveBlockDistanceAcceptsBoundary() {
+        List<SimpleBlock> blocks = new ArrayList<>();
+        blocks.add(new SimpleBlock(0, new BlockPos(3, 0, 0)));
+        blocks.add(new SimpleBlock(1, new BlockPos(2, 0, 0)));
+        blocks.add(new SimpleBlock(2, new BlockPos(1, 0, 0)));
+        blocks.add(new SimpleBlock(3, new BlockPos(-2, 0, 0)));
+
+        long count = BlockDistanceSearch.countByDistanceWithinInclusiveRadius(
+            blocks,
+            BlockPos.ZERO,
+            2,
+            block -> block.position
+        );
+
+        assertEquals(3, (int) count, "inclusive radius count");
+    }
+
+    public static void verifyCountWithinInclusiveBlockDistanceBatchesRadius() {
+        List<SimpleBlock> blocks = new ArrayList<>();
+        for (int index = 0; index < 40; index++) {
+            blocks.add(new SimpleBlock(index, new BlockPos(100 + index, 0, 0)));
+        }
+        blocks.set(33, new SimpleBlock(33, new BlockPos(2, 0, 0)));
+        blocks.set(34, new SimpleBlock(34, new BlockPos(-2, 0, 0)));
+        blocks.set(35, new SimpleBlock(35, new BlockPos(1, 0, 0)));
+
+        long count = BlockDistanceSearch.countByDistanceWithinInclusiveRadius(
+            blocks,
+            BlockPos.ZERO,
+            2,
+            block -> block.position
+        );
+
+        assertEquals(3, (int) count, "large inclusive radius count");
+    }
+
     private static List<SimpleBlock> descendingAxisBlocks(int count) {
         List<SimpleBlock> blocks = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {

@@ -29,6 +29,27 @@ public abstract class PoiManagerMixin {
     );
 
     /**
+     * @reason Batch POI radius counting through the native block radius kernel.
+     * @author YMRwithNoworry
+     */
+    @Overwrite
+    public long getCountInRange(
+        Predicate<Holder<PoiType>> typePredicate,
+        BlockPos origin,
+        int radius,
+        PoiManager.Occupancy occupancy
+    ) {
+        List<PoiRecord> records = new ArrayList<>();
+        this.getInSquare(typePredicate, origin, radius, occupancy).forEach(records::add);
+        return BlockDistanceSearch.countByDistanceWithinInclusiveRadius(
+            records,
+            origin,
+            radius,
+            PoiRecord::getPos
+        );
+    }
+
+    /**
      * @reason Batch POI radius filtering before applying the vanilla position predicate.
      * @author YMRwithNoworry
      */
