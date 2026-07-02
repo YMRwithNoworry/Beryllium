@@ -46,6 +46,40 @@ public final class TargetingConditionsBatchVerifier {
         }
     }
 
+    public static void verifyFilterByVariableDistanceBeforePosttest() {
+        List<SimplePoint> points = List.of(
+            new SimplePoint(0, 3.0, 0.0, 0.0),
+            new SimplePoint(1, 1.0, 0.0, 0.0),
+            new SimplePoint(2, 0.0, 2.0, 0.0),
+            new SimplePoint(3, 0.0, 0.0, 4.0)
+        );
+        double[] radiiSquared = {4.0, 1.0, 4.0, 16.0};
+        List<Integer> posttested = new ArrayList<>();
+
+        List<SimplePoint> actual = TargetingConditionsBatch.filterByVariableDistanceAndPosttest(
+            points,
+            EntityPacking.packPositions(points, point -> point.x, point -> point.y, point -> point.z),
+            0.0,
+            0.0,
+            0.0,
+            radiiSquared,
+            point -> {
+                posttested.add(point.id);
+                return point.id != 2;
+            }
+        );
+
+        List<SimplePoint> expected = List.of(points.get(1), points.get(3));
+        if (!expected.equals(actual)) {
+            throw new AssertionError("variable-distance posttest mismatch, expected " + expected + " but got " + actual);
+        }
+
+        List<Integer> expectedPosttested = List.of(1, 2, 3);
+        if (!expectedPosttested.equals(posttested)) {
+            throw new AssertionError("variable-distance posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
+        }
+    }
+
     private static void verifyFilterCandidatesWithinAabb(List<SimplePoint> points, int minInclusive, int maxExclusive) {
         double min = minInclusive;
         double max = maxExclusive;

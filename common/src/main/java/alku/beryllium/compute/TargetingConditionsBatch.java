@@ -213,6 +213,29 @@ public final class TargetingConditionsBatch {
         return result;
     }
 
+    static <T> List<T> filterByVariableDistanceAndPosttest(
+        List<T> filteredCandidates,
+        double[] positions,
+        double originX,
+        double originY,
+        double originZ,
+        double[] radiiSquared,
+        Predicate<? super T> posttest
+    ) {
+        int[] matches = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+            ? NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared)
+            : JavaComputeKernels.filterWithinRadii(originX, originY, originZ, positions, radiiSquared);
+
+        List<T> result = new ArrayList<>(matches.length);
+        for (int index : matches) {
+            T candidate = filteredCandidates.get(index);
+            if (posttest.test(candidate)) {
+                result.add(candidate);
+            }
+        }
+        return result;
+    }
+
     private static <T extends LivingEntity> List<T> filterByDistance(
         List<T> filteredCandidates,
         TargetingConditions conditions,
@@ -248,18 +271,55 @@ public final class TargetingConditionsBatch {
             );
         }
 
+        double[] radiiSquared = packVisibilityAdjustedRadii(filteredCandidates, source, range);
+        if (!containsNaN(radiiSquared)) {
+            return filterByVariableDistanceAndPosttest(
+                filteredCandidates,
+                positions,
+                source.getX(),
+                source.getY(),
+                source.getZ(),
+                radiiSquared,
+                candidate -> posttestAfterDistance(source, candidate, conditions)
+            );
+        }
+
         double[] distances = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
             ? NativeBridge.computeSquaredDistances(source.getX(), source.getY(), source.getZ(), positions)
             : JavaComputeKernels.squaredDistances(source.getX(), source.getY(), source.getZ(), positions);
-
         List<T> result = new ArrayList<>(filteredCandidates.size());
         for (int index = 0; index < filteredCandidates.size(); index++) {
             T candidate = filteredCandidates.get(index);
-            if (testDistance(source, candidate, conditions, distances[index]) && posttestAfterDistance(source, candidate, conditions)) {
+            if (
+                withinPrecomputedRadius(distances[index], radiiSquared[index])
+                    && posttestAfterDistance(source, candidate, conditions)
+            ) {
                 result.add(candidate);
             }
         }
 
         return result;
+    }
+
+    private static <T extends LivingEntity> double[] packVisibilityAdjustedRadii(List<T> candidates, LivingEntity source, double range) {
+        double[] radiiSquared = new double[candidates.size()];
+        for (int index = 0; index < candidates.size(); index++) {
+            double maxDistance = Math.max(range * candidates.get(index).getVisibilityPercent(source), 2.0);
+            radiiSquared[index] = maxDistance * maxDistance;
+        }
+        return radiiSquared;
+    }
+
+    private static boolean containsNaN(double[] values) {
+        for (double value : values) {
+            if (Double.isNaN(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean withinPrecomputedRadius(double distanceSquared, double radiusSquared) {
+        return Double.isNaN(radiusSquared) || distanceSquared <= radiusSquared;
     }
 }

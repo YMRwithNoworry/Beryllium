@@ -78,6 +78,7 @@ public final class BerylliumParityVerifier {
         SupportingBlockSearchVerifier.verifyEmptyCandidates();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
         TargetingConditionsBatchVerifier.verifyFilterByConstantDistanceBeforePosttest();
+        TargetingConditionsBatchVerifier.verifyFilterByVariableDistanceBeforePosttest();
         verifyInvalidInput();
     }
 
