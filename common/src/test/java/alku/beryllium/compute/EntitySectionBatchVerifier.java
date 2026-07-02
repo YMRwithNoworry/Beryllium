@@ -96,7 +96,7 @@ public final class EntitySectionBatchVerifier {
         );
 
         assertContinuation(AbortableIterationConsumer.Continuation.CONTINUE, continuation, "typed entity-section continue");
-        assertListEquals(descendingRange(33, 0), casts, "typed entity-section cast order");
+        assertListEquals(descendingRange(39, 0), casts, "typed entity-section cast-before-intersection order");
         assertListEquals(List.of(32, 30, 28, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2, 0), accepted, "typed entity-section order");
     }
 
@@ -132,7 +132,7 @@ public final class EntitySectionBatchVerifier {
         );
 
         assertContinuation(AbortableIterationConsumer.Continuation.ABORT, continuation, "typed entity-section abort");
-        assertListEquals(List.of(33, 32, 31), casts, "typed entity-section abort cast order");
+        assertListEquals(descendingRange(39, 0), casts, "typed entity-section abort cast-before-intersection order");
         assertListEquals(List.of(33, 32, 31), accepted, "typed entity-section abort accepted order");
     }
 
