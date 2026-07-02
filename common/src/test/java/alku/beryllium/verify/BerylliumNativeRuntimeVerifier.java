@@ -2,6 +2,7 @@ package alku.beryllium.verify;
 
 import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
+import alku.beryllium.compute.BlockDistanceSearchVerifier;
 import alku.beryllium.compute.BlockDistanceSortVerifier;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
 import alku.beryllium.compute.EntityDistanceSortVerifier;
@@ -27,6 +28,7 @@ public final class BerylliumNativeRuntimeVerifier {
         verifyNativeNearestIndexExclusive();
         verifyNativeAnyWithinRadiusExclusive();
         verifyNativeNearestBlockCenterIndex();
+        verifyNativeNearestBlockCornerIndex();
         verifyNativeRadiusFilters();
         verifyNativeAabbFilter();
         verifyNativeAabbIntersectionFilter();
@@ -39,6 +41,8 @@ public final class BerylliumNativeRuntimeVerifier {
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
+        BlockDistanceSearchVerifier.verifyFindNearestByBlockDistance();
+        BlockDistanceSearchVerifier.verifyFindNearestByBlockDistanceTieOrder();
         SupportingBlockSearchVerifier.verifyFindNearest();
         SupportingBlockSearchVerifier.verifyEmptyCandidates();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
@@ -108,6 +112,15 @@ public final class BerylliumNativeRuntimeVerifier {
             0, 1, 1
         });
         assertEquals(2, nearest, "native nearest block center tie order");
+    }
+
+    private static void verifyNativeNearestBlockCornerIndex() {
+        int nearest = NativeBridge.findNearestBlockCornerIndex(0, 0, 0, new int[] {
+            1, 0, 0,
+            -1, 0, 0,
+            0, 2, 0
+        });
+        assertEquals(0, nearest, "native nearest block corner tie order");
     }
 
     private static void verifyNativeRadiusFilters() {

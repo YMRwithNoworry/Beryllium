@@ -68,6 +68,22 @@ public final class JavaComputeKernels {
         return nearestIndex;
     }
 
+    public static int findNearestBlockCornerIndex(int originX, int originY, int originZ, int[] positions) {
+        validatePositions(positions);
+
+        int nearestIndex = -1;
+        double nearestDistance = Double.MAX_VALUE;
+        for (int index = 0; index < positions.length / 3; index++) {
+            double distance = blockCornerDistanceAt(originX, originY, originZ, positions, index);
+            if (nearestIndex == -1 || distance < nearestDistance) {
+                nearestIndex = index;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearestIndex;
+    }
+
     private static int findNearestIndex(
         double originX,
         double originY,

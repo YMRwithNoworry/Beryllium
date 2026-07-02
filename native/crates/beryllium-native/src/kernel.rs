@@ -188,6 +188,48 @@ pub fn find_nearest_block_center_index(
     Ok(nearest_index)
 }
 
+/// Finds the nearest packed block position by squared distance to its block low corner.
+pub fn find_nearest_block_corner_index(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    positions: &[i32],
+) -> Result<Option<usize>, NativeError> {
+    if positions.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if position_count == 0 {
+        return Ok(None);
+    }
+
+    if position_count >= PARALLEL_THRESHOLD {
+        return Ok((0..position_count)
+            .into_par_iter()
+            .map(|index| {
+                (
+                    index,
+                    block_corner_distance_at(origin_x, origin_y, origin_z, positions, index),
+                )
+            })
+            .reduce_with(nearest_distance_pair)
+            .map(|(index, _)| index));
+    }
+
+    let mut nearest_index = None;
+    let mut nearest_distance = f64::MAX;
+    for index in 0..position_count {
+        let distance = block_corner_distance_at(origin_x, origin_y, origin_z, positions, index);
+        if nearest_index.is_none() || distance < nearest_distance {
+            nearest_index = Some(index);
+            nearest_distance = distance;
+        }
+    }
+
+    Ok(nearest_index)
+}
+
 fn find_nearest_index_f64_by_limit(
     origin_x: f64,
     origin_y: f64,
@@ -1031,6 +1073,30 @@ mod tests {
         let positions: Vec<i32> = (0..5000).flat_map(|index| [0, 4999 - index, 0]).collect();
 
         let nearest = find_nearest_block_center_index(0.5, 0.5, 0.5, &positions).unwrap();
+        assert_eq!(nearest, Some(4999));
+    }
+
+    #[test]
+    fn find_nearest_block_corner_index_should_match_reference_index() {
+        let positions = [3, 0, 0, 0, 0, 0, -1, 0, 0];
+        let nearest = find_nearest_block_corner_index(0, 0, 0, &positions).unwrap();
+        assert_eq!(nearest, Some(1));
+    }
+
+    #[test]
+    fn find_nearest_block_corner_index_should_preserve_tie_order() {
+        let positions = [1, 0, 0, -1, 0, 0, 0, 2, 0];
+        let nearest = find_nearest_block_corner_index(0, 0, 0, &positions).unwrap();
+        assert_eq!(nearest, Some(0));
+    }
+
+    #[test]
+    fn find_nearest_block_corner_index_should_match_parallel_reference_index() {
+        let positions: Vec<i32> = (0..5000)
+            .flat_map(|index| [(4999 - index) as i32, 0, 0])
+            .collect();
+
+        let nearest = find_nearest_block_corner_index(0, 0, 0, &positions).unwrap();
         assert_eq!(nearest, Some(4999));
     }
 

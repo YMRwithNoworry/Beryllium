@@ -2,6 +2,7 @@ package alku.beryllium.verify;
 
 import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
+import alku.beryllium.compute.BlockDistanceSearchVerifier;
 import alku.beryllium.compute.BlockDistanceSortVerifier;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
 import alku.beryllium.compute.EntityDistanceSortVerifier;
@@ -24,6 +25,7 @@ public final class BerylliumParityVerifier {
         verifyJavaNearestIndexExclusive();
         verifyJavaAnyWithinRadiusExclusive();
         verifyJavaNearestBlockCenterIndex();
+        verifyJavaNearestBlockCornerIndex();
         verifyJavaFilterAndSort();
         verifyJavaBlockSort();
         verifyJavaDoubleSort();
@@ -38,6 +40,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeNearestIndexExclusive();
         verifyNativeBridgeAnyWithinRadiusExclusive();
         verifyNativeBridgeNearestBlockCenterIndex();
+        verifyNativeBridgeNearestBlockCornerIndex();
         verifyNativeBridgeFilterAndSort();
         verifyNativeBridgeBlockSort();
         verifyNativeBridgeDoubleSort();
@@ -56,6 +59,8 @@ public final class BerylliumParityVerifier {
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
+        BlockDistanceSearchVerifier.verifyFindNearestByBlockDistance();
+        BlockDistanceSearchVerifier.verifyFindNearestByBlockDistanceTieOrder();
         SupportingBlockSearchVerifier.verifyFindNearest();
         SupportingBlockSearchVerifier.verifyEmptyCandidates();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
@@ -146,6 +151,14 @@ public final class BerylliumParityVerifier {
 
         int missing = NativeBridge.findNearestBlockCenterIndex(0.0, 0.0, 0.0, new int[] {});
         assertEquals(-1, missing, "Native bridge nearest block center empty input");
+    }
+
+    private static void verifyNativeBridgeNearestBlockCornerIndex() {
+        int nearest = NativeBridge.findNearestBlockCornerIndex(0, 0, 0, new int[] {1, 0, 0, -1, 0, 0, 0, 2, 0});
+        assertEquals(0, nearest, "Native bridge nearest block corner tie order");
+
+        int missing = NativeBridge.findNearestBlockCornerIndex(0, 0, 0, new int[] {});
+        assertEquals(-1, missing, "Native bridge nearest block corner empty input");
     }
 
     private static void verifyNativeBridgeFilterAndSort() {
@@ -334,6 +347,14 @@ public final class BerylliumParityVerifier {
 
         int missing = JavaComputeKernels.findNearestBlockCenterIndex(0.0, 0.0, 0.0, new int[] {});
         assertEquals(-1, missing, "Java nearest block center empty input");
+    }
+
+    private static void verifyJavaNearestBlockCornerIndex() {
+        int nearest = JavaComputeKernels.findNearestBlockCornerIndex(0, 0, 0, new int[] {1, 0, 0, -1, 0, 0, 0, 2, 0});
+        assertEquals(0, nearest, "Java nearest block corner tie order");
+
+        int missing = JavaComputeKernels.findNearestBlockCornerIndex(0, 0, 0, new int[] {});
+        assertEquals(-1, missing, "Java nearest block corner empty input");
     }
 
     private static void verifyJavaIntegerOverflowSemantics() {
