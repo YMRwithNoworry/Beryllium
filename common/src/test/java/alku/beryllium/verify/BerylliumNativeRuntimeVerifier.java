@@ -54,6 +54,7 @@ public final class BerylliumNativeRuntimeVerifier {
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         EntityDistanceSortVerifier.verifyFilterWithinExclusiveDistanceSortedByDistance();
         EntityDistanceSortVerifier.verifyFilterWithinExclusiveDistanceSortedByDistanceTieOrder();
+        EntityDistanceSortVerifier.verifyFilterWithinExclusiveDistanceSortedByDistancePostFilterOrder();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
         BlockDistanceSearchVerifier.verifyFindNearestByBlockDistance();

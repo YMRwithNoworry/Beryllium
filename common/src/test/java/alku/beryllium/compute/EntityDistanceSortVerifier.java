@@ -63,6 +63,29 @@ public final class EntityDistanceSortVerifier {
         assertListEquals(List.of(0, 1), ids(matches), "exclusive sorted entity distance filter tie order");
     }
 
+    public static void verifyFilterWithinExclusiveDistanceSortedByDistancePostFilterOrder() {
+        List<SimplePoint> points = descendingAxisPoints(40);
+        List<Integer> postFiltered = new ArrayList<>();
+
+        List<SimplePoint> matches = EntityDistanceSort.filterWithinExclusiveDistanceSortedByDistance(
+            points,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            point -> point.x,
+            point -> point.y,
+            point -> point.z,
+            point -> {
+                postFiltered.add(point.id);
+                return point.id % 2 == 0;
+            }
+        );
+
+        assertListEquals(List.of(38, 36), ids(matches), "exclusive sorted entity distance filter post-filter result");
+        assertListEquals(List.of(36, 37, 38, 39), postFiltered, "exclusive sorted entity distance filter post-filter order");
+    }
+
     private static List<SimplePoint> descendingAxisPoints(int count) {
         List<SimplePoint> points = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {

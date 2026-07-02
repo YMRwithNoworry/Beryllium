@@ -1,6 +1,5 @@
 package alku.beryllium.mixin;
 
-import alku.beryllium.compute.EntityDistanceFilter;
 import alku.beryllium.compute.EntityDistanceSort;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -45,14 +44,17 @@ public class TemptingSensorMixin {
             }
         }
 
-        List<ServerPlayer> temptingPlayers = new ArrayList<>();
-        for (ServerPlayer player : EntityDistanceFilter.filterWithinExclusiveDistance(targetingPlayers, mob, 10.0)) {
-            if (this.beryllium$playerHoldingTemptation(player) && !mob.hasPassenger(player)) {
-                temptingPlayers.add(player);
-            }
-        }
-
-        EntityDistanceSort.sortByDistance(temptingPlayers, mob);
+        List<ServerPlayer> temptingPlayers = EntityDistanceSort.filterWithinExclusiveDistanceSortedByDistance(
+            targetingPlayers,
+            mob.getX(),
+            mob.getY(),
+            mob.getZ(),
+            10.0,
+            ServerPlayer::getX,
+            ServerPlayer::getY,
+            ServerPlayer::getZ,
+            player -> this.beryllium$playerHoldingTemptation(player) && !mob.hasPassenger(player)
+        );
         if (temptingPlayers.isEmpty()) {
             brain.eraseMemory(MemoryModuleType.TEMPTING_PLAYER);
         } else {
