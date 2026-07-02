@@ -30,8 +30,8 @@ public class NearestItemSensorMixin {
         EntityDistanceSort.sortByDistance(items, mob);
 
         Optional<ItemEntity> nearestWantedItem = items.stream()
-            .filter(item -> item.closerThan(mob, 32.0))
             .filter(item -> mob.wantsToPickUp(item.getItem()))
+            .filter(item -> item.closerThan(mob, 32.0))
             .filter(mob::hasLineOfSight)
             .findFirst();
         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_WANTED_ITEM, nearestWantedItem);
