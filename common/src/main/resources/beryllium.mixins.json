@@ -17,6 +17,7 @@
     "NearestVisibleLivingEntitySensorMixin",
     "PlayerSensorMixin",
     "PoiManagerMixin",
+    "PrepareRamNearestTargetMixin",
     "TemptingSensorMixin",
     "TargetingConditionsAccessor",
     "VillagerHostilesSensorAccessor",

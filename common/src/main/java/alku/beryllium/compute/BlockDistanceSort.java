@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Sorts block-position-backed lists by squared distance to a BlockPos low corner.
@@ -30,6 +31,22 @@ public final class BlockDistanceSort {
 
         int[] positions = packPositions(values, positionGetter);
         reorder(values, NativeBridge.sortByBlockDistance(origin.getX(), origin.getY(), origin.getZ(), positions));
+    }
+
+    public static <T> T findFirstSortedByDistance(
+        List<T> values,
+        BlockPos origin,
+        BlockPositionGetter<? super T> positionGetter,
+        Predicate<? super T> postSortPredicate
+    ) {
+        sortByDistance(values, origin, positionGetter);
+        for (T value : values) {
+            if (postSortPredicate.test(value)) {
+                return value;
+            }
+        }
+
+        return null;
     }
 
     private static <T> int[] packPositions(List<? extends T> values, BlockPositionGetter<? super T> positionGetter) {
