@@ -19,7 +19,8 @@
     "PoiManagerMixin",
     "TemptingSensorMixin",
     "TargetingConditionsAccessor",
-    "VillagerHostilesSensorAccessor"
+    "VillagerHostilesSensorAccessor",
+    "WardenEntitySensorMixin"
   ],
   "injectors": {
     "defaultRequire": 1
