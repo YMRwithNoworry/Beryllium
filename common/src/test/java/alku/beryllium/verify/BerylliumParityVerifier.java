@@ -58,6 +58,8 @@ public final class BerylliumParityVerifier {
         EntitySectionBatchVerifier.verifyTypedAcceptIntersectingAbort();
         EntityDistanceFilterVerifier.verifyFilterWithinExclusiveDistance();
         EntityDistanceFilterVerifier.verifyFilterWithinExclusiveDistanceRejectsBoundary();
+        EntityDistanceFilterVerifier.verifyFilterWithinInclusiveDistance();
+        EntityDistanceFilterVerifier.verifyFilterWithinInclusiveDistanceAcceptsBoundary();
         EntityDistanceSortVerifier.verifySortByDistance();
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         BlockDistanceSortVerifier.verifySortByBlockDistance();

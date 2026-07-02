@@ -44,6 +44,43 @@ public final class EntityDistanceFilterVerifier {
         assertListEquals(List.of(1), ids(matches), "exclusive entity distance filter boundary");
     }
 
+    public static void verifyFilterWithinInclusiveDistance() {
+        List<SimplePoint> points = descendingAxisPoints(40);
+
+        List<SimplePoint> matches = EntityDistanceFilter.filterWithinInclusiveDistance(
+            points,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            point -> point.x,
+            point -> point.y,
+            point -> point.z
+        );
+
+        assertListEquals(List.of(35, 36, 37, 38, 39), ids(matches), "inclusive entity distance filter order");
+    }
+
+    public static void verifyFilterWithinInclusiveDistanceAcceptsBoundary() {
+        List<SimplePoint> points = List.of(
+            new SimplePoint(0, 2.0, 0.0, 0.0),
+            new SimplePoint(1, 1.0, 0.0, 0.0)
+        );
+
+        List<SimplePoint> matches = EntityDistanceFilter.filterWithinInclusiveDistance(
+            points,
+            0.0,
+            0.0,
+            0.0,
+            2.0,
+            point -> point.x,
+            point -> point.y,
+            point -> point.z
+        );
+
+        assertListEquals(List.of(0, 1), ids(matches), "inclusive entity distance filter boundary");
+    }
+
     private static List<SimplePoint> descendingAxisPoints(int count) {
         List<SimplePoint> points = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {

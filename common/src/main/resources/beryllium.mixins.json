@@ -12,6 +12,8 @@
     "EntitySectionMixin",
     "NearestItemSensorMixin",
     "NearestLivingEntitySensorMixin",
+    "NearestVisibleLivingEntitiesAccessor",
+    "NearestVisibleLivingEntitySensorMixin",
     "PlayerSensorMixin",
     "PoiManagerMixin",
     "TemptingSensorMixin",

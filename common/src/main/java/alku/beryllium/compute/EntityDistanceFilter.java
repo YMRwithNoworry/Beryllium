@@ -26,6 +26,19 @@ public final class EntityDistanceFilter {
         );
     }
 
+    public static <T extends Entity> List<T> filterWithinInclusiveDistance(List<? extends T> entities, Entity origin, double radius) {
+        return filterWithinInclusiveDistance(
+            entities,
+            origin.getX(),
+            origin.getY(),
+            origin.getZ(),
+            radius,
+            Entity::getX,
+            Entity::getY,
+            Entity::getZ
+        );
+    }
+
     public static <T> List<T> filterWithinExclusiveDistance(
         List<? extends T> values,
         double originX,
@@ -35,6 +48,33 @@ public final class EntityDistanceFilter {
         EntityPacking.CoordinateGetter<? super T> xGetter,
         EntityPacking.CoordinateGetter<? super T> yGetter,
         EntityPacking.CoordinateGetter<? super T> zGetter
+    ) {
+        return filterWithinDistance(values, originX, originY, originZ, radius, xGetter, yGetter, zGetter, false);
+    }
+
+    public static <T> List<T> filterWithinInclusiveDistance(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        double radius,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter
+    ) {
+        return filterWithinDistance(values, originX, originY, originZ, radius, xGetter, yGetter, zGetter, true);
+    }
+
+    private static <T> List<T> filterWithinDistance(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        double radius,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter,
+        boolean includeBoundary
     ) {
         if (radius < 0.0) {
             throw new IllegalArgumentException("radius must be non-negative");
@@ -47,7 +87,8 @@ public final class EntityDistanceFilter {
         if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
             List<T> matches = new ArrayList<>();
             for (T value : values) {
-                if (squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared) {
+                double distance = squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value);
+                if (includeBoundary ? distance <= radiusSquared : distance < radiusSquared) {
                     matches.add(value);
                 }
             }
@@ -55,7 +96,9 @@ public final class EntityDistanceFilter {
         }
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-        int[] matchIndices = NativeBridge.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
+        int[] matchIndices = includeBoundary
+            ? NativeBridge.filterWithinRadius(originX, originY, originZ, radiusSquared, positions)
+            : NativeBridge.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
         List<T> matches = new ArrayList<>(matchIndices.length);
         for (int index : matchIndices) {
             matches.add(values.get(index));
