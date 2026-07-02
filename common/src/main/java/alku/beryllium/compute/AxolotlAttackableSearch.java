@@ -35,11 +35,10 @@ public final class AxolotlAttackableSearch {
         }
 
         Predicate<LivingEntity> lineOfSightTest = accessor.beryllium$lineOfSightTest();
-        return EntityDistancePredicateSearch.findFirstWithinInclusiveDistance(
+        return EntityDistancePredicateSearch.findFirstWithinInclusiveDistanceAfterDistance(
             candidates,
             source,
             TARGET_DETECTION_DISTANCE,
-            candidate -> true,
             candidate -> isMatchingAfterDistance(source, candidate) && lineOfSightTest.test(candidate)
         );
     }

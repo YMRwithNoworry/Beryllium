@@ -52,6 +52,7 @@ public final class BerylliumNativeRuntimeVerifier {
         EntityDistancePredicateSearchVerifier.verifyFindFirstWithinExclusiveDistanceBatchesDistanceGateBeforePosttest();
         EntityDistancePredicateSearchVerifier.verifyFindFirstWithinInclusiveDistanceAcceptsBoundaryAndShortCircuits();
         EntityDistancePredicateSearchVerifier.verifyFindFirstWithinInclusiveDistanceBatchesDistanceGateBeforePosttest();
+        EntityDistancePredicateSearchVerifier.verifyFindFirstWithinInclusiveDistanceAfterDistanceBatchesDistanceGateFirst();
         NearestEntitySearchVerifier.verifyHasAnyWithinExclusiveDistanceShortCircuits();
         NearestEntitySearchVerifier.verifyHasAnyWithinExclusiveDistanceSkipsDistanceForUnboundedMatch();
         NearestEntitySearchVerifier.verifyHasAnyWithinExclusiveDistanceChecksAllWhenMissing();
