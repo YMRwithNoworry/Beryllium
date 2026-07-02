@@ -37,15 +37,15 @@ public class TemptingSensorMixin {
     @Overwrite
     protected void doTick(ServerLevel level, PathfinderMob mob) {
         Brain<?> brain = mob.getBrain();
-        List<ServerPlayer> targetingPlayers = new ArrayList<>();
+        List<ServerPlayer> candidatePlayers = new ArrayList<>();
         for (ServerPlayer player : level.players()) {
-            if (EntitySelector.NO_SPECTATORS.test(player) && TEMPT_TARGETING.test(mob, player)) {
-                targetingPlayers.add(player);
+            if (EntitySelector.NO_SPECTATORS.test(player)) {
+                candidatePlayers.add(player);
             }
         }
 
         List<ServerPlayer> temptingPlayers = EntityDistanceSort.filterWithinExclusiveDistanceSortedByDistance(
-            targetingPlayers,
+            candidatePlayers,
             mob.getX(),
             mob.getY(),
             mob.getZ(),
@@ -53,7 +53,9 @@ public class TemptingSensorMixin {
             ServerPlayer::getX,
             ServerPlayer::getY,
             ServerPlayer::getZ,
-            player -> this.beryllium$playerHoldingTemptation(player) && !mob.hasPassenger(player)
+            player -> TEMPT_TARGETING.test(mob, player)
+                && this.beryllium$playerHoldingTemptation(player)
+                && !mob.hasPassenger(player)
         );
         if (temptingPlayers.isEmpty()) {
             brain.eraseMemory(MemoryModuleType.TEMPTING_PLAYER);
