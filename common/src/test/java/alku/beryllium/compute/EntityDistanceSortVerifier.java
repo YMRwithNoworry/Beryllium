@@ -112,6 +112,69 @@ public final class EntityDistanceSortVerifier {
         assertListEquals(List.of(39, 38), postFiltered, "exclusive sorted entity distance find-first post-filter order");
     }
 
+    public static void verifyFindFirstWithinExclusiveDistanceAfterPredicatesSortedByDistancePreservesFilterOrder() {
+        List<SimplePoint> points = new ArrayList<>();
+        points.add(new SimplePoint(0, 12.0, 0.0, 0.0));
+        points.add(new SimplePoint(1, 3.0, 0.0, 0.0));
+        points.add(new SimplePoint(2, 1.0, 0.0, 0.0));
+        for (int index = 3; index < 40; index++) {
+            points.add(new SimplePoint(index, 20.0 + index, 0.0, 0.0));
+        }
+        List<Integer> beforeDistance = new ArrayList<>();
+        List<Integer> afterDistance = new ArrayList<>();
+
+        SimplePoint match = EntityDistanceSort.findFirstWithinExclusiveDistanceAfterPredicatesSortedByDistance(
+                points,
+                0.0,
+                0.0,
+                0.0,
+                4.0,
+                point -> {
+                    beforeDistance.add(point.id);
+                    return point.id != 0;
+                },
+                point -> {
+                    afterDistance.add(point.id);
+                    return point.id != 2;
+                },
+                point -> point.x,
+                point -> point.y,
+                point -> point.z
+            )
+            .orElseThrow(() -> new AssertionError("expected a predicate-gated sorted-radius match"));
+
+        if (match.id != 1) {
+            throw new AssertionError("predicate-gated sorted find-first mismatch, expected 1 but got " + match.id);
+        }
+        assertListEquals(range(0, 40), beforeDistance, "predicate-gated sorted before-distance order");
+        assertListEquals(List.of(1, 2), afterDistance, "predicate-gated sorted after-distance order");
+    }
+
+    public static void verifyFindFirstWithinExclusiveDistanceAfterPredicatesSortedByDistanceTieOrder() {
+        List<SimplePoint> points = new ArrayList<>();
+        points.add(new SimplePoint(0, 1.0, 0.0, 0.0));
+        points.add(new SimplePoint(1, -1.0, 0.0, 0.0));
+        points.add(new SimplePoint(2, 2.0, 0.0, 0.0));
+
+        SimplePoint match = EntityDistanceSort.findFirstWithinExclusiveDistanceAfterPredicatesSortedByDistance(
+                points,
+                0.0,
+                0.0,
+                0.0,
+                4.0,
+                point -> true,
+                point -> point.id != 0,
+                point -> point.x,
+                point -> point.y,
+                point -> point.z
+            )
+            .orElseThrow(() -> new AssertionError("expected a tied predicate-gated sorted match"));
+
+        if (match.id != 1) {
+            throw new AssertionError("predicate-gated sorted tie find-first mismatch, expected 1 but got " + match.id);
+        }
+    }
+
     public static void verifyFindFirstSortedByDistanceShortCircuitsAfterSort() {
         List<SimplePoint> points = descendingAxisPoints(40);
         List<Integer> postFiltered = new ArrayList<>();
@@ -177,6 +240,14 @@ public final class EntityDistanceSortVerifier {
         List<Integer> result = new ArrayList<>(points.size());
         for (SimplePoint point : points) {
             result.add(point.id);
+        }
+        return result;
+    }
+
+    private static List<Integer> range(int startInclusive, int endExclusive) {
+        List<Integer> result = new ArrayList<>(endExclusive - startInclusive);
+        for (int value = startInclusive; value < endExclusive; value++) {
+            result.add(value);
         }
         return result;
     }

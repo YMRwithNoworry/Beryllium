@@ -134,6 +134,70 @@ public final class EntityDistanceSort {
         return Optional.empty();
     }
 
+    public static <T> Optional<T> findFirstWithinExclusiveDistanceAfterPredicatesSortedByDistance(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        double radius,
+        Predicate<? super T> beforeDistancePredicate,
+        Predicate<? super T> afterDistancePredicate,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter
+    ) {
+        if (radius < 0.0) {
+            throw new IllegalArgumentException("radius must be non-negative");
+        }
+        if (values.isEmpty()) {
+            return Optional.empty();
+        }
+
+        List<T> beforeDistanceMatches = new ArrayList<>(values.size());
+        for (T value : values) {
+            if (beforeDistancePredicate.test(value)) {
+                beforeDistanceMatches.add(value);
+            }
+        }
+        if (beforeDistanceMatches.isEmpty()) {
+            return Optional.empty();
+        }
+
+        double radiusSquared = radius * radius;
+        if (!NativeBatching.shouldUseNativeEntityBatch(beforeDistanceMatches.size())) {
+            List<T> matches = new ArrayList<>();
+            for (T value : beforeDistanceMatches) {
+                if (squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared
+                    && afterDistancePredicate.test(value)) {
+                    matches.add(value);
+                }
+            }
+            sortByDistance(matches, originX, originY, originZ, xGetter, yGetter, zGetter);
+            return matches.isEmpty() ? Optional.empty() : Optional.of(matches.get(0));
+        }
+
+        double[] positions = EntityPacking.packPositions(beforeDistanceMatches, xGetter, yGetter, zGetter);
+        int[] order = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
+        boolean[] withinRadius = new boolean[beforeDistanceMatches.size()];
+        for (int index : order) {
+            withinRadius[index] = true;
+        }
+
+        boolean[] accepted = new boolean[beforeDistanceMatches.size()];
+        for (int index = 0; index < beforeDistanceMatches.size(); index++) {
+            if (withinRadius[index] && afterDistancePredicate.test(beforeDistanceMatches.get(index))) {
+                accepted[index] = true;
+            }
+        }
+
+        for (int index : order) {
+            if (accepted[index]) {
+                return Optional.of(beforeDistanceMatches.get(index));
+            }
+        }
+        return Optional.empty();
+    }
+
     public static <T> Optional<T> findFirstSortedByDistance(
         List<? extends T> values,
         double originX,

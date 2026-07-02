@@ -18,6 +18,7 @@ import org.spongepowered.asm.mixin.Shadow;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Predicate;
 
 @Mixin(TemptingSensor.class)
@@ -44,23 +45,22 @@ public class TemptingSensorMixin {
             }
         }
 
-        List<ServerPlayer> temptingPlayers = EntityDistanceSort.filterWithinExclusiveDistanceSortedByDistance(
+        Optional<ServerPlayer> temptingPlayer = EntityDistanceSort.findFirstWithinExclusiveDistanceAfterPredicatesSortedByDistance(
             candidatePlayers,
             mob.getX(),
             mob.getY(),
             mob.getZ(),
             10.0,
+            player -> TEMPT_TARGETING.test(mob, player),
+            player -> this.beryllium$playerHoldingTemptation(player) && !mob.hasPassenger(player),
             ServerPlayer::getX,
             ServerPlayer::getY,
-            ServerPlayer::getZ,
-            player -> TEMPT_TARGETING.test(mob, player)
-                && this.beryllium$playerHoldingTemptation(player)
-                && !mob.hasPassenger(player)
+            ServerPlayer::getZ
         );
-        if (temptingPlayers.isEmpty()) {
+        if (temptingPlayer.isEmpty()) {
             brain.eraseMemory(MemoryModuleType.TEMPTING_PLAYER);
         } else {
-            brain.setMemory(MemoryModuleType.TEMPTING_PLAYER, temptingPlayers.get(0));
+            brain.setMemory(MemoryModuleType.TEMPTING_PLAYER, temptingPlayer.get());
         }
     }
 
