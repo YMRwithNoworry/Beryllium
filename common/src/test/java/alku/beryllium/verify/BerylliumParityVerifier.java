@@ -5,6 +5,7 @@ import alku.beryllium.bridge.NativeStatus;
 import alku.beryllium.compute.BlockDistanceSearchVerifier;
 import alku.beryllium.compute.BlockDistanceSortVerifier;
 import alku.beryllium.compute.EntityDistanceFilterVerifier;
+import alku.beryllium.compute.EntityDistancePredicateSearchVerifier;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
 import alku.beryllium.compute.EntityDistanceSortVerifier;
 import alku.beryllium.compute.EntityVariableRadiusFilterVerifier;
@@ -61,6 +62,8 @@ public final class BerylliumParityVerifier {
         EntityDistanceFilterVerifier.verifyFilterWithinExclusiveDistanceRejectsBoundary();
         EntityDistanceFilterVerifier.verifyFilterWithinInclusiveDistance();
         EntityDistanceFilterVerifier.verifyFilterWithinInclusiveDistanceAcceptsBoundary();
+        EntityDistancePredicateSearchVerifier.verifyFindFirstWithinExclusiveDistancePreservesPredicateOrder();
+        EntityDistancePredicateSearchVerifier.verifyFindFirstWithinExclusiveDistanceBatchesLargeLists();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistances();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesPreservesOrder();
         EntityDistanceSortVerifier.verifySortByDistance();
