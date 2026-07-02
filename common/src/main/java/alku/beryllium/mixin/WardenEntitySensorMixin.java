@@ -1,6 +1,7 @@
 package alku.beryllium.mixin;
 
 import alku.beryllium.compute.EntityDistanceSort;
+import alku.beryllium.compute.PrioritizedEntitySearch;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -14,7 +15,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 
 import java.util.List;
-import java.util.function.Predicate;
 
 @Mixin(WardenEntitySensor.class)
 public class WardenEntitySensorMixin {
@@ -36,10 +36,12 @@ public class WardenEntitySensorMixin {
         brain.setMemory(MemoryModuleType.NEAREST_LIVING_ENTITIES, nearbyEntities);
         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_LIVING_ENTITIES, new NearestVisibleLivingEntities(warden, nearbyEntities));
 
-        LivingEntity nearestAttackable = beryllium$findClosest(nearbyEntities, warden, candidate -> candidate.getType() != EntityType.PLAYER);
-        if (nearestAttackable == null) {
-            nearestAttackable = beryllium$findClosest(nearbyEntities, warden, candidate -> candidate.getType() == EntityType.PLAYER);
-        }
+        LivingEntity nearestAttackable = PrioritizedEntitySearch.findFirstWithFallback(
+            nearbyEntities,
+            warden::canTargetEntity,
+            candidate -> candidate.getType() == EntityType.PLAYER,
+            candidate -> candidate.getType() != EntityType.PLAYER
+        );
 
         if (nearestAttackable == null) {
             brain.eraseMemory(MemoryModuleType.NEAREST_ATTACKABLE);
@@ -48,17 +50,4 @@ public class WardenEntitySensorMixin {
         }
     }
 
-    private static LivingEntity beryllium$findClosest(
-        List<LivingEntity> nearbyEntities,
-        Warden warden,
-        Predicate<LivingEntity> predicate
-    ) {
-        for (LivingEntity candidate : nearbyEntities) {
-            if (warden.canTargetEntity(candidate) && predicate.test(candidate)) {
-                return candidate;
-            }
-        }
-
-        return null;
-    }
 }
