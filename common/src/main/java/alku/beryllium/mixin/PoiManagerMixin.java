@@ -15,6 +15,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
@@ -68,8 +69,8 @@ public abstract class PoiManagerMixin {
             origin,
             radius,
             PoiRecord::getPos,
-            record -> positionPredicate.test(record.getPos())
-        ).stream().map(PoiRecord::getPos);
+            record -> true
+        ).stream().map(PoiRecord::getPos).filter(positionPredicate);
     }
 
     /**
@@ -91,8 +92,62 @@ public abstract class PoiManagerMixin {
             origin,
             radius,
             PoiRecord::getPos,
+            record -> true
+        ).stream()
+            .filter(record -> positionPredicate.test(record.getPos()))
+            .map(record -> Pair.of(record.getPoiType(), record.getPos()));
+    }
+
+    /**
+     * @reason Batch POI first-match radius filtering before applying the vanilla position predicate.
+     * @author YMRwithNoworry
+     */
+    @Overwrite
+    public Optional<BlockPos> find(
+        Predicate<Holder<PoiType>> typePredicate,
+        Predicate<BlockPos> positionPredicate,
+        BlockPos origin,
+        int radius,
+        PoiManager.Occupancy occupancy
+    ) {
+        List<PoiRecord> records = new ArrayList<>();
+        this.getInSquare(typePredicate, origin, radius, occupancy).forEach(records::add);
+        PoiRecord match = BlockDistanceSearch.findFirstByDistanceWithinInclusiveRadius(
+            records,
+            origin,
+            radius,
+            PoiRecord::getPos,
             record -> positionPredicate.test(record.getPos())
-        ).stream().map(record -> Pair.of(record.getPoiType(), record.getPos()));
+        );
+        return match == null ? Optional.empty() : Optional.of(match.getPos());
+    }
+
+    /**
+     * @reason Batch POI take radius filtering before applying the vanilla ticket predicate.
+     * @author YMRwithNoworry
+     */
+    @Overwrite
+    public Optional<BlockPos> take(
+        Predicate<Holder<PoiType>> typePredicate,
+        BiPredicate<Holder<PoiType>, BlockPos> positionPredicate,
+        BlockPos origin,
+        int radius
+    ) {
+        List<PoiRecord> records = new ArrayList<>();
+        this.getInSquare(typePredicate, origin, radius, PoiManager.Occupancy.HAS_SPACE).forEach(records::add);
+        PoiRecord match = BlockDistanceSearch.findFirstByDistanceWithinInclusiveRadius(
+            records,
+            origin,
+            radius,
+            PoiRecord::getPos,
+            record -> positionPredicate.test(record.getPoiType(), record.getPos())
+        );
+        if (match == null) {
+            return Optional.empty();
+        }
+
+        ((PoiRecordAccessor) match).beryllium$acquireTicket();
+        return Optional.of(match.getPos());
     }
 
     /**

@@ -114,6 +114,8 @@ public final class BerylliumParityVerifier {
         BlockDistanceSearchVerifier.verifyFilterWithinInclusiveBlockDistanceBatchesRadiusBeforePredicate();
         BlockDistanceSearchVerifier.verifyCountWithinInclusiveBlockDistanceAcceptsBoundary();
         BlockDistanceSearchVerifier.verifyCountWithinInclusiveBlockDistanceBatchesRadius();
+        BlockDistanceSearchVerifier.verifyFindFirstWithinInclusiveBlockDistanceFiltersBeforePredicate();
+        BlockDistanceSearchVerifier.verifyFindFirstWithinInclusiveBlockDistanceBatchesRadiusBeforePredicate();
         SupportingBlockSearchVerifier.verifyFindNearest();
         SupportingBlockSearchVerifier.verifyEmptyCandidates();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();

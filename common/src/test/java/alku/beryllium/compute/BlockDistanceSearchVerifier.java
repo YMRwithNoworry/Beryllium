@@ -225,6 +225,54 @@ public final class BlockDistanceSearchVerifier {
         assertEquals(3, (int) count, "large inclusive radius count");
     }
 
+    public static void verifyFindFirstWithinInclusiveBlockDistanceFiltersBeforePredicate() {
+        List<SimpleBlock> blocks = new ArrayList<>();
+        blocks.add(new SimpleBlock(0, new BlockPos(3, 0, 0)));
+        blocks.add(new SimpleBlock(1, new BlockPos(2, 0, 0)));
+        blocks.add(new SimpleBlock(2, new BlockPos(1, 0, 0)));
+        blocks.add(new SimpleBlock(3, new BlockPos(-2, 0, 0)));
+
+        List<Integer> tested = new ArrayList<>();
+        SimpleBlock match = BlockDistanceSearch.findFirstByDistanceWithinInclusiveRadius(
+            blocks,
+            BlockPos.ZERO,
+            2,
+            block -> block.position,
+            block -> {
+                tested.add(block.id);
+                return block.id == 2;
+            }
+        );
+
+        assertEquals(2, match == null ? -1 : match.id, "inclusive radius first block");
+        assertListEquals(List.of(1, 2), tested, "inclusive radius first predicate order");
+    }
+
+    public static void verifyFindFirstWithinInclusiveBlockDistanceBatchesRadiusBeforePredicate() {
+        List<SimpleBlock> blocks = new ArrayList<>();
+        for (int index = 0; index < 40; index++) {
+            blocks.add(new SimpleBlock(index, new BlockPos(100 + index, 0, 0)));
+        }
+        blocks.set(33, new SimpleBlock(33, new BlockPos(2, 0, 0)));
+        blocks.set(34, new SimpleBlock(34, new BlockPos(-2, 0, 0)));
+        blocks.set(35, new SimpleBlock(35, new BlockPos(1, 0, 0)));
+
+        List<Integer> tested = new ArrayList<>();
+        SimpleBlock match = BlockDistanceSearch.findFirstByDistanceWithinInclusiveRadius(
+            blocks,
+            BlockPos.ZERO,
+            2,
+            block -> block.position,
+            block -> {
+                tested.add(block.id);
+                return block.id == 35;
+            }
+        );
+
+        assertEquals(35, match == null ? -1 : match.id, "large inclusive radius first block");
+        assertListEquals(List.of(33, 34, 35), tested, "large inclusive radius first predicate order");
+    }
+
     private static List<SimpleBlock> descendingAxisBlocks(int count) {
         List<SimpleBlock> blocks = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {

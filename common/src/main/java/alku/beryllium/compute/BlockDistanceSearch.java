@@ -116,6 +116,37 @@ public final class BlockDistanceSearch {
         return result;
     }
 
+    public static <T> T findFirstByDistanceWithinInclusiveRadius(
+        List<T> values,
+        BlockPos origin,
+        int radius,
+        Function<? super T, BlockPos> positionGetter,
+        Predicate<? super T> afterDistancePredicate
+    ) {
+        if (values.isEmpty()) {
+            return null;
+        }
+
+        int radiusSquared = radius * radius;
+        if (radiusSquared < 0) {
+            return null;
+        }
+
+        int[] positions = packPositions(values, positionGetter);
+        int[] matchingIndices = NativeBatching.shouldUseNativeEntityBatch(values.size())
+            ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions)
+            : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions);
+
+        for (int index : matchingIndices) {
+            T value = values.get(index);
+            if (afterDistancePredicate.test(value)) {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
     public static <T> long countByDistanceWithinInclusiveRadius(
         List<T> values,
         BlockPos origin,
