@@ -39,6 +39,31 @@ public final class EntityDistancePredicateSearch {
         );
     }
 
+    public static <T extends Entity> Optional<T> findFirstWithinInclusiveDistance(
+        List<? extends T> entities,
+        Entity origin,
+        double radius,
+        Predicate<? super T> beforeDistance,
+        Predicate<? super T> afterDistance
+    ) {
+        if (radius < 0.0) {
+            throw new IllegalArgumentException("radius must be non-negative");
+        }
+
+        return findFirstWithinInclusiveDistance(
+            entities,
+            origin.getX(),
+            origin.getY(),
+            origin.getZ(),
+            radius * radius,
+            beforeDistance,
+            afterDistance,
+            Entity::getX,
+            Entity::getY,
+            Entity::getZ
+        );
+    }
+
     public static <T> Optional<T> findFirstWithinExclusiveDistance(
         List<? extends T> values,
         double originX,
@@ -51,6 +76,61 @@ public final class EntityDistancePredicateSearch {
         EntityPacking.CoordinateGetter<? super T> yGetter,
         EntityPacking.CoordinateGetter<? super T> zGetter
     ) {
+        return findFirstWithinDistance(
+            values,
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            beforeDistance,
+            afterDistance,
+            xGetter,
+            yGetter,
+            zGetter,
+            false
+        );
+    }
+
+    public static <T> Optional<T> findFirstWithinInclusiveDistance(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        Predicate<? super T> beforeDistance,
+        Predicate<? super T> afterDistance,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter
+    ) {
+        return findFirstWithinDistance(
+            values,
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            beforeDistance,
+            afterDistance,
+            xGetter,
+            yGetter,
+            zGetter,
+            true
+        );
+    }
+
+    private static <T> Optional<T> findFirstWithinDistance(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        Predicate<? super T> beforeDistance,
+        Predicate<? super T> afterDistance,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter,
+        boolean includeBoundary
+    ) {
         if (radiusSquared < 0.0) {
             throw new IllegalArgumentException("radiusSquared must be non-negative");
         }
@@ -61,7 +141,9 @@ public final class EntityDistancePredicateSearch {
         int[] distanceMatches = null;
         if (NativeBatching.shouldUseNativeEntityBatch(values.size())) {
             double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-            distanceMatches = NativeBridge.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
+            distanceMatches = includeBoundary
+                ? NativeBridge.filterWithinRadius(originX, originY, originZ, radiusSquared, positions)
+                : NativeBridge.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
         }
 
         int distanceMatchCursor = 0;
@@ -74,7 +156,7 @@ public final class EntityDistancePredicateSearch {
             if (distanceMatches != null) {
                 distanceMatchCursor = advanceDistanceMatchCursor(distanceMatches, distanceMatchCursor, index);
             }
-            if (!isWithinDistance(distanceMatches, distanceMatchCursor, index, originX, originY, originZ, radiusSquared, xGetter, yGetter, zGetter, value)) {
+            if (!isWithinDistance(distanceMatches, distanceMatchCursor, index, originX, originY, originZ, radiusSquared, xGetter, yGetter, zGetter, value, includeBoundary)) {
                 continue;
             }
 
@@ -97,10 +179,12 @@ public final class EntityDistancePredicateSearch {
         EntityPacking.CoordinateGetter<? super T> xGetter,
         EntityPacking.CoordinateGetter<? super T> yGetter,
         EntityPacking.CoordinateGetter<? super T> zGetter,
-        T value
+        T value,
+        boolean includeBoundary
     ) {
         if (distanceMatches == null) {
-            return squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared;
+            double distance = squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value);
+            return includeBoundary ? distance <= radiusSquared : distance < radiusSquared;
         }
 
         return distanceMatchCursor < distanceMatches.length && distanceMatches[distanceMatchCursor] == index;
