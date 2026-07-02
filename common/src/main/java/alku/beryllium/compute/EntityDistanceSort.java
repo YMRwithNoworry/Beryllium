@@ -6,6 +6,7 @@ import net.minecraft.world.entity.Entity;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Predicate;
 
 /**
@@ -85,6 +86,52 @@ public final class EntityDistanceSort {
             matches.add(values.get(index));
         }
         return matches;
+    }
+
+    public static <T> Optional<T> findFirstWithinExclusiveDistanceSortedByDistance(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        double radius,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter,
+        Predicate<? super T> postSortedPredicate
+    ) {
+        if (radius < 0.0) {
+            throw new IllegalArgumentException("radius must be non-negative");
+        }
+        if (values.isEmpty()) {
+            return Optional.empty();
+        }
+
+        double radiusSquared = radius * radius;
+        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+            List<T> matches = new ArrayList<>();
+            for (T value : values) {
+                if (squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared) {
+                    matches.add(value);
+                }
+            }
+            sortByDistance(matches, originX, originY, originZ, xGetter, yGetter, zGetter);
+            for (T match : matches) {
+                if (postSortedPredicate.test(match)) {
+                    return Optional.of(match);
+                }
+            }
+            return Optional.empty();
+        }
+
+        double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
+        int[] order = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
+        for (int index : order) {
+            T value = values.get(index);
+            if (postSortedPredicate.test(value)) {
+                return Optional.of(value);
+            }
+        }
+        return Optional.empty();
     }
 
     public static <T> List<T> filterWithinExclusiveDistanceSortedByDistance(

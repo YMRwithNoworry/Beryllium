@@ -27,20 +27,17 @@ public class NearestItemSensorMixin {
             mob.getBoundingBox().inflate(32.0, 16.0, 32.0),
             item -> true
         );
-        Optional<ItemEntity> nearestWantedItem = EntityDistanceSort.filterWithinExclusiveDistanceSortedByDistance(
-                items,
-                mob.getX(),
-                mob.getY(),
-                mob.getZ(),
-                32.0,
-                ItemEntity::getX,
-                ItemEntity::getY,
-                ItemEntity::getZ
-            )
-            .stream()
-            .filter(item -> mob.wantsToPickUp(item.getItem()))
-            .filter(mob::hasLineOfSight)
-            .findFirst();
+        Optional<ItemEntity> nearestWantedItem = EntityDistanceSort.findFirstWithinExclusiveDistanceSortedByDistance(
+            items,
+            mob.getX(),
+            mob.getY(),
+            mob.getZ(),
+            32.0,
+            ItemEntity::getX,
+            ItemEntity::getY,
+            ItemEntity::getZ,
+            item -> mob.wantsToPickUp(item.getItem()) && mob.hasLineOfSight(item)
+        );
         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_WANTED_ITEM, nearestWantedItem);
     }
 }

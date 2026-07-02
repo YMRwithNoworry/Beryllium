@@ -86,6 +86,32 @@ public final class EntityDistanceSortVerifier {
         assertListEquals(List.of(36, 37, 38, 39), postFiltered, "exclusive sorted entity distance filter post-filter order");
     }
 
+    public static void verifyFindFirstWithinExclusiveDistanceSortedByDistanceShortCircuitsAfterSort() {
+        List<SimplePoint> points = descendingAxisPoints(40);
+        List<Integer> postFiltered = new ArrayList<>();
+
+        SimplePoint match = EntityDistanceSort.findFirstWithinExclusiveDistanceSortedByDistance(
+                points,
+                0.0,
+                0.0,
+                0.0,
+                4.0,
+                point -> point.x,
+                point -> point.y,
+                point -> point.z,
+                point -> {
+                    postFiltered.add(point.id);
+                    return point.id == 38;
+                }
+            )
+            .orElseThrow(() -> new AssertionError("expected a sorted-radius match"));
+
+        if (match.id != 38) {
+            throw new AssertionError("exclusive sorted entity distance find-first mismatch, expected 38 but got " + match.id);
+        }
+        assertListEquals(List.of(39, 38), postFiltered, "exclusive sorted entity distance find-first post-filter order");
+    }
+
     private static List<SimplePoint> descendingAxisPoints(int count) {
         List<SimplePoint> points = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
