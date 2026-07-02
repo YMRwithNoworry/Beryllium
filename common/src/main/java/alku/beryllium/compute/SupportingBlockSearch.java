@@ -3,8 +3,7 @@ package alku.beryllium.compute;
 import alku.beryllium.bridge.NativeBridge;
 import net.minecraft.core.BlockPos;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 import java.util.Optional;
 
 /**
@@ -37,20 +36,18 @@ public final class SupportingBlockSearch {
     }
 
     private static int[] packPositions(Iterable<? extends BlockPos> candidates) {
-        List<BlockPos> snapshot = new ArrayList<>();
+        int[] positions = new int[24];
+        int offset = 0;
         for (BlockPos candidate : candidates) {
-            snapshot.add(candidate);
-        }
-
-        int[] positions = new int[snapshot.size() * 3];
-        for (int index = 0; index < snapshot.size(); index++) {
-            BlockPos candidate = snapshot.get(index);
-            int offset = index * 3;
+            if (offset + 3 > positions.length) {
+                positions = Arrays.copyOf(positions, positions.length * 2);
+            }
             positions[offset] = candidate.getX();
             positions[offset + 1] = candidate.getY();
             positions[offset + 2] = candidate.getZ();
+            offset += 3;
         }
 
-        return positions;
+        return Arrays.copyOf(positions, offset);
     }
 }
