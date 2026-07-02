@@ -45,21 +45,19 @@ public class PlayerSensorMixin {
         Brain<?> brain = entity.getBrain();
         brain.setMemory(MemoryModuleType.NEAREST_PLAYERS, nearbyPlayers);
 
-        List<Player> visiblePlayers = new ArrayList<>();
+        Player nearestVisiblePlayer = null;
+        Optional<Player> attackablePlayer = Optional.empty();
         for (Player player : nearbyPlayers) {
             if (Sensor.isEntityTargetable(entity, player)) {
-                visiblePlayers.add(player);
+                if (nearestVisiblePlayer == null) {
+                    nearestVisiblePlayer = player;
+                }
+                if (attackablePlayer.isEmpty() && Sensor.isEntityAttackable(entity, player)) {
+                    attackablePlayer = Optional.of(player);
+                }
             }
         }
-        brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_PLAYER, visiblePlayers.isEmpty() ? null : visiblePlayers.get(0));
-
-        Optional<Player> attackablePlayer = Optional.empty();
-        for (Player player : visiblePlayers) {
-            if (Sensor.isEntityAttackable(entity, player)) {
-                attackablePlayer = Optional.of(player);
-                break;
-            }
-        }
+        brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_PLAYER, nearestVisiblePlayer);
         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_ATTACKABLE_PLAYER, attackablePlayer);
     }
 }
