@@ -53,9 +53,13 @@ public class PlayerSensorMixin {
         }
         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_PLAYER, visiblePlayers.isEmpty() ? null : visiblePlayers.get(0));
 
-        Optional<Player> attackablePlayer = visiblePlayers.stream()
-            .filter(player -> Sensor.isEntityAttackable(entity, player))
-            .findFirst();
+        Optional<Player> attackablePlayer = Optional.empty();
+        for (Player player : visiblePlayers) {
+            if (Sensor.isEntityAttackable(entity, player)) {
+                attackablePlayer = Optional.of(player);
+                break;
+            }
+        }
         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_ATTACKABLE_PLAYER, attackablePlayer);
     }
 }
