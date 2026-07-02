@@ -1,6 +1,5 @@
 package alku.beryllium.mixin;
 
-import alku.beryllium.compute.EntityDistanceFilter;
 import alku.beryllium.compute.EntityDistanceSort;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Mob;
@@ -11,7 +10,6 @@ import net.minecraft.world.entity.item.ItemEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,17 +27,18 @@ public class NearestItemSensorMixin {
             mob.getBoundingBox().inflate(32.0, 16.0, 32.0),
             item -> true
         );
-        EntityDistanceSort.sortByDistance(items, mob);
-
-        List<ItemEntity> wantedItems = new ArrayList<>();
-        for (ItemEntity item : items) {
-            if (mob.wantsToPickUp(item.getItem())) {
-                wantedItems.add(item);
-            }
-        }
-
-        Optional<ItemEntity> nearestWantedItem = EntityDistanceFilter.filterWithinExclusiveDistance(wantedItems, mob, 32.0)
+        Optional<ItemEntity> nearestWantedItem = EntityDistanceSort.filterWithinExclusiveDistanceSortedByDistance(
+                items,
+                mob.getX(),
+                mob.getY(),
+                mob.getZ(),
+                32.0,
+                ItemEntity::getX,
+                ItemEntity::getY,
+                ItemEntity::getZ
+            )
             .stream()
+            .filter(item -> mob.wantsToPickUp(item.getItem()))
             .filter(mob::hasLineOfSight)
             .findFirst();
         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_WANTED_ITEM, nearestWantedItem);
