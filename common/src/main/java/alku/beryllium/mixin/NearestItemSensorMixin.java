@@ -11,7 +11,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 
 import java.util.List;
-import java.util.Optional;
 
 @Mixin(NearestItemSensor.class)
 public class NearestItemSensorMixin {
@@ -27,15 +26,16 @@ public class NearestItemSensorMixin {
             mob.getBoundingBox().inflate(32.0, 16.0, 32.0),
             item -> true
         );
-        EntityDistanceSort.sortByDistance(items, mob);
-
-        Optional<ItemEntity> nearestWantedItem = Optional.empty();
-        for (ItemEntity item : items) {
-            if (mob.wantsToPickUp(item.getItem()) && item.closerThan(mob, 32.0) && mob.hasLineOfSight(item)) {
-                nearestWantedItem = Optional.of(item);
-                break;
-            }
-        }
+        var nearestWantedItem = EntityDistanceSort.findFirstSortedByDistance(
+            items,
+            mob.getX(),
+            mob.getY(),
+            mob.getZ(),
+            ItemEntity::getX,
+            ItemEntity::getY,
+            ItemEntity::getZ,
+            item -> mob.wantsToPickUp(item.getItem()) && item.closerThan(mob, 32.0) && mob.hasLineOfSight(item)
+        );
         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_WANTED_ITEM, nearestWantedItem);
     }
 }

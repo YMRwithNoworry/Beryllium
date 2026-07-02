@@ -112,6 +112,59 @@ public final class EntityDistanceSortVerifier {
         assertListEquals(List.of(39, 38), postFiltered, "exclusive sorted entity distance find-first post-filter order");
     }
 
+    public static void verifyFindFirstSortedByDistanceShortCircuitsAfterSort() {
+        List<SimplePoint> points = descendingAxisPoints(40);
+        List<Integer> postFiltered = new ArrayList<>();
+
+        SimplePoint match = EntityDistanceSort.findFirstSortedByDistance(
+                points,
+                0.0,
+                0.0,
+                0.0,
+                point -> point.x,
+                point -> point.y,
+                point -> point.z,
+                point -> {
+                    postFiltered.add(point.id);
+                    return point.id == 38;
+                }
+            )
+            .orElseThrow(() -> new AssertionError("expected a sorted match"));
+
+        if (match.id != 38) {
+            throw new AssertionError("sorted entity distance find-first mismatch, expected 38 but got " + match.id);
+        }
+        assertListEquals(List.of(39, 38), postFiltered, "sorted entity distance find-first post-filter order");
+    }
+
+    public static void verifyFindFirstSortedByDistancePreservesTieOrder() {
+        List<SimplePoint> points = new ArrayList<>();
+        points.add(new SimplePoint(0, 1.0, 0.0, 0.0));
+        points.add(new SimplePoint(1, -1.0, 0.0, 0.0));
+        points.add(new SimplePoint(2, 2.0, 0.0, 0.0));
+        List<Integer> postFiltered = new ArrayList<>();
+
+        SimplePoint match = EntityDistanceSort.findFirstSortedByDistance(
+                points,
+                0.0,
+                0.0,
+                0.0,
+                point -> point.x,
+                point -> point.y,
+                point -> point.z,
+                point -> {
+                    postFiltered.add(point.id);
+                    return point.id == 1;
+                }
+            )
+            .orElseThrow(() -> new AssertionError("expected a tied sorted match"));
+
+        if (match.id != 1) {
+            throw new AssertionError("sorted entity distance tie find-first mismatch, expected 1 but got " + match.id);
+        }
+        assertListEquals(List.of(0, 1), postFiltered, "sorted entity distance tie post-filter order");
+    }
+
     private static List<SimplePoint> descendingAxisPoints(int count) {
         List<SimplePoint> points = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {

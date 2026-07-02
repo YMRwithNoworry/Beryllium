@@ -134,6 +134,42 @@ public final class EntityDistanceSort {
         return Optional.empty();
     }
 
+    public static <T> Optional<T> findFirstSortedByDistance(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter,
+        Predicate<? super T> postSortedPredicate
+    ) {
+        if (values.isEmpty()) {
+            return Optional.empty();
+        }
+
+        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+            List<T> sortedValues = new ArrayList<>(values);
+            sortByDistance(sortedValues, originX, originY, originZ, xGetter, yGetter, zGetter);
+            for (T value : sortedValues) {
+                if (postSortedPredicate.test(value)) {
+                    return Optional.of(value);
+                }
+            }
+            return Optional.empty();
+        }
+
+        double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
+        int[] order = NativeBridge.sortByDistance(originX, originY, originZ, positions);
+        for (int index : order) {
+            T value = values.get(index);
+            if (postSortedPredicate.test(value)) {
+                return Optional.of(value);
+            }
+        }
+        return Optional.empty();
+    }
+
     public static <T> List<T> filterWithinExclusiveDistanceSortedByDistance(
         List<? extends T> values,
         double originX,
