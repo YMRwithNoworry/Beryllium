@@ -3,8 +3,10 @@ package alku.beryllium.mixin;
 import alku.beryllium.compute.BlockDistanceSearch;
 import alku.beryllium.compute.BlockDistanceSort;
 import com.mojang.datafixers.util.Pair;
+import net.minecraft.Util;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.ai.village.poi.PoiManager;
 import net.minecraft.world.entity.ai.village.poi.PoiRecord;
 import net.minecraft.world.entity.ai.village.poi.PoiType;
@@ -148,6 +150,35 @@ public abstract class PoiManagerMixin {
 
         ((PoiRecordAccessor) match).beryllium$acquireTicket();
         return Optional.of(match.getPos());
+    }
+
+    /**
+     * @reason Batch randomized POI radius filtering before preserving vanilla shuffle and position filtering.
+     * @author YMRwithNoworry
+     */
+    @Overwrite
+    public Optional<BlockPos> getRandom(
+        Predicate<Holder<PoiType>> typePredicate,
+        Predicate<BlockPos> positionPredicate,
+        PoiManager.Occupancy occupancy,
+        BlockPos origin,
+        int radius,
+        RandomSource random
+    ) {
+        List<PoiRecord> records = new ArrayList<>();
+        this.getInSquare(typePredicate, origin, radius, occupancy).forEach(records::add);
+        List<PoiRecord> matchingRecords = BlockDistanceSearch.filterByDistanceWithinInclusiveRadius(
+            records,
+            origin,
+            radius,
+            PoiRecord::getPos,
+            record -> true
+        );
+        return Util.toShuffledList(matchingRecords.stream(), random)
+            .stream()
+            .filter(record -> positionPredicate.test(record.getPos()))
+            .findFirst()
+            .map(PoiRecord::getPos);
     }
 
     /**
