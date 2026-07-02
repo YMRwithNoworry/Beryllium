@@ -11,6 +11,7 @@ import alku.beryllium.compute.EntityDistanceSortVerifier;
 import alku.beryllium.compute.EntityVariableRadiusFilterVerifier;
 import alku.beryllium.compute.JavaComputeKernels;
 import alku.beryllium.compute.NativeBatchingVerifier;
+import alku.beryllium.compute.NearestEntitySearchVerifier;
 import alku.beryllium.compute.SupportingBlockSearchVerifier;
 import alku.beryllium.compute.TargetingConditionsBatchVerifier;
 
@@ -66,6 +67,9 @@ public final class BerylliumParityVerifier {
         EntityDistancePredicateSearchVerifier.verifyFindFirstWithinExclusiveDistancePreservesPredicateOrder();
         EntityDistancePredicateSearchVerifier.verifyFindFirstWithinExclusiveDistanceBatchesLargeLists();
         EntityDistancePredicateSearchVerifier.verifyFindFirstWithinExclusiveDistanceBatchesDistanceGateBeforePosttest();
+        NearestEntitySearchVerifier.verifyHasAnyWithinExclusiveDistanceShortCircuits();
+        NearestEntitySearchVerifier.verifyHasAnyWithinExclusiveDistanceSkipsDistanceForUnboundedMatch();
+        NearestEntitySearchVerifier.verifyHasAnyWithinExclusiveDistanceChecksAllWhenMissing();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistances();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesPreservesOrder();
         EntityVariableRadiusFilterVerifier.verifyFilterWithinInclusiveDistancesRejectsNegativeRadius();

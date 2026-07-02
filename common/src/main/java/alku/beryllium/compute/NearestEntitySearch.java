@@ -150,33 +150,40 @@ public final class NearestEntitySearch {
         double originY,
         double originZ
     ) {
-        if (candidates.isEmpty()) {
-            return false;
-        }
+        return hasAnyWithinExclusiveDistance(
+            candidates,
+            predicate,
+            maxDistanceSquared,
+            originX,
+            originY,
+            originZ,
+            candidate -> candidate.getX(),
+            candidate -> candidate.getY(),
+            candidate -> candidate.getZ()
+        );
+    }
 
-        if (!NativeBatching.shouldUseNativeEntityBatch(candidates.size())) {
-            for (T candidate : candidates) {
-                if (
-                    predicate.test(candidate)
-                        && (maxDistanceSquared < 0.0 || candidate.distanceToSqr(originX, originY, originZ) < maxDistanceSquared)
-                ) {
-                    return true;
-                }
+    static <T> boolean hasAnyWithinExclusiveDistance(
+        List<? extends T> candidates,
+        Predicate<? super T> predicate,
+        double maxDistanceSquared,
+        double originX,
+        double originY,
+        double originZ,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter
+    ) {
+        for (T candidate : candidates) {
+            if (
+                predicate.test(candidate)
+                    && (maxDistanceSquared < 0.0 || squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, candidate) < maxDistanceSquared)
+            ) {
+                return true;
             }
-
-            return false;
         }
 
-        List<T> filteredCandidates = filterCandidates(candidates, predicate);
-        if (filteredCandidates.isEmpty()) {
-            return false;
-        }
-        if (maxDistanceSquared < 0.0) {
-            return true;
-        }
-
-        double[] positions = EntityPacking.packPositions(filteredCandidates);
-        return NativeBridge.hasAnyWithinRadiusExclusive(originX, originY, originZ, maxDistanceSquared, positions);
+        return false;
     }
 
     private static <T extends LivingEntity> T findNearestWithinDistance(
@@ -397,6 +404,21 @@ public final class NearestEntitySearch {
         double dx = positions[offset] - originX;
         double dy = positions[offset + 1] - originY;
         double dz = positions[offset + 2] - originZ;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static <T> double squaredDistance(
+        double originX,
+        double originY,
+        double originZ,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter,
+        T value
+    ) {
+        double dx = xGetter.get(value) - originX;
+        double dy = yGetter.get(value) - originY;
+        double dz = zGetter.get(value) - originZ;
         return dx * dx + dy * dy + dz * dz;
     }
 }
