@@ -124,6 +124,25 @@ public final class BlockDistanceSearchVerifier {
         assertListEquals(List.of(33, 34, 35), tested, "large inclusive radius post-distance predicate order");
     }
 
+    public static void verifyFindNearestWithinInclusiveBlockDistanceBatchesDirectNearest() {
+        List<SimpleBlock> blocks = new ArrayList<>();
+        for (int index = 0; index < 40; index++) {
+            blocks.add(new SimpleBlock(index, new BlockPos(100 + index, 0, 0)));
+        }
+        blocks.set(33, new SimpleBlock(33, new BlockPos(2, 0, 0)));
+        blocks.set(34, new SimpleBlock(34, new BlockPos(-2, 0, 0)));
+        blocks.set(35, new SimpleBlock(35, new BlockPos(1, 0, 0)));
+
+        SimpleBlock nearest = BlockDistanceSearch.findNearestByDistanceWithinInclusiveRadius(
+            blocks,
+            BlockPos.ZERO,
+            2,
+            block -> block.position
+        );
+
+        assertEquals(35, nearest == null ? -1 : nearest.id, "large inclusive radius direct nearest block");
+    }
+
     public static void verifyFindNearestPositionWithinInclusiveBlockDistanceTieOrder() {
         List<SimpleBlock> blocks = new ArrayList<>();
         blocks.add(new SimpleBlock(0, new BlockPos(3, 0, 0)));

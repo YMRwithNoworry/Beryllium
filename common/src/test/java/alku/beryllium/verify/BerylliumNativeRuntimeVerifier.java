@@ -90,6 +90,7 @@ public final class BerylliumNativeRuntimeVerifier {
         BlockDistanceSearchVerifier.verifyFindNearestPositionByBlockDistanceTieOrder();
         BlockDistanceSearchVerifier.verifyFindNearestWithinInclusiveBlockDistanceFiltersBeforePostPredicate();
         BlockDistanceSearchVerifier.verifyFindNearestWithinInclusiveBlockDistanceBatchesRadiusBeforePostPredicate();
+        BlockDistanceSearchVerifier.verifyFindNearestWithinInclusiveBlockDistanceBatchesDirectNearest();
         BlockDistanceSearchVerifier.verifyFindNearestPositionWithinInclusiveBlockDistanceTieOrder();
         BlockDistanceSearchVerifier.verifyFilterWithinInclusiveBlockDistancePreservesEncounterOrderAfterRadius();
         BlockDistanceSearchVerifier.verifyFilterWithinInclusiveBlockDistanceBatchesRadiusBeforePredicate();

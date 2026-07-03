@@ -264,6 +264,63 @@ pub fn find_nearest_block_corner_index(
     Ok(nearest_index)
 }
 
+/// Finds the nearest packed block position within an inclusive squared radius.
+pub fn find_nearest_block_corner_index_within_radius(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    radius_squared: i64,
+    positions: &[i32],
+) -> Result<Option<usize>, NativeError> {
+    if radius_squared < 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    if !positions.len().is_multiple_of(3) {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if position_count == 0 {
+        return Ok(None);
+    }
+
+    if position_count >= PARALLEL_THRESHOLD {
+        return Ok((0..position_count)
+            .into_par_iter()
+            .filter_map(|index| {
+                if squared_distance_at(origin_x, origin_y, origin_z, positions, index)
+                    > radius_squared
+                {
+                    None
+                } else {
+                    Some((
+                        index,
+                        block_corner_distance_at(origin_x, origin_y, origin_z, positions, index),
+                    ))
+                }
+            })
+            .reduce_with(nearest_distance_pair)
+            .map(|(index, _)| index));
+    }
+
+    let mut nearest_index = None;
+    let mut nearest_distance = f64::MAX;
+    for index in 0..position_count {
+        if squared_distance_at(origin_x, origin_y, origin_z, positions, index) > radius_squared {
+            continue;
+        }
+
+        let distance = block_corner_distance_at(origin_x, origin_y, origin_z, positions, index);
+        if nearest_index.is_none() || distance < nearest_distance {
+            nearest_index = Some(index);
+            nearest_distance = distance;
+        }
+    }
+
+    Ok(nearest_index)
+}
+
 fn find_nearest_index_f64_by_limit(
     origin_x: f64,
     origin_y: f64,
@@ -1403,6 +1460,41 @@ mod tests {
             .collect();
 
         let nearest = find_nearest_block_corner_index(0, 0, 0, &positions).unwrap();
+        assert_eq!(nearest, Some(4999));
+    }
+
+    #[test]
+    fn find_nearest_block_corner_index_within_radius_should_include_radius_boundary() {
+        let positions = [3, 0, 0, 2, 0, 0, 5, 0, 0];
+        let nearest =
+            find_nearest_block_corner_index_within_radius(0, 0, 0, 4, &positions).unwrap();
+        assert_eq!(nearest, Some(1));
+    }
+
+    #[test]
+    fn find_nearest_block_corner_index_within_radius_should_preserve_tie_order() {
+        let positions = [2, 0, 0, -2, 0, 0, 1, 0, 0];
+        let nearest =
+            find_nearest_block_corner_index_within_radius(0, 0, 0, 4, &positions).unwrap();
+        assert_eq!(nearest, Some(2));
+    }
+
+    #[test]
+    fn find_nearest_block_corner_index_within_radius_should_reject_out_of_radius_positions() {
+        let positions = [3, 0, 0, 4, 0, 0];
+        let nearest =
+            find_nearest_block_corner_index_within_radius(0, 0, 0, 4, &positions).unwrap();
+        assert_eq!(nearest, None);
+    }
+
+    #[test]
+    fn find_nearest_block_corner_index_within_radius_should_match_parallel_reference_index() {
+        let positions: Vec<i32> = (0..5000)
+            .flat_map(|index| [(4999 - index) as i32, 0, 0])
+            .collect();
+
+        let nearest =
+            find_nearest_block_corner_index_within_radius(0, 0, 0, 1024, &positions).unwrap();
         assert_eq!(nearest, Some(4999));
     }
 

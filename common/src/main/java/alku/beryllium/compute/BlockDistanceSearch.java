@@ -38,7 +38,21 @@ public final class BlockDistanceSearch {
         int radius,
         Function<? super T, BlockPos> positionGetter
     ) {
-        return findNearestByDistanceWithinInclusiveRadius(values, origin, radius, positionGetter, value -> true);
+        if (values.isEmpty()) {
+            return null;
+        }
+
+        int radiusSquared = radius * radius;
+        if (radiusSquared < 0) {
+            return null;
+        }
+
+        int[] positions = packPositions(values, positionGetter);
+        int nearestIndex = NativeBatching.shouldUseNativeEntityBatch(values.size())
+            ? NativeBridge.findNearestBlockCornerIndexWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions)
+            : JavaComputeKernels.findNearestBlockCornerIndexWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions);
+
+        return nearestIndex >= 0 ? values.get(nearestIndex) : null;
     }
 
     public static <T> T findNearestByDistanceWithinInclusiveRadius(

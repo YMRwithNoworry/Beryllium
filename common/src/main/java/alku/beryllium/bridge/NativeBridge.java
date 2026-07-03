@@ -223,6 +223,30 @@ public final class NativeBridge {
         return nativeIndex;
     }
 
+    public static int findNearestBlockCornerIndexWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {
+        JavaComputeKernels.validatePositions(positions);
+        if (radiusSquared < 0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.findNearestBlockCornerIndexWithinRadius(originX, originY, originZ, radiusSquared, positions);
+        }
+
+        int nativeIndex = findNearestBlockCornerIndexWithinRadiusNative(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions
+        );
+        if (nativeIndex < -1) {
+            return JavaComputeKernels.findNearestBlockCornerIndexWithinRadius(originX, originY, originZ, radiusSquared, positions);
+        }
+
+        return nativeIndex;
+    }
+
     public static int[] filterWithinRadius(double originX, double originY, double originZ, double radiusSquared, double[] positions) {
         JavaComputeKernels.validatePositions(positions);
         if (radiusSquared < 0.0) {
@@ -622,6 +646,14 @@ public final class NativeBridge {
         int originX,
         int originY,
         int originZ,
+        int[] positions
+    );
+
+    private static native int findNearestBlockCornerIndexWithinRadiusNative(
+        int originX,
+        int originY,
+        int originZ,
+        long radiusSquared,
         int[] positions
     );
 

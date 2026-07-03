@@ -108,6 +108,29 @@ public final class JavaComputeKernels {
         return nearestIndex;
     }
 
+    public static int findNearestBlockCornerIndexWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {
+        validatePositions(positions);
+        if (radiusSquared < 0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+
+        int nearestIndex = -1;
+        double nearestDistance = Double.MAX_VALUE;
+        for (int index = 0; index < positions.length / 3; index++) {
+            if (squaredDistanceAt(originX, originY, originZ, positions, index) > radiusSquared) {
+                continue;
+            }
+
+            double distance = blockCornerDistanceAt(originX, originY, originZ, positions, index);
+            if (nearestIndex == -1 || distance < nearestDistance) {
+                nearestIndex = index;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearestIndex;
+    }
+
     private static int findNearestIndex(
         double originX,
         double originY,
