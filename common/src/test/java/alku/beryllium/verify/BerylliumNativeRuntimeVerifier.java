@@ -235,6 +235,22 @@ public final class BerylliumNativeRuntimeVerifier {
             225.0
         });
         assertArrayEquals(new int[] {0, 2}, variableMatches, "native variable radius filter");
+
+        int[] variableOutput = new int[4];
+        Arrays.fill(variableOutput, -1);
+        int variableCount = NativeBridge.filterWithinRadii(0.0, 0.0, 0.0, new double[] {
+            0.0, 8.0, 0.0,
+            10.0, 0.0, 0.0,
+            12.0, 0.0, 0.0,
+            15.1, 0.0, 0.0
+        }, new double[] {
+            64.0,
+            64.0,
+            144.0,
+            225.0
+        }, variableOutput);
+        assertEquals(2, variableCount, "native variable radius filter count");
+        assertArrayEquals(new int[] {0, 2, -1, -1}, variableOutput, "native variable radius filter output prefix");
     }
 
     private static void verifyNativeAabbFilter() {

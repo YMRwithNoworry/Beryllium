@@ -368,7 +368,15 @@ public final class BerylliumParityVerifier {
         };
         double[] radiiSquared = {64.0, 64.0, 144.0, 225.0};
         int[] filtered = NativeBridge.filterWithinRadii(0.0, 0.0, 0.0, positions, radiiSquared);
+        int[] nativeOutput = new int[positions.length / 3];
+        int nativeCount = NativeBridge.filterWithinRadii(0.0, 0.0, 0.0, positions, radiiSquared, nativeOutput);
+        int[] javaOutput = new int[positions.length / 3];
+        int javaCount = JavaComputeKernels.filterWithinRadii(0.0, 0.0, 0.0, positions, radiiSquared, javaOutput);
         assertArrayEquals(new int[] {0, 2}, filtered, "Native bridge variable radius filter");
+        assertEquals(2, nativeCount, "Native bridge variable radius filter count");
+        assertArrayEquals(new int[] {0, 2}, Arrays.copyOf(nativeOutput, nativeCount), "Native bridge variable radius filter output prefix");
+        assertEquals(2, javaCount, "Java variable radius filter count");
+        assertArrayEquals(new int[] {0, 2}, Arrays.copyOf(javaOutput, javaCount), "Java variable radius filter output prefix");
     }
 
     private static void verifyJavaAabbFilter() {

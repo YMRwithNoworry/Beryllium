@@ -62,10 +62,11 @@ public final class EntityVariableRadiusFilter {
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
         double[] radiiSquared = packRadii(values, radiusSquaredGetter);
-        int[] matchingIndices = NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared);
-        List<T> matches = new ArrayList<>(matchingIndices.length);
-        for (int index : matchingIndices) {
-            matches.add(values.get(index));
+        int[] matchingIndices = new int[values.size()];
+        int matchCount = NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared, matchingIndices);
+        List<T> matches = new ArrayList<>(matchCount);
+        for (int matchIndex = 0; matchIndex < matchCount; matchIndex++) {
+            matches.add(values.get(matchingIndices[matchIndex]));
         }
         return matches;
     }
@@ -101,8 +102,10 @@ public final class EntityVariableRadiusFilter {
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
         double[] radiiSquared = packRadii(values, radiusSquaredGetter);
-        int[] matchingIndices = NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared);
-        for (int index : matchingIndices) {
+        int[] matchingIndices = new int[values.size()];
+        int matchCount = NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared, matchingIndices);
+        for (int matchIndex = 0; matchIndex < matchCount; matchIndex++) {
+            int index = matchingIndices[matchIndex];
             T value = values.get(index);
             if (afterDistance.test(value)) {
                 return Optional.of(value);

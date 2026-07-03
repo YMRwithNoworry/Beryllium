@@ -364,6 +364,26 @@ public final class NativeBridge {
         }
 
         int[] output = new int[positions.length / 3];
+        int count = filterWithinRadii(originX, originY, originZ, positions, radiiSquared, output);
+        return java.util.Arrays.copyOf(output, count);
+    }
+
+    public static int filterWithinRadii(
+        double originX,
+        double originY,
+        double originZ,
+        double[] positions,
+        double[] radiiSquared,
+        int[] output
+    ) {
+        JavaComputeKernels.validatePositions(positions);
+        JavaComputeKernels.validateRadii(positions, radiiSquared);
+        JavaComputeKernels.validateOutputCapacity(positions.length / 3, output);
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.filterWithinRadii(originX, originY, originZ, positions, radiiSquared, output);
+        }
+
         int nativeCount = filterWithinRadiiDoubleNative(
             originX,
             originY,
@@ -373,10 +393,10 @@ public final class NativeBridge {
             output
         );
         if (nativeCount < 0) {
-            return JavaComputeKernels.filterWithinRadii(originX, originY, originZ, positions, radiiSquared);
+            return JavaComputeKernels.filterWithinRadii(originX, originY, originZ, positions, radiiSquared, output);
         }
 
-        return java.util.Arrays.copyOf(output, nativeCount);
+        return nativeCount;
     }
 
     public static int[] filterWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {

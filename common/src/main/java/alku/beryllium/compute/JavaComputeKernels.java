@@ -244,20 +244,36 @@ public final class JavaComputeKernels {
         validatePositions(positions);
         validateRadii(positions, radiiSquared);
 
-        int[] matches = new int[positions.length / 3];
+        int[] result = new int[positions.length / 3];
+        int count = filterWithinRadii(originX, originY, originZ, positions, radiiSquared, result);
+        return Arrays.copyOf(result, count);
+    }
+
+    public static int filterWithinRadii(
+        double originX,
+        double originY,
+        double originZ,
+        double[] positions,
+        double[] radiiSquared,
+        int[] output
+    ) {
+        validatePositions(positions);
+        validateRadii(positions, radiiSquared);
+        validateOutputCapacity(positions.length / 3, output);
+
         int count = 0;
-        for (int index = 0; index < matches.length; index++) {
+        for (int index = 0; index < positions.length / 3; index++) {
             double radiusSquared = radiiSquared[index];
             if (radiusSquared < 0.0) {
                 throw new IllegalArgumentException("radiusSquared must be non-negative");
             }
             if (squaredDistanceAt(originX, originY, originZ, positions, index) <= radiusSquared) {
-                matches[count] = index;
+                output[count] = index;
                 count++;
             }
         }
 
-        return Arrays.copyOf(matches, count);
+        return count;
     }
 
     public static int[] filterWithinAabb(
