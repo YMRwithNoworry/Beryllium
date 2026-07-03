@@ -174,17 +174,18 @@ public final class TargetingConditionsBatch {
         }
 
         double[] positions = EntityPacking.packPositions(candidates, xGetter, yGetter, zGetter);
-        int[] boxMatches = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
-            ? NativeBridge.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions)
-            : JavaComputeKernels.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions);
+        int[] boxMatches = new int[candidates.size()];
+        int boxMatchCount = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+            ? NativeBridge.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions, boxMatches)
+            : JavaComputeKernels.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions, boxMatches);
 
-        if (boxMatches.length == 0) {
+        if (boxMatchCount == 0) {
             return List.of();
         }
 
-        List<T> boxedCandidates = new ArrayList<>(boxMatches.length);
-        for (int index : boxMatches) {
-            boxedCandidates.add(candidates.get(index));
+        List<T> boxedCandidates = new ArrayList<>(boxMatchCount);
+        for (int cursor = 0; cursor < boxMatchCount; cursor++) {
+            boxedCandidates.add(candidates.get(boxMatches[cursor]));
         }
 
         return boxedCandidates;

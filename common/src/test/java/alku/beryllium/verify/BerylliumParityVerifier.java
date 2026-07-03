@@ -280,7 +280,11 @@ public final class BerylliumParityVerifier {
 
         double[] positions = descendingAxisPositionsDouble(5000);
         int[] filtered = NativeBridge.filterWithinAabb(0.0, -1.0, -1.0, 33.0, 1.0, 1.0, positions);
+        int[] output = new int[positions.length / 3];
+        int count = NativeBridge.filterWithinAabb(0.0, -1.0, -1.0, 33.0, 1.0, 1.0, positions, output);
         assertArrayEquals(range(4967, 5000), filtered, "Native bridge large AABB filter");
+        assertEquals(33, count, "Native bridge large AABB filter count");
+        assertArrayEquals(range(4967, 5000), Arrays.copyOf(output, count), "Native bridge large AABB filter output prefix");
     }
 
     private static void verifyNativeBridgeAabbIntersectionFilter() {
@@ -416,7 +420,11 @@ public final class BerylliumParityVerifier {
 
         double[] positions = descendingAxisPositionsDouble(5000);
         int[] filtered = JavaComputeKernels.filterWithinAabb(0.0, -1.0, -1.0, 33.0, 1.0, 1.0, positions);
+        int[] output = new int[positions.length / 3];
+        int count = JavaComputeKernels.filterWithinAabb(0.0, -1.0, -1.0, 33.0, 1.0, 1.0, positions, output);
         assertArrayEquals(range(4967, 5000), filtered, "Java large AABB filter");
+        assertEquals(33, count, "Java large AABB filter count");
+        assertArrayEquals(range(4967, 5000), Arrays.copyOf(output, count), "Java large AABB filter output prefix");
     }
 
     private static void verifyJavaAabbIntersectionFilter() {

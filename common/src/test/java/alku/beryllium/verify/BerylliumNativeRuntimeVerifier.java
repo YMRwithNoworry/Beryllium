@@ -268,12 +268,19 @@ public final class BerylliumNativeRuntimeVerifier {
     }
 
     private static void verifyNativeAabbFilter() {
-        int[] matches = NativeBridge.filterWithinAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, new double[] {
+        double[] positions = {
             0.0, 0.0, 0.0,
             1.0, 0.0, 0.0,
             0.5, 0.5, 0.5
-        });
+        };
+        int[] matches = NativeBridge.filterWithinAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, positions);
         assertArrayEquals(new int[] {0, 2}, matches, "native AABB filter");
+
+        int[] output = new int[3];
+        Arrays.fill(output, -1);
+        int count = NativeBridge.filterWithinAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, positions, output);
+        assertEquals(2, count, "native AABB filter count");
+        assertArrayEquals(new int[] {0, 2, -1}, output, "native AABB filter output prefix");
     }
 
     private static void verifyNativeAabbIntersectionFilter() {

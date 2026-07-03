@@ -490,11 +490,28 @@ public final class NativeBridge {
     ) {
         JavaComputeKernels.validatePositions(positions);
 
+        int[] output = new int[positions.length / 3];
+        int count = filterWithinAabb(minX, minY, minZ, maxX, maxY, maxZ, positions, output);
+        return java.util.Arrays.copyOf(output, count);
+    }
+
+    public static int filterWithinAabb(
+        double minX,
+        double minY,
+        double minZ,
+        double maxX,
+        double maxY,
+        double maxZ,
+        double[] positions,
+        int[] output
+    ) {
+        JavaComputeKernels.validatePositions(positions);
+        JavaComputeKernels.validateOutputCapacity(positions.length / 3, output);
+
         if (!isLoaded()) {
-            return JavaComputeKernels.filterWithinAabb(minX, minY, minZ, maxX, maxY, maxZ, positions);
+            return JavaComputeKernels.filterWithinAabb(minX, minY, minZ, maxX, maxY, maxZ, positions, output);
         }
 
-        int[] output = new int[positions.length / 3];
         int nativeCount = filterWithinAabbDoubleNative(
             minX,
             minY,
@@ -506,10 +523,10 @@ public final class NativeBridge {
             output
         );
         if (nativeCount < 0) {
-            return JavaComputeKernels.filterWithinAabb(minX, minY, minZ, maxX, maxY, maxZ, positions);
+            return JavaComputeKernels.filterWithinAabb(minX, minY, minZ, maxX, maxY, maxZ, positions, output);
         }
 
-        return java.util.Arrays.copyOf(output, nativeCount);
+        return nativeCount;
     }
 
     public static int[] filterIntersectingAabb(

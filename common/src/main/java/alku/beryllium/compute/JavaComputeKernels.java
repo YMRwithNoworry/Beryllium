@@ -323,16 +323,33 @@ public final class JavaComputeKernels {
     ) {
         validatePositions(positions);
 
-        int[] matches = new int[positions.length / 3];
+        int[] result = new int[positions.length / 3];
+        int count = filterWithinAabb(minX, minY, minZ, maxX, maxY, maxZ, positions, result);
+        return Arrays.copyOf(result, count);
+    }
+
+    public static int filterWithinAabb(
+        double minX,
+        double minY,
+        double minZ,
+        double maxX,
+        double maxY,
+        double maxZ,
+        double[] positions,
+        int[] output
+    ) {
+        validatePositions(positions);
+        validateOutputCapacity(positions.length / 3, output);
+
         int count = 0;
-        for (int index = 0; index < matches.length; index++) {
+        for (int index = 0; index < positions.length / 3; index++) {
             if (containsAabb(minX, minY, minZ, maxX, maxY, maxZ, positions, index)) {
-                matches[count] = index;
+                output[count] = index;
                 count++;
             }
         }
 
-        return Arrays.copyOf(matches, count);
+        return count;
     }
 
     public static int[] filterIntersectingAabb(
