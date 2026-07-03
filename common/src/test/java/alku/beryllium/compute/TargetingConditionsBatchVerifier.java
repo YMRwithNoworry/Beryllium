@@ -80,6 +80,8 @@ public final class TargetingConditionsBatchVerifier {
         if (!expectedPosttested.equals(posttested)) {
             throw new AssertionError("variable-distance posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
         }
+
+        verifyLargeFilterByVariableDistanceBeforePosttest();
     }
 
     public static void verifyFindNearestAfterVariableDistanceAndPosttest() {
@@ -302,6 +304,38 @@ public final class TargetingConditionsBatchVerifier {
         List<Integer> expectedPosttested = List.of(0, 1, 2, 3, 4, 5);
         if (!expectedPosttested.equals(posttested)) {
             throw new AssertionError("large posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
+        }
+    }
+
+    private static void verifyLargeFilterByVariableDistanceBeforePosttest() {
+        List<SimplePoint> points = axisPoints(40);
+        double[] radiiSquared = new double[points.size()];
+        for (int index = 0; index < radiiSquared.length; index++) {
+            radiiSquared[index] = index <= 5 ? 25.0 : 1.0;
+        }
+        List<Integer> posttested = new ArrayList<>();
+
+        List<SimplePoint> actual = TargetingConditionsBatch.filterByVariableDistanceAndPosttest(
+            points,
+            EntityPacking.packPositions(points, point -> point.x, point -> point.y, point -> point.z),
+            0.0,
+            0.0,
+            0.0,
+            radiiSquared,
+            point -> {
+                posttested.add(point.id);
+                return point.id != 3;
+            }
+        );
+
+        List<SimplePoint> expected = List.of(points.get(0), points.get(1), points.get(2), points.get(4), points.get(5));
+        if (!expected.equals(actual)) {
+            throw new AssertionError("large variable-distance posttest mismatch, expected " + expected + " but got " + actual);
+        }
+
+        List<Integer> expectedPosttested = List.of(0, 1, 2, 3, 4, 5);
+        if (!expectedPosttested.equals(posttested)) {
+            throw new AssertionError("large variable-distance posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
         }
     }
 
