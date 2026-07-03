@@ -163,11 +163,9 @@ public final class BlockDistanceSearch {
         }
 
         int[] positions = packPositions(values, positionGetter);
-        int[] matchingIndices = NativeBatching.shouldUseNativeEntityBatch(values.size())
-            ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions)
-            : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions);
-
-        return matchingIndices.length;
+        return NativeBatching.shouldUseNativeEntityBatch(values.size())
+            ? NativeBridge.countWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions)
+            : JavaComputeKernels.countWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions);
     }
 
     public static <T> BlockPos findNearestPositionByDistance(

@@ -4,8 +4,8 @@ use jni::JNIEnv;
 
 use crate::{
     kernel::compute_squared_distances, kernel::compute_squared_distances_f64,
-    kernel::filter_intersecting_aabb_f64, kernel::filter_within_aabb_f64,
-    kernel::filter_within_radii_f64, kernel::filter_within_radius,
+    kernel::count_within_radius, kernel::filter_intersecting_aabb_f64,
+    kernel::filter_within_aabb_f64, kernel::filter_within_radii_f64, kernel::filter_within_radius,
     kernel::filter_within_radius_f64, kernel::filter_within_radius_f64_exclusive,
     kernel::find_nearest_block_center_index, kernel::find_nearest_block_corner_index,
     kernel::find_nearest_index_f64, kernel::find_nearest_index_f64_exclusive,
@@ -112,6 +112,19 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinRadiu
         positions,
         output,
     )
+}
+
+#[no_mangle]
+pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_countWithinRadiusNative(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    origin_x: jint,
+    origin_y: jint,
+    origin_z: jint,
+    radius_squared: jlong,
+    positions: JIntArray<'_>,
+) -> jint {
+    count_within_radius_jni(env, origin_x, origin_y, origin_z, radius_squared, positions)
 }
 
 #[no_mangle]
@@ -570,6 +583,39 @@ fn filter_within_radius_jni(
     }
 
     count as jint
+}
+
+fn count_within_radius_jni(
+    env: JNIEnv<'_>,
+    origin_x: jint,
+    origin_y: jint,
+    origin_z: jint,
+    radius_squared: jlong,
+    positions: JIntArray<'_>,
+) -> jint {
+    let positions_len = match env.get_array_length(&positions) {
+        Ok(value) => value as usize,
+        Err(_) => return NativeStatus::Jni.code(),
+    };
+
+    let mut positions_buffer = vec![0; positions_len];
+    if env
+        .get_int_array_region(&positions, 0, &mut positions_buffer)
+        .is_err()
+    {
+        return NativeStatus::Jni.code();
+    }
+
+    match count_within_radius(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        &positions_buffer,
+    ) {
+        Ok(value) => value as jint,
+        Err(error) => native_count_error_code(error.into()),
+    }
 }
 
 fn filter_within_radius_double_jni(

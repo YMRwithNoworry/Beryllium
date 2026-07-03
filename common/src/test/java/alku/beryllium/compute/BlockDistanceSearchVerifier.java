@@ -225,6 +225,30 @@ public final class BlockDistanceSearchVerifier {
         assertEquals(3, (int) count, "large inclusive radius count");
     }
 
+    public static void verifyCountWithinInclusiveBlockDistanceUsesOnlyPositionGetter() {
+        List<SimpleBlock> blocks = new ArrayList<>();
+        for (int index = 0; index < 40; index++) {
+            blocks.add(new SimpleBlock(index, new BlockPos(100 + index, 0, 0)));
+        }
+        blocks.set(33, new SimpleBlock(33, new BlockPos(2, 0, 0)));
+        blocks.set(34, new SimpleBlock(34, new BlockPos(-2, 0, 0)));
+        blocks.set(35, new SimpleBlock(35, new BlockPos(1, 0, 0)));
+
+        List<Integer> mapped = new ArrayList<>();
+        long count = BlockDistanceSearch.countByDistanceWithinInclusiveRadius(
+            blocks,
+            BlockPos.ZERO,
+            2,
+            block -> {
+                mapped.add(block.id);
+                return block.position;
+            }
+        );
+
+        assertEquals(3, (int) count, "large inclusive radius count with direct native count");
+        assertListEquals(range(0, 40), mapped, "large inclusive radius count mapping order");
+    }
+
     public static void verifyFindFirstWithinInclusiveBlockDistanceFiltersBeforePredicate() {
         List<SimpleBlock> blocks = new ArrayList<>();
         blocks.add(new SimpleBlock(0, new BlockPos(3, 0, 0)));
@@ -297,6 +321,14 @@ public final class BlockDistanceSearchVerifier {
             ids.add(block.id);
         }
         return ids;
+    }
+
+    private static List<Integer> range(int startInclusive, int endExclusive) {
+        List<Integer> values = new ArrayList<>(endExclusive - startInclusive);
+        for (int value = startInclusive; value < endExclusive; value++) {
+            values.add(value);
+        }
+        return values;
     }
 
     private static void assertEquals(BlockPos expected, BlockPos actual, String label) {

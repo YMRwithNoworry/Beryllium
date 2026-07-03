@@ -724,6 +724,42 @@ pub fn filter_within_radius(
     Ok(count)
 }
 
+/// Counts packed x/y/z triples within an inclusive squared radius.
+pub fn count_within_radius(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    radius_squared: i64,
+    positions: &[i32],
+) -> Result<usize, NativeError> {
+    if radius_squared < 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    if !positions.len().is_multiple_of(3) {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if position_count >= PARALLEL_THRESHOLD {
+        return Ok(positions
+            .par_chunks_exact(3)
+            .filter(|position| {
+                squared_distance_at_slice(origin_x, origin_y, origin_z, position) <= radius_squared
+            })
+            .count());
+    }
+
+    let mut count = 0;
+    for index in 0..position_count {
+        if squared_distance_at(origin_x, origin_y, origin_z, positions, index) <= radius_squared {
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
 /// Sorts packed x/y/z triples by squared distance and writes the index order.
 pub fn sort_by_distance(
     origin_x: i32,
@@ -1569,6 +1605,23 @@ mod tests {
         let count = filter_within_radius(0, 0, 0, 1024, &positions, &mut output).unwrap();
         assert_eq!(count, 33);
         assert_eq!(&output[..count], &(4967..5000).collect::<Vec<_>>()[..]);
+    }
+
+    #[test]
+    fn count_within_radius_should_match_reference_count() {
+        let positions = [0, 64, 0, 3, 68, 4, -1, 63, -2];
+        let count = count_within_radius(0, 64, 0, 40, &positions).unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn count_within_radius_should_match_parallel_reference_count() {
+        let positions: Vec<i32> = (0..5000)
+            .flat_map(|index| [(4999 - index) as i32, 0, 0])
+            .collect();
+
+        let count = count_within_radius(0, 0, 0, 1024, &positions).unwrap();
+        assert_eq!(count, 33);
     }
 
     #[test]

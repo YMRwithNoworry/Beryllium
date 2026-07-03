@@ -283,6 +283,22 @@ public final class JavaComputeKernels {
         return Arrays.copyOf(matches, count);
     }
 
+    public static int countWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {
+        validatePositions(positions);
+        if (radiusSquared < 0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+
+        int count = 0;
+        for (int index = 0; index < positions.length / 3; index++) {
+            if (squaredDistanceAt(originX, originY, originZ, positions, index) <= radiusSquared) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     public static int[] sortByDistance(int originX, int originY, int originZ, int[] positions) {
         validatePositions(positions);
 
