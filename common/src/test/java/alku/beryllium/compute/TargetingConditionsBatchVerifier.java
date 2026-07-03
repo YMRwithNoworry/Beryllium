@@ -44,6 +44,8 @@ public final class TargetingConditionsBatchVerifier {
         if (!expectedPosttested.equals(posttested)) {
             throw new AssertionError("posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
         }
+
+        verifyLargeFilterByConstantDistanceBeforePosttest();
     }
 
     public static void verifyFilterByVariableDistanceBeforePosttest() {
@@ -275,10 +277,47 @@ public final class TargetingConditionsBatchVerifier {
         }
     }
 
+    private static void verifyLargeFilterByConstantDistanceBeforePosttest() {
+        List<SimplePoint> points = axisPoints(40);
+        List<Integer> posttested = new ArrayList<>();
+
+        List<SimplePoint> actual = TargetingConditionsBatch.filterByConstantDistanceAndPosttest(
+            points,
+            EntityPacking.packPositions(points, point -> point.x, point -> point.y, point -> point.z),
+            0.0,
+            0.0,
+            0.0,
+            25.0,
+            point -> {
+                posttested.add(point.id);
+                return point.id != 3;
+            }
+        );
+
+        List<SimplePoint> expected = List.of(points.get(0), points.get(1), points.get(2), points.get(4), points.get(5));
+        if (!expected.equals(actual)) {
+            throw new AssertionError("large distance-filtered posttest mismatch, expected " + expected + " but got " + actual);
+        }
+
+        List<Integer> expectedPosttested = List.of(0, 1, 2, 3, 4, 5);
+        if (!expectedPosttested.equals(posttested)) {
+            throw new AssertionError("large posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
+        }
+    }
+
     private static List<SimplePoint> sizedPoints(int size) {
         List<SimplePoint> points = new ArrayList<>(size);
         for (int index = 0; index < size; index++) {
             points.add(new SimplePoint(index, index, index + 0.25, index + 0.5));
+        }
+
+        return points;
+    }
+
+    private static List<SimplePoint> axisPoints(int size) {
+        List<SimplePoint> points = new ArrayList<>(size);
+        for (int index = 0; index < size; index++) {
+            points.add(new SimplePoint(index, index, 0.0, 0.0));
         }
 
         return points;

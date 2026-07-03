@@ -200,13 +200,14 @@ public final class TargetingConditionsBatch {
         double maxDistanceSquared,
         Predicate<? super T> posttest
     ) {
-        int[] matches = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
-            ? NativeBridge.filterWithinRadius(originX, originY, originZ, maxDistanceSquared, positions)
-            : JavaComputeKernels.filterWithinRadius(originX, originY, originZ, maxDistanceSquared, positions);
+        int[] matches = new int[filteredCandidates.size()];
+        int matchCount = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+            ? NativeBridge.filterWithinRadius(originX, originY, originZ, maxDistanceSquared, positions, matches)
+            : JavaComputeKernels.filterWithinRadius(originX, originY, originZ, maxDistanceSquared, positions, matches);
 
-        List<T> result = new ArrayList<>(matches.length);
-        for (int index : matches) {
-            T candidate = filteredCandidates.get(index);
+        List<T> result = new ArrayList<>(matchCount);
+        for (int cursor = 0; cursor < matchCount; cursor++) {
+            T candidate = filteredCandidates.get(matches[cursor]);
             if (posttest.test(candidate)) {
                 result.add(candidate);
             }
