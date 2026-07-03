@@ -779,28 +779,51 @@ pub fn sort_by_block_distance(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    let mut indices: Vec<i32> = (0..position_count as i32).collect();
-    if position_count >= PARALLEL_THRESHOLD {
-        indices.par_sort_by(|left, right| {
-            compare_distance_order_f64(
-                *left,
-                block_corner_distance_at(origin_x, origin_y, origin_z, positions, *left as usize),
-                *right,
-                block_corner_distance_at(origin_x, origin_y, origin_z, positions, *right as usize),
-            )
+    let mut indexed_distances: Vec<(i32, f64)> = if position_count >= PARALLEL_THRESHOLD {
+        (0..position_count as i32)
+            .into_par_iter()
+            .map(|index| {
+                (
+                    index,
+                    block_corner_distance_at(
+                        origin_x,
+                        origin_y,
+                        origin_z,
+                        positions,
+                        index as usize,
+                    ),
+                )
+            })
+            .collect()
+    } else {
+        (0..position_count as i32)
+            .map(|index| {
+                (
+                    index,
+                    block_corner_distance_at(
+                        origin_x,
+                        origin_y,
+                        origin_z,
+                        positions,
+                        index as usize,
+                    ),
+                )
+            })
+            .collect()
+    };
+
+    if indexed_distances.len() >= PARALLEL_THRESHOLD {
+        indexed_distances.par_sort_by(|left, right| {
+            compare_distance_order_f64(left.0, left.1, right.0, right.1)
         });
     } else {
-        indices.sort_by(|left, right| {
-            compare_distance_order_f64(
-                *left,
-                block_corner_distance_at(origin_x, origin_y, origin_z, positions, *left as usize),
-                *right,
-                block_corner_distance_at(origin_x, origin_y, origin_z, positions, *right as usize),
-            )
-        });
+        indexed_distances
+            .sort_by(|left, right| compare_distance_order_f64(left.0, left.1, right.0, right.1));
     }
 
-    output.copy_from_slice(&indices);
+    for (output_index, (index, _distance)) in indexed_distances.iter().enumerate() {
+        output[output_index] = *index;
+    }
     Ok(())
 }
 
@@ -821,28 +844,51 @@ pub fn sort_by_distance_f64(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    let mut indices: Vec<i32> = (0..position_count as i32).collect();
-    if position_count >= PARALLEL_THRESHOLD {
-        indices.par_sort_by(|left, right| {
-            compare_distance_order_f64(
-                *left,
-                squared_distance_at_f64(origin_x, origin_y, origin_z, positions, *left as usize),
-                *right,
-                squared_distance_at_f64(origin_x, origin_y, origin_z, positions, *right as usize),
-            )
+    let mut indexed_distances: Vec<(i32, f64)> = if position_count >= PARALLEL_THRESHOLD {
+        (0..position_count as i32)
+            .into_par_iter()
+            .map(|index| {
+                (
+                    index,
+                    squared_distance_at_f64(
+                        origin_x,
+                        origin_y,
+                        origin_z,
+                        positions,
+                        index as usize,
+                    ),
+                )
+            })
+            .collect()
+    } else {
+        (0..position_count as i32)
+            .map(|index| {
+                (
+                    index,
+                    squared_distance_at_f64(
+                        origin_x,
+                        origin_y,
+                        origin_z,
+                        positions,
+                        index as usize,
+                    ),
+                )
+            })
+            .collect()
+    };
+
+    if indexed_distances.len() >= PARALLEL_THRESHOLD {
+        indexed_distances.par_sort_by(|left, right| {
+            compare_distance_order_f64(left.0, left.1, right.0, right.1)
         });
     } else {
-        indices.sort_by(|left, right| {
-            compare_distance_order_f64(
-                *left,
-                squared_distance_at_f64(origin_x, origin_y, origin_z, positions, *left as usize),
-                *right,
-                squared_distance_at_f64(origin_x, origin_y, origin_z, positions, *right as usize),
-            )
-        });
+        indexed_distances
+            .sort_by(|left, right| compare_distance_order_f64(left.0, left.1, right.0, right.1));
     }
 
-    output.copy_from_slice(&indices);
+    for (output_index, (index, _distance)) in indexed_distances.iter().enumerate() {
+        output[output_index] = *index;
+    }
     Ok(())
 }
 
