@@ -163,16 +163,34 @@ public final class JavaComputeKernels {
             throw new IllegalArgumentException("radiusSquared must be non-negative");
         }
 
-        int[] matches = new int[positions.length / 3];
+        int[] result = new int[positions.length / 3];
+        int count = filterWithinRadius(originX, originY, originZ, radiusSquared, positions, result);
+        return Arrays.copyOf(result, count);
+    }
+
+    public static int filterWithinRadius(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        validatePositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+        validateOutputCapacity(positions.length / 3, output);
+
         int count = 0;
-        for (int index = 0; index < matches.length; index++) {
+        for (int index = 0; index < positions.length / 3; index++) {
             if (squaredDistanceAt(originX, originY, originZ, positions, index) <= radiusSquared) {
-                matches[count] = index;
+                output[count] = index;
                 count++;
             }
         }
 
-        return Arrays.copyOf(matches, count);
+        return count;
     }
 
     public static int[] filterWithinRadiusExclusive(double originX, double originY, double originZ, double radiusSquared, double[] positions) {
@@ -181,16 +199,34 @@ public final class JavaComputeKernels {
             throw new IllegalArgumentException("radiusSquared must be non-negative");
         }
 
-        int[] matches = new int[positions.length / 3];
+        int[] result = new int[positions.length / 3];
+        int count = filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, result);
+        return Arrays.copyOf(result, count);
+    }
+
+    public static int filterWithinRadiusExclusive(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        validatePositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+        validateOutputCapacity(positions.length / 3, output);
+
         int count = 0;
-        for (int index = 0; index < matches.length; index++) {
+        for (int index = 0; index < positions.length / 3; index++) {
             if (squaredDistanceAt(originX, originY, originZ, positions, index) < radiusSquared) {
-                matches[count] = index;
+                output[count] = index;
                 count++;
             }
         }
 
-        return Arrays.copyOf(matches, count);
+        return count;
     }
 
     public static int[] sortWithinRadiusExclusive(double originX, double originY, double originZ, double radiusSquared, double[] positions) {

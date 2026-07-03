@@ -96,12 +96,13 @@ public final class EntityDistanceFilter {
         }
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-        int[] matchIndices = includeBoundary
-            ? NativeBridge.filterWithinRadius(originX, originY, originZ, radiusSquared, positions)
-            : NativeBridge.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
-        List<T> matches = new ArrayList<>(matchIndices.length);
-        for (int index : matchIndices) {
-            matches.add(values.get(index));
+        int[] matchIndices = new int[values.size()];
+        int matchCount = includeBoundary
+            ? NativeBridge.filterWithinRadius(originX, originY, originZ, radiusSquared, positions, matchIndices)
+            : NativeBridge.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, matchIndices);
+        List<T> matches = new ArrayList<>(matchCount);
+        for (int cursor = 0; cursor < matchCount; cursor++) {
+            matches.add(values.get(matchIndices[cursor]));
         }
         return matches;
     }

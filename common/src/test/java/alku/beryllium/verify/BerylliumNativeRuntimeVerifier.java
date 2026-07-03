@@ -193,18 +193,32 @@ public final class BerylliumNativeRuntimeVerifier {
         });
         assertArrayEquals(new int[] {0, 2}, intMatches, "native int radius filter");
 
-        int[] doubleMatches = NativeBridge.filterWithinRadius(0.0, 64.0, 0.0, 40.0, new double[] {
+        double[] doublePositions = {
             0.0, 64.0, 0.0,
             3.0, 68.0, 4.0,
             -1.0, 63.0, -2.0
-        });
+        };
+        int[] doubleMatches = NativeBridge.filterWithinRadius(0.0, 64.0, 0.0, 40.0, doublePositions);
         assertArrayEquals(new int[] {0, 2}, doubleMatches, "native double radius filter");
 
-        int[] exclusiveMatches = NativeBridge.filterWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, new double[] {
+        int[] doubleOutput = new int[3];
+        Arrays.fill(doubleOutput, -1);
+        int doubleCount = NativeBridge.filterWithinRadius(0.0, 64.0, 0.0, 40.0, doublePositions, doubleOutput);
+        assertEquals(2, doubleCount, "native double radius count");
+        assertArrayEquals(new int[] {0, 2, -1}, doubleOutput, "native double radius output prefix");
+
+        double[] exclusivePositions = {
             2.0, 0.0, 0.0,
             1.0, 0.0, 0.0
-        });
+        };
+        int[] exclusiveMatches = NativeBridge.filterWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, exclusivePositions);
         assertArrayEquals(new int[] {1}, exclusiveMatches, "native exclusive double radius filter");
+
+        int[] exclusiveOutput = new int[2];
+        Arrays.fill(exclusiveOutput, -1);
+        int exclusiveCount = NativeBridge.filterWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, exclusivePositions, exclusiveOutput);
+        assertEquals(1, exclusiveCount, "native exclusive double radius count");
+        assertArrayEquals(new int[] {1, -1}, exclusiveOutput, "native exclusive double radius output prefix");
 
         int[] sortedExclusiveMatches = NativeBridge.sortWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, new double[] {
             2.0, 0.0, 0.0,
