@@ -35,11 +35,11 @@ public final class NativeBridge {
     public static long[] computeSquaredDistances(int originX, int originY, int originZ, int[] positions) {
         JavaComputeKernels.validatePositions(positions);
 
-        long[] output = new long[positions.length / 3];
         if (!isLoaded()) {
             return JavaComputeKernels.squaredDistances(originX, originY, originZ, positions);
         }
 
+        long[] output = new long[positions.length / 3];
         NativeStatus nativeStatus = NativeStatus.fromCode(computeSquaredDistancesNative(
             originX,
             originY,
@@ -57,11 +57,11 @@ public final class NativeBridge {
     public static double[] computeSquaredDistances(double originX, double originY, double originZ, double[] positions) {
         JavaComputeKernels.validatePositions(positions);
 
-        double[] output = new double[positions.length / 3];
         if (!isLoaded()) {
             return JavaComputeKernels.squaredDistances(originX, originY, originZ, positions);
         }
 
+        double[] output = new double[positions.length / 3];
         NativeStatus nativeStatus = NativeStatus.fromCode(computeSquaredDistancesDoubleNative(
             originX,
             originY,
@@ -99,11 +99,11 @@ public final class NativeBridge {
         JavaComputeKernels.validatePositions(positions);
         JavaComputeKernels.validateCharges(positions, charges);
 
-        double[] output = new double[1];
         if (!isLoaded()) {
             return JavaComputeKernels.potentialEnergyChange(originX, originY, originZ, positions, charges, chargeMultiplier);
         }
 
+        double[] output = new double[1];
         NativeStatus nativeStatus = NativeStatus.fromCode(computePotentialEnergyChangeNative(
             originX,
             originY,
@@ -229,11 +229,11 @@ public final class NativeBridge {
             throw new IllegalArgumentException("radiusSquared must be non-negative");
         }
 
-        int[] output = new int[positions.length / 3];
         if (!isLoaded()) {
             return JavaComputeKernels.filterWithinRadius(originX, originY, originZ, radiusSquared, positions);
         }
 
+        int[] output = new int[positions.length / 3];
         int nativeCount = filterWithinRadiusDoubleNative(
             originX,
             originY,
@@ -255,11 +255,11 @@ public final class NativeBridge {
             throw new IllegalArgumentException("radiusSquared must be non-negative");
         }
 
-        int[] output = new int[positions.length / 3];
         if (!isLoaded()) {
             return JavaComputeKernels.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
         }
 
+        int[] output = new int[positions.length / 3];
         int nativeCount = filterWithinRadiusExclusiveDoubleNative(
             originX,
             originY,
@@ -281,11 +281,11 @@ public final class NativeBridge {
             throw new IllegalArgumentException("radiusSquared must be non-negative");
         }
 
-        int[] output = new int[positions.length / 3];
         if (!isLoaded()) {
             return JavaComputeKernels.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
         }
 
+        int[] output = new int[positions.length / 3];
         int nativeCount = sortWithinRadiusExclusiveDoubleNative(
             originX,
             originY,
@@ -305,11 +305,11 @@ public final class NativeBridge {
         JavaComputeKernels.validatePositions(positions);
         JavaComputeKernels.validateRadii(positions, radiiSquared);
 
-        int[] output = new int[positions.length / 3];
         if (!isLoaded()) {
             return JavaComputeKernels.filterWithinRadii(originX, originY, originZ, positions, radiiSquared);
         }
 
+        int[] output = new int[positions.length / 3];
         int nativeCount = filterWithinRadiiDoubleNative(
             originX,
             originY,
@@ -331,11 +331,11 @@ public final class NativeBridge {
             throw new IllegalArgumentException("radiusSquared must be non-negative");
         }
 
-        int[] output = new int[positions.length / 3];
         if (!isLoaded()) {
             return JavaComputeKernels.filterWithinRadius(originX, originY, originZ, radiusSquared, positions);
         }
 
+        int[] output = new int[positions.length / 3];
         int nativeCount = filterWithinRadiusNative(
             originX,
             originY,
@@ -362,11 +362,11 @@ public final class NativeBridge {
     ) {
         JavaComputeKernels.validatePositions(positions);
 
-        int[] output = new int[positions.length / 3];
         if (!isLoaded()) {
             return JavaComputeKernels.filterWithinAabb(minX, minY, minZ, maxX, maxY, maxZ, positions);
         }
 
+        int[] output = new int[positions.length / 3];
         int nativeCount = filterWithinAabbDoubleNative(
             minX,
             minY,
@@ -395,7 +395,6 @@ public final class NativeBridge {
     ) {
         JavaComputeKernels.validateBoxes(boxes);
 
-        int[] output = new int[boxes.length / 6];
         if (!isLoaded()) {
             return JavaComputeKernels.filterIntersectingAabb(
                 queryMinX,
@@ -408,6 +407,7 @@ public final class NativeBridge {
             );
         }
 
+        int[] output = new int[boxes.length / 6];
         int nativeCount = filterIntersectingAabbDoubleNative(
             queryMinX,
             queryMinY,
@@ -436,11 +436,11 @@ public final class NativeBridge {
     public static int[] sortByDistance(int originX, int originY, int originZ, int[] positions) {
         JavaComputeKernels.validatePositions(positions);
 
-        int[] output = new int[positions.length / 3];
         if (!isLoaded()) {
             return JavaComputeKernels.sortByDistance(originX, originY, originZ, positions);
         }
 
+        int[] output = new int[positions.length / 3];
         NativeStatus nativeStatus = NativeStatus.fromCode(sortByDistanceNative(
             originX,
             originY,
@@ -458,11 +458,11 @@ public final class NativeBridge {
     public static int[] sortByBlockDistance(int originX, int originY, int originZ, int[] positions) {
         JavaComputeKernels.validatePositions(positions);
 
-        int[] output = new int[positions.length / 3];
         if (!isLoaded()) {
             return JavaComputeKernels.sortByBlockDistance(originX, originY, originZ, positions);
         }
 
+        int[] output = new int[positions.length / 3];
         NativeStatus nativeStatus = NativeStatus.fromCode(sortByBlockDistanceNative(
             originX,
             originY,
@@ -480,11 +480,11 @@ public final class NativeBridge {
     public static int[] sortByDistance(double originX, double originY, double originZ, double[] positions) {
         JavaComputeKernels.validatePositions(positions);
 
-        int[] output = new int[positions.length / 3];
         if (!isLoaded()) {
             return JavaComputeKernels.sortByDistance(originX, originY, originZ, positions);
         }
 
+        int[] output = new int[positions.length / 3];
         NativeStatus nativeStatus = NativeStatus.fromCode(sortByDistanceDoubleNative(
             originX,
             originY,
