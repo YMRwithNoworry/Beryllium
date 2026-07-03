@@ -228,6 +228,76 @@ public final class EntityDistanceSortVerifier {
         assertListEquals(List.of(0, 1), postFiltered, "sorted entity distance tie post-filter order");
     }
 
+    public static void verifyFindFirstSortedWithinExclusiveDistanceEvaluatesPredicateBeforeRadius() {
+        List<SimplePoint> points = new ArrayList<>();
+        points.add(new SimplePoint(0, 1.0, 0.0, 0.0));
+        points.add(new SimplePoint(1, 2.0, 0.0, 0.0));
+        points.add(new SimplePoint(2, 12.0, 0.0, 0.0));
+        points.add(new SimplePoint(3, 13.0, 0.0, 0.0));
+        for (int index = 4; index < 40; index++) {
+            points.add(new SimplePoint(index, 20.0 + index, 0.0, 0.0));
+        }
+        List<Integer> beforeDistance = new ArrayList<>();
+        List<Integer> afterDistance = new ArrayList<>();
+
+        var match = EntityDistanceSort.findFirstSortedByDistanceWithinExclusiveDistanceAfterPredicate(
+            points,
+            0.0,
+            0.0,
+            0.0,
+            10.0,
+            point -> {
+                beforeDistance.add(point.id);
+                return point.id != 0;
+            },
+            point -> {
+                afterDistance.add(point.id);
+                return false;
+            },
+            point -> point.x,
+            point -> point.y,
+            point -> point.z
+        );
+
+        if (match.isPresent()) {
+            throw new AssertionError("expected no sorted-radius match but got " + match.get().id);
+        }
+        assertListEquals(range(0, 40), beforeDistance, "sorted entity distance before-radius predicate order");
+        assertListEquals(List.of(1), afterDistance, "sorted entity distance after-radius predicate order");
+    }
+
+    public static void verifyFindFirstSortedWithinExclusiveDistanceShortCircuitsAfterRadius() {
+        List<SimplePoint> points = descendingAxisPoints(40);
+        List<Integer> beforeDistance = new ArrayList<>();
+        List<Integer> afterDistance = new ArrayList<>();
+
+        SimplePoint match = EntityDistanceSort.findFirstSortedByDistanceWithinExclusiveDistanceAfterPredicate(
+                points,
+                0.0,
+                0.0,
+                0.0,
+                4.0,
+                point -> {
+                    beforeDistance.add(point.id);
+                    return true;
+                },
+                point -> {
+                    afterDistance.add(point.id);
+                    return point.id == 38;
+                },
+                point -> point.x,
+                point -> point.y,
+                point -> point.z
+            )
+            .orElseThrow(() -> new AssertionError("expected a sorted-radius match"));
+
+        if (match.id != 38) {
+            throw new AssertionError("sorted-radius entity distance find-first mismatch, expected 38 but got " + match.id);
+        }
+        assertListEquals(List.of(39, 38), beforeDistance, "sorted-radius entity distance before-radius short-circuit order");
+        assertListEquals(List.of(39, 38), afterDistance, "sorted-radius entity distance after-radius short-circuit order");
+    }
+
     private static List<SimplePoint> descendingAxisPoints(int count) {
         List<SimplePoint> points = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {

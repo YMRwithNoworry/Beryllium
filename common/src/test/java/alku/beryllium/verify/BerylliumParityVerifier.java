@@ -99,6 +99,8 @@ public final class BerylliumParityVerifier {
         EntityDistanceSortVerifier.verifyFindFirstWithinExclusiveDistanceAfterPredicatesSortedByDistanceTieOrder();
         EntityDistanceSortVerifier.verifyFindFirstSortedByDistanceShortCircuitsAfterSort();
         EntityDistanceSortVerifier.verifyFindFirstSortedByDistancePreservesTieOrder();
+        EntityDistanceSortVerifier.verifyFindFirstSortedWithinExclusiveDistanceEvaluatesPredicateBeforeRadius();
+        EntityDistanceSortVerifier.verifyFindFirstSortedWithinExclusiveDistanceShortCircuitsAfterRadius();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
         BlockDistanceSortVerifier.verifyFindFirstSortedByBlockDistancePostFilterOrder();

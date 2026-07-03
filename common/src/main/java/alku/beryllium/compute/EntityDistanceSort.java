@@ -234,6 +234,52 @@ public final class EntityDistanceSort {
         return Optional.empty();
     }
 
+    public static <T> Optional<T> findFirstSortedByDistanceWithinExclusiveDistanceAfterPredicate(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        double radius,
+        Predicate<? super T> beforeDistancePredicate,
+        Predicate<? super T> afterDistancePredicate,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter
+    ) {
+        if (radius < 0.0) {
+            throw new IllegalArgumentException("radius must be non-negative");
+        }
+        if (values.isEmpty()) {
+            return Optional.empty();
+        }
+
+        double radiusSquared = radius * radius;
+        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+            List<T> sortedValues = new ArrayList<>(values);
+            sortByDistance(sortedValues, originX, originY, originZ, xGetter, yGetter, zGetter);
+            for (T value : sortedValues) {
+                if (beforeDistancePredicate.test(value)
+                    && squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared
+                    && afterDistancePredicate.test(value)) {
+                    return Optional.of(value);
+                }
+            }
+            return Optional.empty();
+        }
+
+        double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
+        int[] order = NativeBridge.sortByDistance(originX, originY, originZ, positions);
+        for (int index : order) {
+            T value = values.get(index);
+            if (beforeDistancePredicate.test(value)
+                && squaredPackedDistance(originX, originY, originZ, positions, index) < radiusSquared
+                && afterDistancePredicate.test(value)) {
+                return Optional.of(value);
+            }
+        }
+        return Optional.empty();
+    }
+
     public static <T> List<T> filterWithinExclusiveDistanceSortedByDistance(
         List<? extends T> values,
         double originX,
@@ -307,6 +353,20 @@ public final class EntityDistanceSort {
         double dx = xGetter.get(value) - originX;
         double dy = yGetter.get(value) - originY;
         double dz = zGetter.get(value) - originZ;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static double squaredPackedDistance(
+        double originX,
+        double originY,
+        double originZ,
+        double[] positions,
+        int index
+    ) {
+        int offset = index * 3;
+        double dx = positions[offset] - originX;
+        double dy = positions[offset + 1] - originY;
+        double dz = positions[offset + 2] - originZ;
         return dx * dx + dy * dy + dz * dz;
     }
 }
