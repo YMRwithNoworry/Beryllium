@@ -263,13 +263,20 @@ public final class BerylliumNativeRuntimeVerifier {
     }
 
     private static void verifyNativeAabbIntersectionFilter() {
-        int[] matches = NativeBridge.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, new double[] {
+        double[] boxes = {
             0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
             1.0, 0.0, 0.0, 2.0, 1.0, 1.0,
             -1.0, -1.0, -1.0, 0.0, 0.0, 0.0,
             0.5, 0.5, 0.5, 1.5, 1.5, 1.5
-        });
+        };
+        int[] matches = NativeBridge.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, boxes);
         assertArrayEquals(new int[] {0, 3}, matches, "native AABB intersection filter");
+
+        int[] output = new int[boxes.length / 6];
+        Arrays.fill(output, -1);
+        int count = NativeBridge.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, boxes, output);
+        assertEquals(2, count, "native AABB intersection count");
+        assertArrayEquals(new int[] {0, 3, -1, -1}, output, "native AABB intersection output prefix");
     }
 
     private static void verifyNativePotentialEnergyChange() {

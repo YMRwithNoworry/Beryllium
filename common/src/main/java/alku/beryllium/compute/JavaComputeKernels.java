@@ -310,16 +310,42 @@ public final class JavaComputeKernels {
     ) {
         validateBoxes(boxes);
 
-        int[] matches = new int[boxes.length / 6];
+        int[] result = new int[boxes.length / 6];
+        int count = filterIntersectingAabb(
+            queryMinX,
+            queryMinY,
+            queryMinZ,
+            queryMaxX,
+            queryMaxY,
+            queryMaxZ,
+            boxes,
+            result
+        );
+        return Arrays.copyOf(result, count);
+    }
+
+    public static int filterIntersectingAabb(
+        double queryMinX,
+        double queryMinY,
+        double queryMinZ,
+        double queryMaxX,
+        double queryMaxY,
+        double queryMaxZ,
+        double[] boxes,
+        int[] output
+    ) {
+        validateBoxes(boxes);
+        validateOutputCapacity(boxes.length / 6, output);
+
         int count = 0;
-        for (int index = 0; index < matches.length; index++) {
+        for (int index = 0; index < boxes.length / 6; index++) {
             if (intersectsAabb(queryMinX, queryMinY, queryMinZ, queryMaxX, queryMaxY, queryMaxZ, boxes, index)) {
-                matches[count] = index;
+                output[count] = index;
                 count++;
             }
         }
 
-        return Arrays.copyOf(matches, count);
+        return count;
     }
 
     public static int[] filterWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {

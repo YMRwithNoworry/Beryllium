@@ -283,11 +283,19 @@ public final class BerylliumParityVerifier {
             0.5, 0.5, 0.5, 1.5, 1.5, 1.5
         };
         int[] edgeFiltered = NativeBridge.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, boxes);
+        int[] nativeEdgeOutput = new int[boxes.length / 6];
+        int nativeEdgeCount = NativeBridge.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, boxes, nativeEdgeOutput);
         assertArrayEquals(new int[] {0, 3}, edgeFiltered, "Native bridge AABB intersection edge semantics");
+        assertEquals(2, nativeEdgeCount, "Native bridge AABB intersection edge count");
+        assertArrayEquals(new int[] {0, 3}, Arrays.copyOf(nativeEdgeOutput, nativeEdgeCount), "Native bridge AABB intersection edge output prefix");
 
         double[] largeBoxes = descendingAxisBoxesDouble(5000);
         int[] filtered = NativeBridge.filterIntersectingAabb(0.25, -1.0, -1.0, 33.25, 2.0, 2.0, largeBoxes);
+        int[] nativeOutput = new int[largeBoxes.length / 6];
+        int nativeCount = NativeBridge.filterIntersectingAabb(0.25, -1.0, -1.0, 33.25, 2.0, 2.0, largeBoxes, nativeOutput);
         assertArrayEquals(range(4966, 5000), filtered, "Native bridge large AABB intersection filter");
+        assertEquals(34, nativeCount, "Native bridge large AABB intersection count");
+        assertArrayEquals(range(4966, 5000), Arrays.copyOf(nativeOutput, nativeCount), "Native bridge large AABB intersection output prefix");
     }
 
     private static void verifyNativeBridgePotentialEnergyChange() {
@@ -403,11 +411,19 @@ public final class BerylliumParityVerifier {
             0.5, 0.5, 0.5, 1.5, 1.5, 1.5
         };
         int[] edgeFiltered = JavaComputeKernels.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, boxes);
+        int[] javaEdgeOutput = new int[boxes.length / 6];
+        int javaEdgeCount = JavaComputeKernels.filterIntersectingAabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, boxes, javaEdgeOutput);
         assertArrayEquals(new int[] {0, 3}, edgeFiltered, "Java AABB intersection edge semantics");
+        assertEquals(2, javaEdgeCount, "Java AABB intersection edge count");
+        assertArrayEquals(new int[] {0, 3}, Arrays.copyOf(javaEdgeOutput, javaEdgeCount), "Java AABB intersection edge output prefix");
 
         double[] largeBoxes = descendingAxisBoxesDouble(5000);
         int[] filtered = JavaComputeKernels.filterIntersectingAabb(0.25, -1.0, -1.0, 33.25, 2.0, 2.0, largeBoxes);
+        int[] javaOutput = new int[largeBoxes.length / 6];
+        int javaCount = JavaComputeKernels.filterIntersectingAabb(0.25, -1.0, -1.0, 33.25, 2.0, 2.0, largeBoxes, javaOutput);
         assertArrayEquals(range(4966, 5000), filtered, "Java large AABB intersection filter");
+        assertEquals(34, javaCount, "Java large AABB intersection count");
+        assertArrayEquals(range(4966, 5000), Arrays.copyOf(javaOutput, javaCount), "Java large AABB intersection output prefix");
     }
 
     private static void verifyJavaNearestIndex() {

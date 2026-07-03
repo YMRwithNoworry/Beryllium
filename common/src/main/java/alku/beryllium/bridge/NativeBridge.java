@@ -500,6 +500,45 @@ public final class NativeBridge {
         }
 
         int[] output = new int[boxes.length / 6];
+        int count = filterIntersectingAabb(
+            queryMinX,
+            queryMinY,
+            queryMinZ,
+            queryMaxX,
+            queryMaxY,
+            queryMaxZ,
+            boxes,
+            output
+        );
+        return java.util.Arrays.copyOf(output, count);
+    }
+
+    public static int filterIntersectingAabb(
+        double queryMinX,
+        double queryMinY,
+        double queryMinZ,
+        double queryMaxX,
+        double queryMaxY,
+        double queryMaxZ,
+        double[] boxes,
+        int[] output
+    ) {
+        JavaComputeKernels.validateBoxes(boxes);
+        JavaComputeKernels.validateOutputCapacity(boxes.length / 6, output);
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.filterIntersectingAabb(
+                queryMinX,
+                queryMinY,
+                queryMinZ,
+                queryMaxX,
+                queryMaxY,
+                queryMaxZ,
+                boxes,
+                output
+            );
+        }
+
         int nativeCount = filterIntersectingAabbDoubleNative(
             queryMinX,
             queryMinY,
@@ -518,11 +557,12 @@ public final class NativeBridge {
                 queryMaxX,
                 queryMaxY,
                 queryMaxZ,
-                boxes
+                boxes,
+                output
             );
         }
 
-        return java.util.Arrays.copyOf(output, nativeCount);
+        return nativeCount;
     }
 
     public static int[] sortByDistance(int originX, int originY, int originZ, int[] positions) {

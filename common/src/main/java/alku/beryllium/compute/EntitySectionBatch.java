@@ -21,8 +21,11 @@ public final class EntitySectionBatch {
         AABB box,
         AbortableIterationConsumer<? super T> consumer
     ) {
-        int[] matches = intersectingEntityIndices(box, entities);
-        for (int index : matches) {
+        double[] boxes = EntityBoxPacking.packBoxes(entities);
+        int[] matches = new int[entities.size()];
+        int matchCount = NativeBridge.filterIntersectingAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, boxes, matches);
+        for (int matchIndex = 0; matchIndex < matchCount; matchIndex++) {
+            int index = matches[matchIndex];
             if (consumer.accept(entities.get(index)).shouldAbort()) {
                 return AbortableIterationConsumer.Continuation.ABORT;
             }
@@ -49,8 +52,11 @@ public final class EntitySectionBatch {
             return AbortableIterationConsumer.Continuation.CONTINUE;
         }
 
-        int[] matches = intersectingEntityIndices(box, entities);
-        for (int index : matches) {
+        double[] boxes = EntityBoxPacking.packBoxes(entities);
+        int[] matches = new int[entities.size()];
+        int matchCount = NativeBridge.filterIntersectingAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, boxes, matches);
+        for (int matchIndex = 0; matchIndex < matchCount; matchIndex++) {
+            int index = matches[matchIndex];
             if (consumer.accept(entities.get(index)).shouldAbort()) {
                 return AbortableIterationConsumer.Continuation.ABORT;
             }
