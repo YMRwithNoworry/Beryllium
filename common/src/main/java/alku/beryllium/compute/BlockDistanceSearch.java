@@ -72,13 +72,15 @@ public final class BlockDistanceSearch {
         }
 
         int[] positions = packPositions(values, positionGetter);
-        int[] matchingIndices = NativeBatching.shouldUseNativeEntityBatch(values.size())
-            ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions)
-            : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions);
+        int[] matchingIndices = new int[values.size()];
+        int matchCount = NativeBatching.shouldUseNativeEntityBatch(values.size())
+            ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices)
+            : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices);
 
         T nearest = null;
         double nearestDistance = 0.0;
-        for (int index : matchingIndices) {
+        for (int cursor = 0; cursor < matchCount; cursor++) {
+            int index = matchingIndices[cursor];
             T value = values.get(index);
             if (!afterDistancePredicate.test(value)) {
                 continue;
@@ -111,16 +113,18 @@ public final class BlockDistanceSearch {
         }
 
         int[] positions = packPositions(values, positionGetter);
-        int[] matchingIndices = NativeBatching.shouldUseNativeEntityBatch(values.size())
-            ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions)
-            : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions);
+        int[] matchingIndices = new int[values.size()];
+        int matchCount = NativeBatching.shouldUseNativeEntityBatch(values.size())
+            ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices)
+            : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices);
 
-        if (matchingIndices.length == 0) {
+        if (matchCount == 0) {
             return List.of();
         }
 
-        List<T> result = new ArrayList<>(matchingIndices.length);
-        for (int index : matchingIndices) {
+        List<T> result = new ArrayList<>(matchCount);
+        for (int cursor = 0; cursor < matchCount; cursor++) {
+            int index = matchingIndices[cursor];
             T value = values.get(index);
             if (afterDistancePredicate.test(value)) {
                 result.add(value);
@@ -147,11 +151,13 @@ public final class BlockDistanceSearch {
         }
 
         int[] positions = packPositions(values, positionGetter);
-        int[] matchingIndices = NativeBatching.shouldUseNativeEntityBatch(values.size())
-            ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions)
-            : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions);
+        int[] matchingIndices = new int[values.size()];
+        int matchCount = NativeBatching.shouldUseNativeEntityBatch(values.size())
+            ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices)
+            : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices);
 
-        for (int index : matchingIndices) {
+        for (int cursor = 0; cursor < matchCount; cursor++) {
+            int index = matchingIndices[cursor];
             T value = values.get(index);
             if (afterDistancePredicate.test(value)) {
                 return value;

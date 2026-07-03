@@ -193,6 +193,16 @@ public final class BerylliumNativeRuntimeVerifier {
         });
         assertArrayEquals(new int[] {0, 2}, intMatches, "native int radius filter");
 
+        int[] intOutput = new int[3];
+        Arrays.fill(intOutput, -1);
+        int intCount = NativeBridge.filterWithinRadius(0, 64, 0, 40, new int[] {
+            0, 64, 0,
+            3, 68, 4,
+            -1, 63, -2
+        }, intOutput);
+        assertEquals(2, intCount, "native int radius count");
+        assertArrayEquals(new int[] {0, 2, -1}, intOutput, "native int radius output prefix");
+
         double[] doublePositions = {
             0.0, 64.0, 0.0,
             3.0, 68.0, 4.0,

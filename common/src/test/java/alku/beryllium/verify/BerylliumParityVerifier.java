@@ -228,8 +228,12 @@ public final class BerylliumParityVerifier {
     private static void verifyNativeBridgeFilterAndSort() {
         int[] positions = {0, 64, 0, 3, 68, 4, -1, 63, -2};
         int[] filtered = NativeBridge.filterWithinRadius(0, 64, 0, 40, positions);
+        int[] output = new int[positions.length / 3];
+        int count = NativeBridge.filterWithinRadius(0, 64, 0, 40, positions, output);
         int[] sorted = NativeBridge.sortByDistance(0, 64, 0, positions);
         assertArrayEquals(new int[] {0, 2}, filtered, "Native bridge radius filter");
+        assertEquals(2, count, "Native bridge radius filter count");
+        assertArrayEquals(new int[] {0, 2}, Arrays.copyOf(output, count), "Native bridge radius filter output prefix");
         assertArrayEquals(new int[] {0, 2, 1}, sorted, "Native bridge distance sort");
     }
 
@@ -326,9 +330,13 @@ public final class BerylliumParityVerifier {
     private static void verifyNativeBridgeLargeFilterAndSort() {
         int[] positions = descendingAxisPositions(5000);
         int[] filtered = NativeBridge.filterWithinRadius(0, 0, 0, 1024, positions);
+        int[] output = new int[positions.length / 3];
+        int count = NativeBridge.filterWithinRadius(0, 0, 0, 1024, positions, output);
         int[] sorted = NativeBridge.sortByDistance(0, 0, 0, positions);
 
         assertArrayEquals(range(4967, 5000), filtered, "Native bridge large radius filter");
+        assertEquals(33, count, "Native bridge large radius filter count");
+        assertArrayEquals(range(4967, 5000), Arrays.copyOf(output, count), "Native bridge large radius filter output prefix");
         assertArrayEquals(descendingRange(4999, 0), sorted, "Native bridge large distance sort");
     }
 
@@ -348,8 +356,12 @@ public final class BerylliumParityVerifier {
     private static void verifyJavaFilterAndSort() {
         int[] positions = {0, 64, 0, 3, 68, 4, -1, 63, -2};
         int[] filtered = JavaComputeKernels.filterWithinRadius(0, 64, 0, 40, positions);
+        int[] output = new int[positions.length / 3];
+        int count = JavaComputeKernels.filterWithinRadius(0, 64, 0, 40, positions, output);
         int[] sorted = JavaComputeKernels.sortByDistance(0, 64, 0, positions);
         assertArrayEquals(new int[] {0, 2}, filtered, "Java radius filter");
+        assertEquals(2, count, "Java radius filter count");
+        assertArrayEquals(new int[] {0, 2}, Arrays.copyOf(output, count), "Java radius filter output prefix");
         assertArrayEquals(new int[] {0, 2, 1}, sorted, "Java distance sort");
     }
 
