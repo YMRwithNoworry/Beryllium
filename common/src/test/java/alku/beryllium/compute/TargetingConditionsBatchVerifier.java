@@ -150,6 +150,8 @@ public final class TargetingConditionsBatchVerifier {
         if (!expectedPosttested.equals(posttested)) {
             throw new AssertionError("separate-origin constant posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
         }
+
+        verifyLargeFindNearestAfterConstantDistanceUsesSeparateDistanceOrigin();
     }
 
     public static void verifyFindNearestAfterVariableDistanceUsesSeparateDistanceOrigin() {
@@ -336,6 +338,36 @@ public final class TargetingConditionsBatchVerifier {
         List<Integer> expectedPosttested = List.of(0, 1, 2, 3, 4, 5);
         if (!expectedPosttested.equals(posttested)) {
             throw new AssertionError("large variable-distance posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
+        }
+    }
+
+    private static void verifyLargeFindNearestAfterConstantDistanceUsesSeparateDistanceOrigin() {
+        List<SimplePoint> points = axisPoints(40);
+        List<Integer> posttested = new ArrayList<>();
+
+        SimplePoint actual = NearestEntitySearch.findNearestAfterConstantDistanceAndPosttest(
+            points,
+            EntityPacking.packPositions(points, point -> point.x, point -> point.y, point -> point.z),
+            0.0,
+            0.0,
+            0.0,
+            100.0,
+            0.0,
+            0.0,
+            25.0,
+            point -> {
+                posttested.add(point.id);
+                return point.id != 3;
+            }
+        );
+
+        if (!points.get(5).equals(actual)) {
+            throw new AssertionError("large separate-origin constant nearest mismatch, expected " + points.get(5) + " but got " + actual);
+        }
+
+        List<Integer> expectedPosttested = List.of(0, 1, 2, 3, 4, 5);
+        if (!expectedPosttested.equals(posttested)) {
+            throw new AssertionError("large separate-origin constant posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
         }
     }
 

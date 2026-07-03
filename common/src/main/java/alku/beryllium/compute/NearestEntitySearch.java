@@ -316,11 +316,12 @@ public final class NearestEntitySearch {
         double maxDistanceSquared,
         Predicate<? super T> posttest
     ) {
-        int[] matches = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
-            ? NativeBridge.filterWithinRadius(distanceOriginX, distanceOriginY, distanceOriginZ, maxDistanceSquared, positions)
-            : JavaComputeKernels.filterWithinRadius(distanceOriginX, distanceOriginY, distanceOriginZ, maxDistanceSquared, positions);
+        int[] matches = new int[filteredCandidates.size()];
+        int matchCount = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+            ? NativeBridge.filterWithinRadius(distanceOriginX, distanceOriginY, distanceOriginZ, maxDistanceSquared, positions, matches)
+            : JavaComputeKernels.filterWithinRadius(distanceOriginX, distanceOriginY, distanceOriginZ, maxDistanceSquared, positions, matches);
 
-        return findNearestFromMatchingIndices(filteredCandidates, positions, nearestOriginX, nearestOriginY, nearestOriginZ, matches, posttest);
+        return findNearestFromMatchingIndices(filteredCandidates, positions, nearestOriginX, nearestOriginY, nearestOriginZ, matches, matchCount, posttest);
     }
 
     static <T> T findNearestAfterVariableDistanceAndPosttest(
@@ -437,9 +438,23 @@ public final class NearestEntitySearch {
         int[] matches,
         Predicate<? super T> posttest
     ) {
+        return findNearestFromMatchingIndices(filteredCandidates, positions, originX, originY, originZ, matches, matches.length, posttest);
+    }
+
+    private static <T> T findNearestFromMatchingIndices(
+        List<T> filteredCandidates,
+        double[] positions,
+        double originX,
+        double originY,
+        double originZ,
+        int[] matches,
+        int matchCount,
+        Predicate<? super T> posttest
+    ) {
         T nearest = null;
         double nearestDistance = -1.0;
-        for (int index : matches) {
+        for (int cursor = 0; cursor < matchCount; cursor++) {
+            int index = matches[cursor];
             T candidate = filteredCandidates.get(index);
             if (!posttest.test(candidate)) {
                 continue;
