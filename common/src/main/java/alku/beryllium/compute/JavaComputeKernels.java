@@ -199,6 +199,25 @@ public final class JavaComputeKernels {
             throw new IllegalArgumentException("radiusSquared must be non-negative");
         }
 
+        int[] result = new int[positions.length / 3];
+        int count = sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, result);
+        return Arrays.copyOf(result, count);
+    }
+
+    public static int sortWithinRadiusExclusive(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        validatePositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+        validateOutputCapacity(positions.length / 3, output);
+
         Integer[] matches = new Integer[positions.length / 3];
         int count = 0;
         for (int index = 0; index < matches.length; index++) {
@@ -215,11 +234,10 @@ public final class JavaComputeKernels {
             return distanceComparison != 0 ? distanceComparison : Integer.compare(left, right);
         });
 
-        int[] result = new int[count];
         for (int index = 0; index < count; index++) {
-            result[index] = matches[index];
+            output[index] = matches[index];
         }
-        return result;
+        return count;
     }
 
     public static int[] filterWithinRadii(double originX, double originY, double originZ, double[] positions, double[] radiiSquared) {
@@ -417,6 +435,12 @@ public final class JavaComputeKernels {
         validatePositions(positions);
         if (charges == null || charges.length != positions.length / 3) {
             throw new IllegalArgumentException("charges must contain one value per position");
+        }
+    }
+
+    public static void validateOutputCapacity(int requiredLength, int[] output) {
+        if (output == null || output.length < requiredLength) {
+            throw new IllegalArgumentException("output must contain at least one slot per position");
         }
     }
 

@@ -213,6 +213,16 @@ public final class BerylliumNativeRuntimeVerifier {
         });
         assertArrayEquals(new int[] {1, 2}, sortedExclusiveMatches, "native sorted exclusive double radius filter");
 
+        int[] sortedExclusiveOutput = new int[3];
+        Arrays.fill(sortedExclusiveOutput, -1);
+        int sortedExclusiveCount = NativeBridge.sortWithinRadiusExclusive(0.0, 0.0, 0.0, 4.0, new double[] {
+            2.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0
+        }, sortedExclusiveOutput);
+        assertEquals(2, sortedExclusiveCount, "native sorted exclusive double radius count");
+        assertArrayEquals(new int[] {1, 2, -1}, sortedExclusiveOutput, "native sorted exclusive double radius output prefix");
+
         int[] variableMatches = NativeBridge.filterWithinRadii(0.0, 0.0, 0.0, new double[] {
             0.0, 8.0, 0.0,
             10.0, 0.0, 0.0,

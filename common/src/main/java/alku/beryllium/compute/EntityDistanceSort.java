@@ -80,10 +80,11 @@ public final class EntityDistanceSort {
         }
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-        int[] order = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
-        List<T> matches = new ArrayList<>(order.length);
-        for (int index : order) {
-            matches.add(values.get(index));
+        int[] order = new int[values.size()];
+        int orderCount = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, order);
+        List<T> matches = new ArrayList<>(orderCount);
+        for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
+            matches.add(values.get(order[orderIndex]));
         }
         return matches;
     }
@@ -124,8 +125,10 @@ public final class EntityDistanceSort {
         }
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-        int[] order = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
-        for (int index : order) {
+        int[] order = new int[values.size()];
+        int orderCount = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, order);
+        for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
+            int index = order[orderIndex];
             T value = values.get(index);
             if (postSortedPredicate.test(value)) {
                 return Optional.of(value);
@@ -177,9 +180,11 @@ public final class EntityDistanceSort {
         }
 
         double[] positions = EntityPacking.packPositions(beforeDistanceMatches, xGetter, yGetter, zGetter);
-        int[] order = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
+        int[] order = new int[beforeDistanceMatches.size()];
+        int orderCount = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, order);
         boolean[] withinRadius = new boolean[beforeDistanceMatches.size()];
-        for (int index : order) {
+        for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
+            int index = order[orderIndex];
             withinRadius[index] = true;
         }
 
@@ -190,7 +195,8 @@ public final class EntityDistanceSort {
             }
         }
 
-        for (int index : order) {
+        for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
+            int index = order[orderIndex];
             if (accepted[index]) {
                 return Optional.of(beforeDistanceMatches.get(index));
             }
@@ -312,9 +318,11 @@ public final class EntityDistanceSort {
         }
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-        int[] order = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
+        int[] order = new int[values.size()];
+        int orderCount = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, order);
         boolean[] withinRadius = new boolean[values.size()];
-        for (int index : order) {
+        for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
+            int index = order[orderIndex];
             withinRadius[index] = true;
         }
 
@@ -325,8 +333,9 @@ public final class EntityDistanceSort {
             }
         }
 
-        List<T> matches = new ArrayList<>(order.length);
-        for (int index : order) {
+        List<T> matches = new ArrayList<>(orderCount);
+        for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
+            int index = order[orderIndex];
             if (accepted[index]) {
                 matches.add(values.get(index));
             }
