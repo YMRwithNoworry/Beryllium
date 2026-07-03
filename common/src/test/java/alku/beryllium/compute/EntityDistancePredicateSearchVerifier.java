@@ -210,6 +210,36 @@ public final class EntityDistancePredicateSearchVerifier {
         assertListEquals(List.of(1, 2), posttested, "inclusive after-distance posttest order");
     }
 
+    public static void verifyFindFirstWithinExclusiveDistanceAfterDistanceBatchesDistanceGateFirst() {
+        List<SimplePoint> points = new ArrayList<>();
+        points.add(new SimplePoint(0, 8.0, 0.0, 0.0, true, true));
+        points.add(new SimplePoint(1, 7.0, 0.0, 0.0, true, false));
+        points.add(new SimplePoint(2, 1.0, 0.0, 0.0, true, true));
+        for (int index = 3; index < 40; index++) {
+            points.add(new SimplePoint(index, 20.0 + index, 0.0, 0.0, true, true));
+        }
+
+        List<Integer> posttested = new ArrayList<>();
+
+        Optional<SimplePoint> match = EntityDistancePredicateSearch.findFirstWithinExclusiveDistanceAfterDistance(
+            points,
+            0.0,
+            0.0,
+            0.0,
+            64.0,
+            point -> {
+                posttested.add(point.id);
+                return point.posttest;
+            },
+            point -> point.x,
+            point -> point.y,
+            point -> point.z
+        );
+
+        assertEquals(2, match.orElseThrow().id, "exclusive after-distance first match");
+        assertListEquals(List.of(1, 2), posttested, "exclusive after-distance posttest order");
+    }
+
     private static List<Integer> range(int startInclusive, int endExclusive) {
         List<Integer> result = new ArrayList<>(endExclusive - startInclusive);
         for (int value = startInclusive; value < endExclusive; value++) {

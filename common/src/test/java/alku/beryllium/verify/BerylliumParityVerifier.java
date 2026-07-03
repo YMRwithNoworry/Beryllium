@@ -78,6 +78,7 @@ public final class BerylliumParityVerifier {
         EntityDistancePredicateSearchVerifier.verifyFindFirstWithinInclusiveDistanceAcceptsBoundaryAndShortCircuits();
         EntityDistancePredicateSearchVerifier.verifyFindFirstWithinInclusiveDistanceBatchesDistanceGateBeforePosttest();
         EntityDistancePredicateSearchVerifier.verifyFindFirstWithinInclusiveDistanceAfterDistanceBatchesDistanceGateFirst();
+        EntityDistancePredicateSearchVerifier.verifyFindFirstWithinExclusiveDistanceAfterDistanceBatchesDistanceGateFirst();
         NearestEntitySearchVerifier.verifyHasAnyWithinExclusiveDistanceShortCircuits();
         NearestEntitySearchVerifier.verifyHasAnyWithinExclusiveDistanceSkipsDistanceForUnboundedMatch();
         NearestEntitySearchVerifier.verifyHasAnyWithinExclusiveDistanceChecksAllWhenMissing();

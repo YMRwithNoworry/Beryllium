@@ -113,6 +113,31 @@ public final class EntityDistancePredicateSearch {
         );
     }
 
+    public static <T> Optional<T> findFirstWithinExclusiveDistanceAfterDistance(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        Predicate<? super T> afterDistance,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter
+    ) {
+        return findFirstWithinDistanceAfterDistance(
+            values,
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            afterDistance,
+            xGetter,
+            yGetter,
+            zGetter,
+            false
+        );
+    }
+
     public static <T> Optional<T> findFirstWithinExclusiveDistance(
         List<? extends T> values,
         double originX,
@@ -225,20 +250,22 @@ public final class EntityDistancePredicateSearch {
         }
 
         int[] distanceMatches = null;
+        int distanceMatchCount = 0;
         if (NativeBatching.shouldUseNativeEntityBatch(values.size())) {
             double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-            distanceMatches = includeBoundary
-                ? NativeBridge.filterWithinRadius(originX, originY, originZ, radiusSquared, positions)
-                : NativeBridge.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions);
+            distanceMatches = new int[values.size()];
+            distanceMatchCount = includeBoundary
+                ? NativeBridge.filterWithinRadius(originX, originY, originZ, radiusSquared, positions, distanceMatches)
+                : NativeBridge.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, distanceMatches);
         }
 
         int distanceMatchCursor = 0;
         for (int index = 0; index < values.size(); index++) {
             T value = values.get(index);
             if (distanceMatches != null) {
-                distanceMatchCursor = advanceDistanceMatchCursor(distanceMatches, distanceMatchCursor, index);
+                distanceMatchCursor = advanceDistanceMatchCursor(distanceMatches, distanceMatchCount, distanceMatchCursor, index);
             }
-            if (!isWithinDistance(distanceMatches, distanceMatchCursor, index, originX, originY, originZ, radiusSquared, xGetter, yGetter, zGetter, value, includeBoundary)) {
+            if (!isWithinDistance(distanceMatches, distanceMatchCount, distanceMatchCursor, index, originX, originY, originZ, radiusSquared, xGetter, yGetter, zGetter, value, includeBoundary)) {
                 continue;
             }
 
@@ -252,6 +279,7 @@ public final class EntityDistancePredicateSearch {
 
     private static <T> boolean isWithinDistance(
         int[] distanceMatches,
+        int distanceMatchCount,
         int distanceMatchCursor,
         int index,
         double originX,
@@ -269,7 +297,7 @@ public final class EntityDistancePredicateSearch {
             return includeBoundary ? distance <= radiusSquared : distance < radiusSquared;
         }
 
-        return distanceMatchCursor < distanceMatches.length && distanceMatches[distanceMatchCursor] == index;
+        return distanceMatchCursor < distanceMatchCount && distanceMatches[distanceMatchCursor] == index;
     }
 
     private static <T> boolean isWithinDistance(
@@ -287,8 +315,8 @@ public final class EntityDistancePredicateSearch {
         return includeBoundary ? distance <= radiusSquared : distance < radiusSquared;
     }
 
-    private static int advanceDistanceMatchCursor(int[] distanceMatches, int cursor, int index) {
-        while (cursor < distanceMatches.length && distanceMatches[cursor] < index) {
+    private static int advanceDistanceMatchCursor(int[] distanceMatches, int matchCount, int cursor, int index) {
+        while (cursor < matchCount && distanceMatches[cursor] < index) {
             cursor++;
         }
         return cursor;
