@@ -336,10 +336,10 @@ pub fn filter_within_radius_f64(
     }
 
     if position_count >= PARALLEL_THRESHOLD {
-        let matches: Vec<Option<i32>> = positions
+        let matches: Vec<i32> = positions
             .par_chunks_exact(3)
             .enumerate()
-            .map(|(index, position)| {
+            .filter_map(|(index, position)| {
                 if squared_distance_at_f64_slice(origin_x, origin_y, origin_z, position)
                     <= radius_squared
                 {
@@ -350,13 +350,8 @@ pub fn filter_within_radius_f64(
             })
             .collect();
 
-        let mut count = 0;
-        for index in matches.into_iter().flatten() {
-            output[count] = index;
-            count += 1;
-        }
-
-        return Ok(count);
+        output[..matches.len()].copy_from_slice(&matches);
+        return Ok(matches.len());
     }
 
     let mut count = 0;
@@ -394,10 +389,10 @@ pub fn filter_within_radius_f64_exclusive(
     }
 
     if position_count >= PARALLEL_THRESHOLD {
-        let matches: Vec<Option<i32>> = positions
+        let matches: Vec<i32> = positions
             .par_chunks_exact(3)
             .enumerate()
-            .map(|(index, position)| {
+            .filter_map(|(index, position)| {
                 if squared_distance_at_f64_slice(origin_x, origin_y, origin_z, position)
                     < radius_squared
                 {
@@ -408,13 +403,8 @@ pub fn filter_within_radius_f64_exclusive(
             })
             .collect();
 
-        let mut count = 0;
-        for index in matches.into_iter().flatten() {
-            output[count] = index;
-            count += 1;
-        }
-
-        return Ok(count);
+        output[..matches.len()].copy_from_slice(&matches);
+        return Ok(matches.len());
     }
 
     let mut count = 0;
@@ -521,11 +511,11 @@ pub fn filter_within_radii_f64(
     }
 
     if position_count >= PARALLEL_THRESHOLD {
-        let matches: Vec<Option<i32>> = positions
+        let matches: Vec<i32> = positions
             .par_chunks_exact(3)
             .zip(radii_squared.par_iter())
             .enumerate()
-            .map(|(index, (position, radius_squared))| {
+            .filter_map(|(index, (position, radius_squared))| {
                 if squared_distance_at_f64_slice(origin_x, origin_y, origin_z, position)
                     <= *radius_squared
                 {
@@ -536,13 +526,8 @@ pub fn filter_within_radii_f64(
             })
             .collect();
 
-        let mut count = 0;
-        for index in matches.into_iter().flatten() {
-            output[count] = index;
-            count += 1;
-        }
-
-        return Ok(count);
+        output[..matches.len()].copy_from_slice(&matches);
+        return Ok(matches.len());
     }
 
     let mut count = 0;
@@ -579,10 +564,10 @@ pub fn filter_within_aabb_f64(
     }
 
     if position_count >= PARALLEL_THRESHOLD {
-        let matches: Vec<Option<i32>> = positions
+        let matches: Vec<i32> = positions
             .par_chunks_exact(3)
             .enumerate()
-            .map(|(index, position)| {
+            .filter_map(|(index, position)| {
                 if contains_aabb_position(min_x, min_y, min_z, max_x, max_y, max_z, position) {
                     Some(index as i32)
                 } else {
@@ -591,13 +576,8 @@ pub fn filter_within_aabb_f64(
             })
             .collect();
 
-        let mut count = 0;
-        for index in matches.into_iter().flatten() {
-            output[count] = index;
-            count += 1;
-        }
-
-        return Ok(count);
+        output[..matches.len()].copy_from_slice(&matches);
+        return Ok(matches.len());
     }
 
     let mut count = 0;
@@ -643,10 +623,10 @@ pub fn filter_intersecting_aabb_f64(
     }
 
     if box_count >= PARALLEL_THRESHOLD {
-        let matches: Vec<Option<i32>> = boxes
+        let matches: Vec<i32> = boxes
             .par_chunks_exact(6)
             .enumerate()
-            .map(|(index, entity_box)| {
+            .filter_map(|(index, entity_box)| {
                 if intersects_aabb_box(
                     query_min_x,
                     query_min_y,
@@ -663,13 +643,8 @@ pub fn filter_intersecting_aabb_f64(
             })
             .collect();
 
-        let mut count = 0;
-        for index in matches.into_iter().flatten() {
-            output[count] = index;
-            count += 1;
-        }
-
-        return Ok(count);
+        output[..matches.len()].copy_from_slice(&matches);
+        return Ok(matches.len());
     }
 
     let mut count = 0;
@@ -720,10 +695,10 @@ pub fn filter_within_radius(
     }
 
     if position_count >= PARALLEL_THRESHOLD {
-        let matches: Vec<Option<i32>> = positions
+        let matches: Vec<i32> = positions
             .par_chunks_exact(3)
             .enumerate()
-            .map(|(index, position)| {
+            .filter_map(|(index, position)| {
                 if squared_distance_at_slice(origin_x, origin_y, origin_z, position)
                     <= radius_squared
                 {
@@ -734,13 +709,8 @@ pub fn filter_within_radius(
             })
             .collect();
 
-        let mut count = 0;
-        for index in matches.into_iter().flatten() {
-            output[count] = index;
-            count += 1;
-        }
-
-        return Ok(count);
+        output[..matches.len()].copy_from_slice(&matches);
+        return Ok(matches.len());
     }
 
     let mut count = 0;
