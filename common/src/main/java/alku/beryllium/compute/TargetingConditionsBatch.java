@@ -246,9 +246,22 @@ public final class TargetingConditionsBatch {
         double originZ,
         double[] radiiSquared
     ) {
+        int[] result = new int[positions.length / 3];
+        int count = filterIndicesByVariableDistance(positions, originX, originY, originZ, radiiSquared, result);
+        return java.util.Arrays.copyOf(result, count);
+    }
+
+    static <T> int filterIndicesByVariableDistance(
+        double[] positions,
+        double originX,
+        double originY,
+        double originZ,
+        double[] radiiSquared,
+        int[] output
+    ) {
         return NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
-            ? NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared)
-            : JavaComputeKernels.filterWithinRadii(originX, originY, originZ, positions, radiiSquared);
+            ? NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared, output)
+            : JavaComputeKernels.filterWithinRadii(originX, originY, originZ, positions, radiiSquared, output);
     }
 
     private static <T extends LivingEntity> List<T> filterByDistance(

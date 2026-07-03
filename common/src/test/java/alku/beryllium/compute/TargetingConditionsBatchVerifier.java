@@ -187,6 +187,8 @@ public final class TargetingConditionsBatchVerifier {
         if (!expectedPosttested.equals(posttested)) {
             throw new AssertionError("separate-origin variable posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
         }
+
+        verifyLargeFindNearestAfterVariableDistanceUsesSeparateDistanceOrigin();
     }
 
     public static void verifyFindNearestAfterPrecomputedDistanceUsesSeparateDistanceOrigin() {
@@ -368,6 +370,40 @@ public final class TargetingConditionsBatchVerifier {
         List<Integer> expectedPosttested = List.of(0, 1, 2, 3, 4, 5);
         if (!expectedPosttested.equals(posttested)) {
             throw new AssertionError("large separate-origin constant posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
+        }
+    }
+
+    private static void verifyLargeFindNearestAfterVariableDistanceUsesSeparateDistanceOrigin() {
+        List<SimplePoint> points = axisPoints(40);
+        double[] radiiSquared = new double[points.size()];
+        for (int index = 0; index < radiiSquared.length; index++) {
+            radiiSquared[index] = index <= 5 ? 25.0 : 1.0;
+        }
+        List<Integer> posttested = new ArrayList<>();
+
+        SimplePoint actual = NearestEntitySearch.findNearestAfterVariableDistanceAndPosttest(
+            points,
+            EntityPacking.packPositions(points, point -> point.x, point -> point.y, point -> point.z),
+            0.0,
+            0.0,
+            0.0,
+            100.0,
+            0.0,
+            0.0,
+            radiiSquared,
+            point -> {
+                posttested.add(point.id);
+                return point.id != 3;
+            }
+        );
+
+        if (!points.get(5).equals(actual)) {
+            throw new AssertionError("large separate-origin variable nearest mismatch, expected " + points.get(5) + " but got " + actual);
+        }
+
+        List<Integer> expectedPosttested = List.of(0, 1, 2, 3, 4, 5);
+        if (!expectedPosttested.equals(posttested)) {
+            throw new AssertionError("large separate-origin variable posttest order mismatch, expected " + expectedPosttested + " but got " + posttested);
         }
     }
 

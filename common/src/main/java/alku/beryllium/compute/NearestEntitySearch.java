@@ -359,15 +359,17 @@ public final class NearestEntitySearch {
         double[] radiiSquared,
         Predicate<? super T> posttest
     ) {
-        int[] matches = TargetingConditionsBatch.filterIndicesByVariableDistance(
+        int[] matches = new int[filteredCandidates.size()];
+        int matchCount = TargetingConditionsBatch.filterIndicesByVariableDistance(
             positions,
             distanceOriginX,
             distanceOriginY,
             distanceOriginZ,
-            radiiSquared
+            radiiSquared,
+            matches
         );
 
-        return findNearestFromMatchingIndices(filteredCandidates, positions, nearestOriginX, nearestOriginY, nearestOriginZ, matches, posttest);
+        return findNearestFromMatchingIndices(filteredCandidates, positions, nearestOriginX, nearestOriginY, nearestOriginZ, matches, matchCount, posttest);
     }
 
     static <T> T findNearestAfterPrecomputedDistanceAndPosttest(
