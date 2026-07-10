@@ -19,23 +19,23 @@ public final class SupportingBlockSearch {
         double originY,
         double originZ
     ) {
-        int[] positions = packPositions(candidates);
-        if (positions.length == 0) {
+        PackedPositions positions = packPositions(candidates);
+        if (positions.count() == 0) {
             return Optional.empty();
         }
 
-        int index = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
-            ? NativeBridge.findNearestBlockCenterIndex(originX, originY, originZ, positions)
-            : JavaComputeKernels.findNearestBlockCenterIndex(originX, originY, originZ, positions);
+        int index = NativeBatching.shouldUseNativeEntityBatch(positions.count())
+            ? NativeBridge.findNearestBlockCenterIndex(originX, originY, originZ, positions.values(), positions.count())
+            : JavaComputeKernels.findNearestBlockCenterIndex(originX, originY, originZ, positions.values(), positions.count());
         if (index < 0) {
             return Optional.empty();
         }
 
         int offset = index * 3;
-        return Optional.of(new BlockPos(positions[offset], positions[offset + 1], positions[offset + 2]));
+        return Optional.of(new BlockPos(positions.values()[offset], positions.values()[offset + 1], positions.values()[offset + 2]));
     }
 
-    private static int[] packPositions(Iterable<? extends BlockPos> candidates) {
+    private static PackedPositions packPositions(Iterable<? extends BlockPos> candidates) {
         int[] positions = new int[24];
         int offset = 0;
         for (BlockPos candidate : candidates) {
@@ -48,6 +48,9 @@ public final class SupportingBlockSearch {
             offset += 3;
         }
 
-        return Arrays.copyOf(positions, offset);
+        return new PackedPositions(positions, offset / 3);
+    }
+
+    private record PackedPositions(int[] values, int count) {
     }
 }

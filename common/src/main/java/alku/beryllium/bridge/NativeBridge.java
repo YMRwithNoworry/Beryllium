@@ -203,6 +203,33 @@ public final class NativeBridge {
         return nativeIndex;
     }
 
+    public static int findNearestBlockCenterIndex(
+        double originX,
+        double originY,
+        double originZ,
+        int[] positions,
+        int positionCount
+    ) {
+        JavaComputeKernels.validatePositionCount(positions, positionCount);
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.findNearestBlockCenterIndex(originX, originY, originZ, positions, positionCount);
+        }
+
+        int nativeIndex = findNearestBlockCenterIndexPrefixNative(
+            originX,
+            originY,
+            originZ,
+            positions,
+            positionCount
+        );
+        if (nativeIndex < -1 || nativeIndex >= positionCount) {
+            return JavaComputeKernels.findNearestBlockCenterIndex(originX, originY, originZ, positions, positionCount);
+        }
+
+        return nativeIndex;
+    }
+
     public static int findNearestBlockCornerIndex(int originX, int originY, int originZ, int[] positions) {
         JavaComputeKernels.validatePositions(positions);
 
@@ -801,6 +828,14 @@ public final class NativeBridge {
         double originY,
         double originZ,
         int[] positions
+    );
+
+    private static native int findNearestBlockCenterIndexPrefixNative(
+        double originX,
+        double originY,
+        double originZ,
+        int[] positions,
+        int positionCount
     );
 
     private static native int findNearestBlockCornerIndexNative(

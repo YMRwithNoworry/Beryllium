@@ -78,10 +78,21 @@ public final class JavaComputeKernels {
 
     public static int findNearestBlockCenterIndex(double originX, double originY, double originZ, int[] positions) {
         validatePositions(positions);
+        return findNearestBlockCenterIndex(originX, originY, originZ, positions, positions.length / 3);
+    }
+
+    public static int findNearestBlockCenterIndex(
+        double originX,
+        double originY,
+        double originZ,
+        int[] positions,
+        int positionCount
+    ) {
+        validatePositionCount(positions, positionCount);
 
         int nearestIndex = -1;
         double nearestDistance = Double.MAX_VALUE;
-        for (int index = 0; index < positions.length / 3; index++) {
+        for (int index = 0; index < positionCount; index++) {
             double distance = blockCenterDistanceAt(originX, originY, originZ, positions, index);
             if (distance < nearestDistance || (distance == nearestDistance && (nearestIndex == -1 || compareBlockPos(positions, nearestIndex, index) < 0))) {
                 nearestIndex = index;
@@ -528,6 +539,13 @@ public final class JavaComputeKernels {
     public static void validatePositions(double[] positions) {
         if (positions == null || positions.length % 3 != 0) {
             throw new IllegalArgumentException("positions must contain x/y/z triples");
+        }
+    }
+
+    public static void validatePositionCount(int[] positions, int positionCount) {
+        validatePositions(positions);
+        if (positionCount < 0 || positionCount > positions.length / 3) {
+            throw new IllegalArgumentException("positionCount must not exceed the packed position count");
         }
     }
 

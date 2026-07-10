@@ -102,6 +102,7 @@ public final class BerylliumNativeRuntimeVerifier {
         BlockDistanceSearchVerifier.verifyFindFirstWithinInclusiveBlockDistanceBatchesRadiusBeforePredicate();
         SupportingBlockSearchVerifier.verifyFindNearest();
         SupportingBlockSearchVerifier.verifyEmptyCandidates();
+        SupportingBlockSearchVerifier.verifyFindNearestIgnoresUnusedPackedCapacity();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
         TargetingConditionsBatchVerifier.verifyFilterByConstantDistanceBeforePosttest();
         TargetingConditionsBatchVerifier.verifyFilterByVariableDistanceBeforePosttest();

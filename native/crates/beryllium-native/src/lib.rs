@@ -8,6 +8,7 @@ pub use ffi::{
     Java_alku_beryllium_bridge_NativeBridge_computeSquaredDistancesNative,
     Java_alku_beryllium_bridge_NativeBridge_countWithinRadiusNative,
     Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCenterIndexNative,
+    Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCenterIndexPrefixNative,
     Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCornerIndexNative,
     Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCornerIndexWithinRadiusNative,
     Java_alku_beryllium_bridge_NativeBridge_sortByDistanceDoubleNative,

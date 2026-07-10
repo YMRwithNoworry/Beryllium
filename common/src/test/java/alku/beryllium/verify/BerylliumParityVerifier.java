@@ -31,6 +31,7 @@ public final class BerylliumParityVerifier {
         verifyJavaNearestIndexExclusive();
         verifyJavaAnyWithinRadiusExclusive();
         verifyJavaNearestBlockCenterIndex();
+        verifyJavaNearestBlockCenterIndexRejectsNullPositions();
         verifyJavaNearestBlockCornerIndex();
         verifyJavaFilterAndSort();
         verifyJavaBlockSort();
@@ -122,6 +123,7 @@ public final class BerylliumParityVerifier {
         BlockDistanceSearchVerifier.verifyFindFirstWithinInclusiveBlockDistanceBatchesRadiusBeforePredicate();
         SupportingBlockSearchVerifier.verifyFindNearest();
         SupportingBlockSearchVerifier.verifyEmptyCandidates();
+        SupportingBlockSearchVerifier.verifyFindNearestIgnoresUnusedPackedCapacity();
         TargetingConditionsBatchVerifier.verifyFilterCandidatesWithinAabb();
         TargetingConditionsBatchVerifier.verifyFilterByConstantDistanceBeforePosttest();
         TargetingConditionsBatchVerifier.verifyFilterByVariableDistanceBeforePosttest();
@@ -513,6 +515,16 @@ public final class BerylliumParityVerifier {
 
         int missing = JavaComputeKernels.findNearestBlockCenterIndex(0.0, 0.0, 0.0, new int[] {});
         assertEquals(-1, missing, "Java nearest block center empty input");
+    }
+
+    private static void verifyJavaNearestBlockCenterIndexRejectsNullPositions() {
+        try {
+            JavaComputeKernels.findNearestBlockCenterIndex(0.0, 0.0, 0.0, (int[]) null);
+        } catch (IllegalArgumentException expected) {
+            return;
+        }
+
+        throw new AssertionError("Expected null packed positions to be rejected");
     }
 
     private static void verifyJavaNearestBlockCornerIndex() {

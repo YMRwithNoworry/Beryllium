@@ -310,6 +310,26 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_findNearestBlockC
 }
 
 #[no_mangle]
+pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCenterIndexPrefixNative(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    origin_x: jdouble,
+    origin_y: jdouble,
+    origin_z: jdouble,
+    positions: JIntArray<'_>,
+    position_count: jint,
+) -> jint {
+    find_nearest_block_center_index_prefix_jni(
+        env,
+        origin_x,
+        origin_y,
+        origin_z,
+        positions,
+        position_count,
+    )
+}
+
+#[no_mangle]
 pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCornerIndexNative(
     env: JNIEnv<'_>,
     _class: JClass<'_>,
@@ -1021,6 +1041,43 @@ fn find_nearest_block_center_index_jni(
     if env
         .get_int_array_region(&positions, 0, &mut positions_buffer)
         .is_err()
+    {
+        return native_index_error_code(NativeStatus::Jni);
+    }
+
+    match find_nearest_block_center_index(origin_x, origin_y, origin_z, &positions_buffer) {
+        Ok(Some(index)) => index as jint,
+        Ok(None) => -1,
+        Err(error) => native_index_error_code(error.into()),
+    }
+}
+
+fn find_nearest_block_center_index_prefix_jni(
+    env: JNIEnv<'_>,
+    origin_x: jdouble,
+    origin_y: jdouble,
+    origin_z: jdouble,
+    positions: JIntArray<'_>,
+    position_count: jint,
+) -> jint {
+    let positions_len = match env.get_array_length(&positions) {
+        Ok(value) => value as usize,
+        Err(_) => return native_index_error_code(NativeStatus::Jni),
+    };
+    let position_count = match usize::try_from(position_count) {
+        Ok(value) => value,
+        Err(_) => return native_index_error_code(NativeStatus::InvalidInput),
+    };
+    let used_positions_len = match position_count.checked_mul(3) {
+        Some(value) if value <= positions_len => value,
+        _ => return native_index_error_code(NativeStatus::InvalidInput),
+    };
+
+    let mut positions_buffer = vec![0; used_positions_len];
+    if !positions_buffer.is_empty()
+        && env
+            .get_int_array_region(&positions, 0, &mut positions_buffer)
+            .is_err()
     {
         return native_index_error_code(NativeStatus::Jni);
     }
