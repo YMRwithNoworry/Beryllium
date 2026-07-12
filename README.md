@@ -21,6 +21,7 @@ Beryllium 是一个基于 Architectury 的 Minecraft 多加载器性能模组，
 - TargetingConditions 批量过滤：不需要隐身可见度修正的固定范围查询会直接走 native double 半径过滤，保留需要逐实体可见度计算的原逻辑。
 - Native AABB filter：附近玩家查询会把玩家坐标批量传入 Rust 执行 AABB contains 过滤，空源和有源 TargetingConditions 路径共用批量 AABB helper，并保持原版 `min <= value < max` 边界语义。
 - Native entity-section intersection：底层 `EntitySection` 的实体包围盒相交查询会在候选数足够大时批量传入 Rust 过滤，再按原顺序调用原版 consumer，保留 abort 行为和 `AABB.intersects` 边界语义。
+- FFM scratch session：每个 Java 线程复用 native buffer 和 arena slot，降低重复 FFM 调用的分配成本；buffer 扩容或类型切换时释放旧 arena，避免长期累积 native 内存。
 - PotentialCalculator 批处理：点电荷贡献在 Rust 中按索引并行计算，再沿原版顺序累加，避免并行归约改变浮点结果；小批量继续使用 Java 参考路径。
 - ChunkMap 刷怪距离：保留 `DistanceManager.hasPlayersNearby`、spectator 资格判断、严格水平半径和玩家迭代顺序；默认直接在 JVM 内短路扫描，避免这个小型标量热点承担 FFM 编组开销。
 

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Java 21 Foreign Function & Memory bridge.
@@ -17,6 +18,7 @@ import java.util.Optional;
  */
 final class FfmNativeBridge {
     private static final int FFM_ERROR = NativeStatus.FFM_ERROR.code();
+    private static final AtomicLong NEXT_SESSION_ID = new AtomicLong();
     private static volatile Runtime runtime;
 
     private FfmNativeBridge() {
@@ -41,6 +43,11 @@ final class FfmNativeBridge {
 
     static boolean isAvailable() {
         return runtime != null;
+    }
+
+    static long sessionIdForCurrentThread() {
+        Runtime current = runtime;
+        return current == null ? 0L : current.sessionIdForCurrentThread();
     }
 
     static int computeSquaredDistances(int originX, int originY, int originZ, int[] positions, long[] output) {
@@ -573,7 +580,9 @@ final class FfmNativeBridge {
             return failureResult;
         }
 
-        try (Session session = current.openSession()) {
+        try {
+            Session session = current.session();
+            session.reset();
             return call.run(session);
         } catch (Throwable failure) {
             if (failure instanceof VirtualMachineError error) {
@@ -642,6 +651,7 @@ final class FfmNativeBridge {
         private final Method arenaAllocate;
         private final Method copyArrayToSegment;
         private final Method copySegmentToArray;
+        private final ThreadLocal<Session> sessions;
         private final EnumMap<Kind, Object> layouts = new EnumMap<>(Kind.class);
         private final EnumMap<Function, MethodHandle> handles = new EnumMap<>(Function.class);
 
@@ -714,10 +724,20 @@ final class FfmNativeBridge {
                 );
                 handles.put(function, handle);
             }
+
+            sessions = ThreadLocal.withInitial(() -> new Session(this));
         }
 
-        private Session openSession() throws ReflectiveOperationException {
-            return new Session(this, (AutoCloseable) arenaOfShared.invoke(null));
+        private Session session() {
+            return sessions.get();
+        }
+
+        private long sessionIdForCurrentThread() {
+            return session().id();
+        }
+
+        private AutoCloseable newArena() throws ReflectiveOperationException {
+            return (AutoCloseable) arenaOfShared.invoke(null);
         }
 
         private Object allocate(AutoCloseable arena, Kind kind, int length) throws ReflectiveOperationException {
@@ -734,27 +754,47 @@ final class FfmNativeBridge {
         }
     }
 
-    private static final class Session implements AutoCloseable {
+    private static final class Session {
         private final Runtime runtime;
-        private final AutoCloseable arena;
+        private final List<Buffer> buffers = new ArrayList<>();
         private final List<Buffer> outputs = new ArrayList<>();
+        private final long id = NEXT_SESSION_ID.incrementAndGet();
+        private int nextBufferIndex;
 
-        private Session(Runtime runtime, AutoCloseable arena) {
+        private Session(Runtime runtime) {
             this.runtime = runtime;
-            this.arena = arena;
         }
 
-        private Buffer input(Object array, Kind kind) throws ReflectiveOperationException {
-            Object segment = runtime.allocate(arena, kind, java.lang.reflect.Array.getLength(array));
-            copyToNative(array, segment, kind);
-            return new Buffer(array, segment, kind);
+        private void reset() {
+            nextBufferIndex = 0;
+            outputs.clear();
         }
 
-        private Buffer output(Object array, Kind kind) throws ReflectiveOperationException {
-            Object segment = runtime.allocate(arena, kind, java.lang.reflect.Array.getLength(array));
-            copyToNative(array, segment, kind);
-            Buffer buffer = new Buffer(array, segment, kind);
+        private Buffer input(Object array, Kind kind) throws Throwable {
+            Buffer buffer = nextBuffer(array, kind);
+            copyToNative(array, buffer.segment, kind);
+            return buffer;
+        }
+
+        private Buffer output(Object array, Kind kind) throws Throwable {
+            Buffer buffer = nextBuffer(array, kind);
+            copyToNative(array, buffer.segment, kind);
             outputs.add(buffer);
+            return buffer;
+        }
+
+        private Buffer nextBuffer(Object array, Kind kind) throws Throwable {
+            int length = java.lang.reflect.Array.getLength(array);
+            int index = nextBufferIndex++;
+            Buffer buffer;
+            if (index == buffers.size()) {
+                buffer = new Buffer(runtime, kind, length);
+                buffers.add(buffer);
+            } else {
+                buffer = buffers.get(index);
+                buffer.ensureCapacity(runtime, kind, length);
+            }
+            buffer.array = array;
             return buffer;
         }
 
@@ -804,21 +844,58 @@ final class FfmNativeBridge {
             }
         }
 
-        @Override
-        public void close() throws Exception {
-            arena.close();
+        private long id() {
+            return id;
         }
     }
 
     private static final class Buffer {
-        private final Object array;
-        private final Object segment;
-        private final Kind kind;
+        private AutoCloseable arena;
+        private Object array;
+        private Object segment;
+        private Kind kind;
+        private int capacity;
 
-        private Buffer(Object array, Object segment, Kind kind) {
-            this.array = array;
-            this.segment = segment;
+        private Buffer(Runtime runtime, Kind kind, int capacity) throws Throwable {
+            arena = runtime.newArena();
+            try {
+                segment = runtime.allocate(arena, kind, capacity);
+            } catch (Throwable failure) {
+                closeQuietly(arena, failure);
+                throw failure;
+            }
             this.kind = kind;
+            this.capacity = capacity;
+        }
+
+        private void ensureCapacity(Runtime runtime, Kind requestedKind, int requestedLength) throws Throwable {
+            if (kind != requestedKind || capacity < requestedLength) {
+                AutoCloseable replacement = runtime.newArena();
+                Object replacementSegment;
+                try {
+                    replacementSegment = runtime.allocate(replacement, requestedKind, requestedLength);
+                } catch (Throwable failure) {
+                    closeQuietly(replacement, failure);
+                    throw failure;
+                }
+
+                AutoCloseable previous = arena;
+                arena = replacement;
+                segment = replacementSegment;
+                kind = requestedKind;
+                capacity = requestedLength;
+                if (previous != null) {
+                    previous.close();
+                }
+            }
+        }
+
+        private static void closeQuietly(AutoCloseable resource, Throwable failure) {
+            try {
+                resource.close();
+            } catch (Throwable cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
         }
     }
 }

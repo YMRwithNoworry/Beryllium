@@ -66,6 +66,15 @@ tasks.register('nativeRuntimeTest', JavaExec) {
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
+tasks.register('ffmReuseTest', JavaExec) {
+    description = 'Verifies thread-local FFM session reuse and concurrent buffer isolation.'
+    group = 'verification'
+    dependsOn tasks.named('testClasses')
+    mainClass = 'alku.beryllium.bridge.FfmNativeBridgeVerifier'
+    classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
 tasks.register('performanceBenchmark', JavaExec) {
     description = 'Measures vanilla Java, legacy FFM, and fused FFM nearest-item query paths.'
     group = 'verification'
@@ -77,3 +86,4 @@ tasks.register('performanceBenchmark', JavaExec) {
 
 check.dependsOn tasks.named('javaParityTest')
 check.dependsOn tasks.named('nativeRuntimeTest')
+check.dependsOn tasks.named('ffmReuseTest')

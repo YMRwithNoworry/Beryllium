@@ -15,7 +15,7 @@ The next slice therefore targets bridge allocation and session setup. It does no
 
 ## Architecture
 
-`FfmNativeBridge.Runtime` will create one shared FFM arena when the native library is initialized. Each Java thread receives a private reusable `Session` through `ThreadLocal`. A session owns reusable buffer slots, so buffers from two threads can never overlap even though the backing arena is shared.
+Each Java thread receives a private reusable `Session` through `ThreadLocal`. A session owns reusable buffer slots, and each slot owns one shared FFM arena. Buffers from two threads can never overlap. Replacing a slot's kind or capacity creates a replacement arena and closes the old one after the native call has ended, so gradual input growth does not retain every historical allocation.
 
 Each buffer records its element kind, allocated capacity, current Java array, and native segment. A slot is reallocated only when the requested kind changes or the requested length exceeds its capacity. The logical array length, rather than the retained capacity, is still passed to every C ABI function.
 
@@ -44,7 +44,7 @@ Out of scope for this slice:
 - A failed initialization leaves `FfmNativeBridge` unavailable exactly as before.
 - A session is reset before each call, so stale output registrations and buffer references cannot leak between calls.
 - A downcall never runs concurrently on the same session because sessions are thread-local.
-- The shared arena remains alive for the native runtime lifetime; retained buffers are bounded by the largest logical request observed on each session slot.
+- Each live buffer slot retains only its current arena allocation; a capacity/type replacement closes the previous arena.
 - If a pooled operation cannot allocate or copy, the current bridge returns its normal failure sentinel and the Java caller falls back.
 
 ## Verification
