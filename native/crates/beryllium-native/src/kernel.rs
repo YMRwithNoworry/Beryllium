@@ -90,6 +90,14 @@ pub fn potential_energy_change(
         return Err(NativeError::InvalidInput);
     }
 
+    if charges.len() >= PARALLEL_THRESHOLD {
+        let energy =
+            potential_energy_terms_parallel(origin_x, origin_y, origin_z, positions, charges)
+                .into_iter()
+                .fold(0.0, |sum, contribution| sum + contribution);
+        return Ok(energy * charge_multiplier);
+    }
+
     let mut energy = 0.0;
     for (index, charge) in charges.iter().enumerate() {
         let distance = block_corner_distance_at(origin_x, origin_y, origin_z, positions, index);
@@ -101,6 +109,27 @@ pub fn potential_energy_change(
     }
 
     Ok(energy * charge_multiplier)
+}
+
+fn potential_energy_terms_parallel(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    positions: &[i32],
+    charges: &[f64],
+) -> Vec<f64> {
+    charges
+        .par_iter()
+        .enumerate()
+        .map(|(index, charge)| {
+            let distance = block_corner_distance_at(origin_x, origin_y, origin_z, positions, index);
+            if distance == 0.0 {
+                f64::INFINITY
+            } else {
+                *charge / distance.sqrt()
+            }
+        })
+        .collect()
 }
 
 /// Finds the nearest packed f64 x/y/z triple within an optional squared radius.
@@ -1951,5 +1980,35 @@ mod tests {
 
         let expected: Vec<i32> = (0..5000).rev().map(|index| index as i32).collect();
         assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn potential_energy_change_should_preserve_sequential_sum_for_parallel_terms() {
+        let positions: Vec<i32> = (0..5000)
+            .flat_map(|index| [index as i32 - 2500, 64, (index % 17) as i32 - 8])
+            .collect();
+        let charges: Vec<f64> = (0..5000).map(|index| (index % 11) as f64 - 5.0).collect();
+
+        let terms = potential_energy_terms_parallel(0, 64, 0, &positions, &charges);
+        let mut expected_terms = Vec::with_capacity(charges.len());
+        for index in 0..charges.len() {
+            let distance = block_corner_distance_at(0, 64, 0, &positions, index);
+            expected_terms.push(if distance == 0.0 {
+                f64::INFINITY
+            } else {
+                charges[index] / distance.sqrt()
+            });
+        }
+
+        assert_eq!(terms, expected_terms);
+
+        let expected_energy = expected_terms
+            .iter()
+            .fold(0.0, |sum, contribution| sum + contribution)
+            * 0.75;
+        assert_eq!(
+            potential_energy_change(0, 64, 0, &positions, &charges, 0.75).unwrap(),
+            expected_energy
+        );
     }
 }

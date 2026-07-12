@@ -2,7 +2,7 @@
 
 Beryllium 是一个基于 Architectury 的 Minecraft 多加载器性能模组，目标平台是 **Fabric** 和 **NeoForge**。
 
-当前功能是提供一个 Rust 加速的批量坐标距离计算后端，并把 Minecraft 的最近玩家/最近实体查询接到批处理距离计算上，通过游戏内命令暴露验证入口。
+当前功能是提供一个 Rust 加速的批量坐标、包围盒和点电荷计算后端，并把 Minecraft 的实体查询、最近玩家/最近实体查询和 PotentialCalculator 接到批处理计算上，通过游戏内命令暴露验证入口。
 
 - Minecraft：`1.21.1`
 - Java：`21`
@@ -21,6 +21,7 @@ Beryllium 是一个基于 Architectury 的 Minecraft 多加载器性能模组，
 - TargetingConditions 批量过滤：不需要隐身可见度修正的固定范围查询会直接走 native double 半径过滤，保留需要逐实体可见度计算的原逻辑。
 - Native AABB filter：附近玩家查询会把玩家坐标批量传入 Rust 执行 AABB contains 过滤，空源和有源 TargetingConditions 路径共用批量 AABB helper，并保持原版 `min <= value < max` 边界语义。
 - Native entity-section intersection：底层 `EntitySection` 的实体包围盒相交查询会在候选数足够大时批量传入 Rust 过滤，再按原顺序调用原版 consumer，保留 abort 行为和 `AABB.intersects` 边界语义。
+- PotentialCalculator 批处理：点电荷贡献在 Rust 中按索引并行计算，再沿原版顺序累加，避免并行归约改变浮点结果；小批量继续使用 Java 参考路径。
 
 ## 目录结构
 
@@ -104,3 +105,4 @@ cargo build --manifest-path native/Cargo.toml --release
 ## Native 调优参数
 
 - `-Dberyllium.native.entityBatchThreshold=<正整数>`：控制实体批处理跨 JNI 的最小候选数，默认 `32`。数值越低越激进，数值越高越保守。`/beryllium native` 会显示当前阈值。
+- Rust Rayon 并行内核默认从 `4096` 个坐标/包围盒/charge 开始使用；该阈值固定在 native kernel 内，用于抵消并行调度与 JNI 编组开销。

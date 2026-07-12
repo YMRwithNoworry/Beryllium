@@ -2,6 +2,7 @@ package alku.beryllium.verify;
 
 import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
+import alku.beryllium.compute.JavaComputeKernels;
 import alku.beryllium.compute.EntityDistanceSort;
 import alku.beryllium.compute.EntityPacking;
 
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.function.DoubleSupplier;
 
 /**
  * Small repeatable benchmark for the nearest-item query's distance stage.
@@ -21,6 +23,7 @@ public final class BerylliumPerformanceBenchmark {
     private static final int[] CANDIDATE_COUNTS = {256, 1024, 4096, 8192};
     private static final int WARMUP_ITERATIONS = 100;
     private static final int MEASUREMENT_ITERATIONS = 300;
+    private static final int POTENTIAL_CHARGE_COUNT = 8192;
     private static final double RADIUS = 32.0;
     private static long blackHole;
 
@@ -62,6 +65,8 @@ public final class BerylliumPerformanceBenchmark {
             );
         }
 
+        benchmarkPotentialEnergy();
+
         if (blackHole == Long.MIN_VALUE) {
             throw new AssertionError("benchmark black hole was not consumed");
         }
@@ -76,6 +81,54 @@ public final class BerylliumPerformanceBenchmark {
         for (int iteration = 0; iteration < MEASUREMENT_ITERATIONS; iteration++) {
             long start = System.nanoTime();
             consume(query.get());
+            samples[iteration] = System.nanoTime() - start;
+        }
+
+        java.util.Arrays.sort(samples);
+        long median = samples[samples.length / 2];
+        System.out.printf(Locale.ROOT, "sample=%s median_ns=%d%n", name, median);
+        return median;
+    }
+
+    private static void benchmarkPotentialEnergy() {
+        int[] positions = new int[POTENTIAL_CHARGE_COUNT * 3];
+        double[] charges = new double[POTENTIAL_CHARGE_COUNT];
+        for (int index = 0; index < POTENTIAL_CHARGE_COUNT; index++) {
+            int offset = index * 3;
+            positions[offset] = (index % 4096) - 2048;
+            positions[offset + 1] = 65 + (index % 31);
+            positions[offset + 2] = (index % 31) - 15;
+            charges[index] = (index % 17 - 8) * 0.25;
+        }
+
+        double multiplier = 0.75;
+        long vanillaMedian = measureScalar(
+            "vanilla_potential_energy",
+            () -> JavaComputeKernels.potentialEnergyChange(0, 64, 0, positions, charges, multiplier)
+        );
+        long nativeMedian = measureScalar(
+            "native_potential_energy",
+            () -> NativeBridge.computePotentialEnergyChange(0, 64, 0, positions, charges, multiplier)
+        );
+        System.out.printf(
+            Locale.ROOT,
+            "potential_result=charges:%d vanilla_java_median_ns:%d native_median_ns:%d speedup:%.2fx%n",
+            POTENTIAL_CHARGE_COUNT,
+            vanillaMedian,
+            nativeMedian,
+            speedup(vanillaMedian, nativeMedian)
+        );
+    }
+
+    private static long measureScalar(String name, DoubleSupplier calculation) {
+        for (int iteration = 0; iteration < WARMUP_ITERATIONS; iteration++) {
+            consume(calculation.getAsDouble());
+        }
+
+        long[] samples = new long[MEASUREMENT_ITERATIONS];
+        for (int iteration = 0; iteration < MEASUREMENT_ITERATIONS; iteration++) {
+            long start = System.nanoTime();
+            consume(calculation.getAsDouble());
             samples[iteration] = System.nanoTime() - start;
         }
 
@@ -160,6 +213,10 @@ public final class BerylliumPerformanceBenchmark {
 
     private static void consume(Optional<BenchmarkPoint> result) {
         blackHole = blackHole * 31 + result.map(BenchmarkPoint::id).orElse(-1);
+    }
+
+    private static void consume(double result) {
+        blackHole = blackHole * 31 + Double.doubleToLongBits(result);
     }
 
     private static double speedup(long baselineNanos, long candidateNanos) {
