@@ -682,7 +682,7 @@ fn count_within_radius_jni(
 }
 
 fn filter_within_radius_double_jni(
-    env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     origin_x: jdouble,
     origin_y: jdouble,
     origin_z: jdouble,
@@ -690,25 +690,17 @@ fn filter_within_radius_double_jni(
     positions: JDoubleArray<'_>,
     output: JIntArray<'_>,
 ) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-
-    let mut positions_buffer = vec![0.0; positions_len];
-    if env
-        .get_double_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
+    let positions_buffer =
+        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
+            Ok(value) => value,
+            Err(_) => return native_count_error_code(NativeStatus::Jni),
+        };
+    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
     {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
-    let mut output_buffer = vec![0; output_len];
-    let count = match filter_within_radius_f64(
+        Ok(value) => value,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+    let count = match filter_within_radius_double_buffers(
         origin_x,
         origin_y,
         origin_z,
@@ -719,19 +711,12 @@ fn filter_within_radius_double_jni(
         Ok(value) => value,
         Err(error) => return native_count_error_code(error.into()),
     };
-
-    if env
-        .set_int_array_region(&output, 0, &output_buffer[..count])
-        .is_err()
-    {
-        return native_count_error_code(NativeStatus::Jni);
-    }
 
     count as jint
 }
 
 fn filter_within_radius_exclusive_double_jni(
-    env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     origin_x: jdouble,
     origin_y: jdouble,
     origin_z: jdouble,
@@ -739,25 +724,17 @@ fn filter_within_radius_exclusive_double_jni(
     positions: JDoubleArray<'_>,
     output: JIntArray<'_>,
 ) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-
-    let mut positions_buffer = vec![0.0; positions_len];
-    if env
-        .get_double_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
+    let positions_buffer =
+        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
+            Ok(value) => value,
+            Err(_) => return native_count_error_code(NativeStatus::Jni),
+        };
+    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
     {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
-    let mut output_buffer = vec![0; output_len];
-    let count = match filter_within_radius_f64_exclusive(
+        Ok(value) => value,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+    let count = match filter_within_radius_exclusive_double_buffers(
         origin_x,
         origin_y,
         origin_z,
@@ -769,18 +746,11 @@ fn filter_within_radius_exclusive_double_jni(
         Err(error) => return native_count_error_code(error.into()),
     };
 
-    if env
-        .set_int_array_region(&output, 0, &output_buffer[..count])
-        .is_err()
-    {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
     count as jint
 }
 
 fn filter_within_radii_double_jni(
-    env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     origin_x: jdouble,
     origin_y: jdouble,
     origin_z: jdouble,
@@ -788,37 +758,22 @@ fn filter_within_radii_double_jni(
     radii_squared: JDoubleArray<'_>,
     output: JIntArray<'_>,
 ) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let radii_len = match env.get_array_length(&radii_squared) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-
-    let mut positions_buffer = vec![0.0; positions_len];
-    if env
-        .get_double_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
+    let positions_buffer =
+        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
+            Ok(value) => value,
+            Err(_) => return native_count_error_code(NativeStatus::Jni),
+        };
+    let radii_squared_buffer =
+        match unsafe { env.get_array_elements(&radii_squared, ReleaseMode::NoCopyBack) } {
+            Ok(value) => value,
+            Err(_) => return native_count_error_code(NativeStatus::Jni),
+        };
+    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
     {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
-    let mut radii_squared_buffer = vec![0.0; radii_len];
-    if env
-        .get_double_array_region(&radii_squared, 0, &mut radii_squared_buffer)
-        .is_err()
-    {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
-    let mut output_buffer = vec![0; output_len];
-    let count = match filter_within_radii_f64(
+        Ok(value) => value,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+    let count = match filter_within_radii_double_buffers(
         origin_x,
         origin_y,
         origin_z,
@@ -830,18 +785,11 @@ fn filter_within_radii_double_jni(
         Err(error) => return native_count_error_code(error.into()),
     };
 
-    if env
-        .set_int_array_region(&output, 0, &output_buffer[..count])
-        .is_err()
-    {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
     count as jint
 }
 
 fn filter_within_aabb_double_jni(
-    env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     min_x: jdouble,
     min_y: jdouble,
     min_z: jdouble,
@@ -851,25 +799,17 @@ fn filter_within_aabb_double_jni(
     positions: JDoubleArray<'_>,
     output: JIntArray<'_>,
 ) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-
-    let mut positions_buffer = vec![0.0; positions_len];
-    if env
-        .get_double_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
+    let positions_buffer =
+        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
+            Ok(value) => value,
+            Err(_) => return native_count_error_code(NativeStatus::Jni),
+        };
+    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
     {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
-    let mut output_buffer = vec![0; output_len];
-    let count = match filter_within_aabb_f64(
+        Ok(value) => value,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+    let count = match filter_within_aabb_double_buffers(
         min_x,
         min_y,
         min_z,
@@ -883,18 +823,11 @@ fn filter_within_aabb_double_jni(
         Err(error) => return native_count_error_code(error.into()),
     };
 
-    if env
-        .set_int_array_region(&output, 0, &output_buffer[..count])
-        .is_err()
-    {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
     count as jint
 }
 
 fn filter_intersecting_aabb_double_jni(
-    env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     query_min_x: jdouble,
     query_min_y: jdouble,
     query_min_z: jdouble,
@@ -904,25 +837,16 @@ fn filter_intersecting_aabb_double_jni(
     boxes: JDoubleArray<'_>,
     output: JIntArray<'_>,
 ) -> jint {
-    let boxes_len = match env.get_array_length(&boxes) {
-        Ok(value) => value as usize,
+    let boxes_buffer = match unsafe { env.get_array_elements(&boxes, ReleaseMode::NoCopyBack) } {
+        Ok(value) => value,
         Err(_) => return native_count_error_code(NativeStatus::Jni),
     };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-
-    let mut boxes_buffer = vec![0.0; boxes_len];
-    if env
-        .get_double_array_region(&boxes, 0, &mut boxes_buffer)
-        .is_err()
+    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
     {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
-    let mut output_buffer = vec![0; output_len];
-    let count = match filter_intersecting_aabb_f64(
+        Ok(value) => value,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+    let count = match filter_intersecting_aabb_double_buffers(
         query_min_x,
         query_min_y,
         query_min_z,
@@ -936,38 +860,24 @@ fn filter_intersecting_aabb_double_jni(
         Err(error) => return native_count_error_code(error.into()),
     };
 
-    if env
-        .set_int_array_region(&output, 0, &output_buffer[..count])
-        .is_err()
-    {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
     count as jint
 }
 
 fn find_nearest_index_double_jni(
-    env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     origin_x: jdouble,
     origin_y: jdouble,
     origin_z: jdouble,
     max_distance_squared: jdouble,
     positions: JDoubleArray<'_>,
 ) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_index_error_code(NativeStatus::Jni),
-    };
+    let positions_buffer =
+        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
+            Ok(value) => value,
+            Err(_) => return native_index_error_code(NativeStatus::Jni),
+        };
 
-    let mut positions_buffer = vec![0.0; positions_len];
-    if env
-        .get_double_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return native_index_error_code(NativeStatus::Jni);
-    }
-
-    match find_nearest_index_f64(
+    match find_nearest_index_double_buffers(
         origin_x,
         origin_y,
         origin_z,
@@ -981,27 +891,20 @@ fn find_nearest_index_double_jni(
 }
 
 fn find_nearest_index_exclusive_double_jni(
-    env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     origin_x: jdouble,
     origin_y: jdouble,
     origin_z: jdouble,
     max_distance_squared: jdouble,
     positions: JDoubleArray<'_>,
 ) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_index_error_code(NativeStatus::Jni),
-    };
+    let positions_buffer =
+        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
+            Ok(value) => value,
+            Err(_) => return native_index_error_code(NativeStatus::Jni),
+        };
 
-    let mut positions_buffer = vec![0.0; positions_len];
-    if env
-        .get_double_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return native_index_error_code(NativeStatus::Jni);
-    }
-
-    match find_nearest_index_f64_exclusive(
+    match find_nearest_index_exclusive_double_buffers(
         origin_x,
         origin_y,
         origin_z,
@@ -1015,27 +918,20 @@ fn find_nearest_index_exclusive_double_jni(
 }
 
 fn has_any_within_radius_exclusive_double_jni(
-    env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     origin_x: jdouble,
     origin_y: jdouble,
     origin_z: jdouble,
     max_distance_squared: jdouble,
     positions: JDoubleArray<'_>,
 ) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_boolean_error_code(NativeStatus::Jni),
-    };
+    let positions_buffer =
+        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
+            Ok(value) => value,
+            Err(_) => return native_boolean_error_code(NativeStatus::Jni),
+        };
 
-    let mut positions_buffer = vec![0.0; positions_len];
-    if env
-        .get_double_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return native_boolean_error_code(NativeStatus::Jni);
-    }
-
-    match has_any_within_radius_f64_exclusive(
+    match has_any_within_radius_exclusive_double_buffers(
         origin_x,
         origin_y,
         origin_z,
@@ -1046,6 +942,143 @@ fn has_any_within_radius_exclusive_double_jni(
         Ok(false) => 0,
         Err(error) => native_boolean_error_code(error.into()),
     }
+}
+
+fn filter_within_radius_double_buffers(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    filter_within_radius_f64(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        positions,
+        output,
+    )
+}
+
+fn filter_within_radius_exclusive_double_buffers(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    filter_within_radius_f64_exclusive(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        positions,
+        output,
+    )
+}
+
+fn filter_within_radii_double_buffers(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    positions: &[f64],
+    radii_squared: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    filter_within_radii_f64(
+        origin_x,
+        origin_y,
+        origin_z,
+        positions,
+        radii_squared,
+        output,
+    )
+}
+
+fn filter_within_aabb_double_buffers(
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    filter_within_aabb_f64(min_x, min_y, min_z, max_x, max_y, max_z, positions, output)
+}
+
+fn filter_intersecting_aabb_double_buffers(
+    query_min_x: f64,
+    query_min_y: f64,
+    query_min_z: f64,
+    query_max_x: f64,
+    query_max_y: f64,
+    query_max_z: f64,
+    boxes: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    filter_intersecting_aabb_f64(
+        query_min_x,
+        query_min_y,
+        query_min_z,
+        query_max_x,
+        query_max_y,
+        query_max_z,
+        boxes,
+        output,
+    )
+}
+
+fn find_nearest_index_double_buffers(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    max_distance_squared: f64,
+    positions: &[f64],
+) -> Result<Option<usize>, NativeError> {
+    find_nearest_index_f64(
+        origin_x,
+        origin_y,
+        origin_z,
+        max_distance_squared,
+        positions,
+    )
+}
+
+fn find_nearest_index_exclusive_double_buffers(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    max_distance_squared: f64,
+    positions: &[f64],
+) -> Result<Option<usize>, NativeError> {
+    find_nearest_index_f64_exclusive(
+        origin_x,
+        origin_y,
+        origin_z,
+        max_distance_squared,
+        positions,
+    )
+}
+
+fn has_any_within_radius_exclusive_double_buffers(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    max_distance_squared: f64,
+    positions: &[f64],
+) -> Result<bool, NativeError> {
+    has_any_within_radius_f64_exclusive(
+        origin_x,
+        origin_y,
+        origin_z,
+        max_distance_squared,
+        positions,
+    )
 }
 
 fn find_nearest_block_center_index_jni(
@@ -1437,9 +1470,119 @@ impl NativeStatus {
 #[cfg(test)]
 mod tests {
     use super::{
+        filter_intersecting_aabb_double_buffers, filter_within_aabb_double_buffers,
+        filter_within_radii_double_buffers, filter_within_radius_double_buffers,
+        filter_within_radius_exclusive_double_buffers, find_nearest_index_double_buffers,
+        find_nearest_index_exclusive_double_buffers,
+        has_any_within_radius_exclusive_double_buffers,
         sort_by_distance_and_count_within_radius_exclusive_double_buffers,
         sort_by_distance_double_buffers, sort_within_radius_exclusive_double_buffers,
     };
+
+    #[test]
+    fn double_filter_buffer_helpers_preserve_order_and_tail() {
+        let positions = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let mut inclusive_output = [77; 3];
+        let mut exclusive_output = [88; 3];
+
+        let inclusive_count = filter_within_radius_double_buffers(
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            &positions,
+            &mut inclusive_output,
+        )
+        .expect("valid inclusive filter buffers");
+        let exclusive_count = filter_within_radius_exclusive_double_buffers(
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            &positions,
+            &mut exclusive_output,
+        )
+        .expect("valid exclusive filter buffers");
+
+        assert_eq!(inclusive_count, 2);
+        assert_eq!(&inclusive_output[..inclusive_count], &[0, 2]);
+        assert_eq!(inclusive_output[inclusive_count], 77);
+        assert_eq!(exclusive_count, 1);
+        assert_eq!(&exclusive_output[..exclusive_count], &[0]);
+        assert_eq!(&exclusive_output[exclusive_count..], &[88, 88]);
+    }
+
+    #[test]
+    fn double_variable_radius_and_aabb_helpers_keep_boundaries() {
+        let positions = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 3.0, 3.0, 3.0];
+        let radii_squared = [0.0, 4.0, 1.0];
+        let mut radius_output = [99; 3];
+        let radius_count = filter_within_radii_double_buffers(
+            0.0,
+            0.0,
+            0.0,
+            &positions,
+            &radii_squared,
+            &mut radius_output,
+        )
+        .expect("valid variable-radius buffers");
+
+        let mut aabb_output = [98; 3];
+        let aabb_count = filter_within_aabb_double_buffers(
+            0.0,
+            0.0,
+            0.0,
+            3.0,
+            3.0,
+            3.0,
+            &positions,
+            &mut aabb_output,
+        )
+        .expect("valid AABB buffers");
+
+        assert_eq!(radius_count, 2);
+        assert_eq!(&radius_output[..radius_count], &[0, 1]);
+        assert_eq!(radius_output[radius_count], 99);
+        assert_eq!(aabb_count, 2);
+        assert_eq!(&aabb_output[..aabb_count], &[0, 1]);
+        assert_eq!(aabb_output[aabb_count], 98);
+    }
+
+    #[test]
+    fn double_box_nearest_and_any_helpers_preserve_semantics() {
+        let boxes = [
+            -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 3.0, 3.0, 3.0,
+        ];
+        let mut box_output = [66; 3];
+        let box_count = filter_intersecting_aabb_double_buffers(
+            -1.0,
+            -1.0,
+            -1.0,
+            3.0,
+            3.0,
+            3.0,
+            &boxes,
+            &mut box_output,
+        )
+        .expect("valid intersecting-AABB buffers");
+
+        let positions = [2.0, 0.0, 0.0, -2.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let nearest = find_nearest_index_double_buffers(0.0, 0.0, 0.0, 4.0, &positions)
+            .expect("valid inclusive nearest buffers");
+        let nearest_exclusive =
+            find_nearest_index_exclusive_double_buffers(0.0, 0.0, 0.0, 1.0, &positions)
+                .expect("valid exclusive nearest buffers");
+        let any_on_boundary =
+            has_any_within_radius_exclusive_double_buffers(0.0, 0.0, 0.0, 1.0, &positions)
+                .expect("valid exclusive any buffers");
+
+        assert_eq!(box_count, 2);
+        assert_eq!(&box_output[..box_count], &[0, 1]);
+        assert_eq!(box_output[box_count], 66);
+        assert_eq!(nearest, Some(2));
+        assert_eq!(nearest_exclusive, None);
+        assert!(!any_on_boundary);
+    }
 
     #[test]
     fn double_sort_buffer_helper_writes_stable_order() {
