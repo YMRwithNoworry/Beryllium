@@ -64,5 +64,13 @@ tasks.register('nativeRuntimeTest', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
 }
 
+tasks.register('performanceBenchmark', JavaExec) {
+    description = 'Measures vanilla Java, legacy native, and fused native nearest-item query paths.'
+    group = 'verification'
+    dependsOn tasks.named('testClasses')
+    mainClass = 'alku.beryllium.verify.BerylliumPerformanceBenchmark'
+    classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
+}
+
 check.dependsOn tasks.named('javaParityTest')
 check.dependsOn tasks.named('nativeRuntimeTest')

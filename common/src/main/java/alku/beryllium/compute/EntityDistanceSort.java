@@ -274,7 +274,7 @@ public final class EntityDistanceSort {
         }
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-        int[] order = NativeBridge.sortByDistance(originX, originY, originZ, positions);
+        int[] order = new int[values.size()];
         int orderCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
             originX,
             originY,
