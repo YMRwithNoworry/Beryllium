@@ -32,6 +32,8 @@ public final class BerylliumCommands {
                 + NativeBridge.status()
                 + ", entity batch threshold: "
                 + NativeBatching.entityBatchThreshold()
+                + ", potential batch threshold: "
+                + NativeBatching.potentialBatchThreshold()
         ), false);
         return NativeBridge.isLoaded() ? 1 : 0;
     }

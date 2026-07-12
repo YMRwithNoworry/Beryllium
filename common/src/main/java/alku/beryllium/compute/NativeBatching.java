@@ -7,11 +7,17 @@ import alku.beryllium.bridge.NativeBridge;
  */
 public final class NativeBatching {
     private static final int DEFAULT_ENTITY_BATCH_THRESHOLD = 32;
+    private static final int DEFAULT_POTENTIAL_BATCH_THRESHOLD = 32;
     private static final String ENTITY_BATCH_THRESHOLD_PROPERTY = "beryllium.native.entityBatchThreshold";
+    private static final String POTENTIAL_BATCH_THRESHOLD_PROPERTY = "beryllium.native.potentialBatchThreshold";
 
     private static final int ENTITY_BATCH_THRESHOLD = readPositiveIntProperty(
         ENTITY_BATCH_THRESHOLD_PROPERTY,
         DEFAULT_ENTITY_BATCH_THRESHOLD
+    );
+    private static final int POTENTIAL_BATCH_THRESHOLD = readPositiveIntProperty(
+        POTENTIAL_BATCH_THRESHOLD_PROPERTY,
+        DEFAULT_POTENTIAL_BATCH_THRESHOLD
     );
 
     private NativeBatching() {
@@ -21,8 +27,16 @@ public final class NativeBatching {
         return candidateCount >= ENTITY_BATCH_THRESHOLD && NativeBridge.isLoaded();
     }
 
+    public static boolean shouldUseNativePotentialBatch(int chargeCount) {
+        return chargeCount >= POTENTIAL_BATCH_THRESHOLD && NativeBridge.isLoaded();
+    }
+
     public static int entityBatchThreshold() {
         return ENTITY_BATCH_THRESHOLD;
+    }
+
+    public static int potentialBatchThreshold() {
+        return POTENTIAL_BATCH_THRESHOLD;
     }
 
     private static int readPositiveIntProperty(String property, int fallback) {

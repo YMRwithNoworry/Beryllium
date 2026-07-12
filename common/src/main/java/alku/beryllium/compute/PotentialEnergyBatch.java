@@ -25,6 +25,16 @@ public final class PotentialEnergyBatch {
             return 0.0;
         }
 
+        if (!NativeBatching.shouldUseNativePotentialBatch(charges.size())) {
+            return getPotentialEnergyChangeJava(
+                charges,
+                position,
+                chargeMultiplier,
+                positionGetter,
+                chargeGetter
+            );
+        }
+
         int[] positions = new int[charges.size() * 3];
         double[] chargeValues = new double[charges.size()];
         for (int index = 0; index < charges.size(); index++) {
@@ -37,17 +47,6 @@ public final class PotentialEnergyBatch {
             chargeValues[index] = chargeGetter.applyAsDouble(charge);
         }
 
-        if (!NativeBatching.shouldUseNativeEntityBatch(charges.size())) {
-            return JavaComputeKernels.potentialEnergyChange(
-                position.getX(),
-                position.getY(),
-                position.getZ(),
-                positions,
-                chargeValues,
-                chargeMultiplier
-            );
-        }
-
         return NativeBridge.computePotentialEnergyChange(
             position.getX(),
             position.getY(),
@@ -56,5 +55,33 @@ public final class PotentialEnergyBatch {
             chargeValues,
             chargeMultiplier
         );
+    }
+
+    static <T> double getPotentialEnergyChangeJava(
+        List<? extends T> charges,
+        BlockPos position,
+        double chargeMultiplier,
+        Function<? super T, BlockPos> positionGetter,
+        ToDoubleFunction<? super T> chargeGetter
+    ) {
+        if (chargeMultiplier == 0.0) {
+            return 0.0;
+        }
+
+        int originX = position.getX();
+        int originY = position.getY();
+        int originZ = position.getZ();
+        double energy = 0.0;
+        for (T charge : charges) {
+            BlockPos chargePosition = positionGetter.apply(charge);
+            double chargeValue = chargeGetter.applyAsDouble(charge);
+            double dx = (double) chargePosition.getX() - originX;
+            double dy = (double) chargePosition.getY() - originY;
+            double dz = (double) chargePosition.getZ() - originZ;
+            double distance = dx * dx + dy * dy + dz * dz;
+            energy += distance == 0.0 ? Double.POSITIVE_INFINITY : chargeValue / Math.sqrt(distance);
+        }
+
+        return energy * chargeMultiplier;
     }
 }

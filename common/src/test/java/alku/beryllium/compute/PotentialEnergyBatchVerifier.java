@@ -98,6 +98,25 @@ public final class PotentialEnergyBatchVerifier {
         assertListEquals(List.of(0, 1, 2), chargeReads, "potential charge extraction order");
     }
 
+    public static void verifyPotentialEnergyBatchJavaPathPreservesSequentialAccumulation() {
+        List<SimpleCharge> charges = List.of(
+            new SimpleCharge(0, new BlockPos(3, 0, 4), 10.0),
+            new SimpleCharge(1, new BlockPos(0, 0, 2), -4.0),
+            new SimpleCharge(2, new BlockPos(-6, 0, 8), 2.5)
+        );
+
+        double expected = (10.0 / 5.0 - 4.0 / 2.0 + 2.5 / 10.0) * -3.0;
+        double actual = PotentialEnergyBatch.getPotentialEnergyChangeJava(
+            charges,
+            BlockPos.ZERO,
+            -3.0,
+            charge -> charge.position,
+            charge -> charge.charge
+        );
+
+        assertDoubleEquals(expected, actual, "small-batch Java potential energy change");
+    }
+
     private static void assertDoubleEquals(double expected, double actual, String label) {
         if (Double.compare(expected, actual) != 0) {
             throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);

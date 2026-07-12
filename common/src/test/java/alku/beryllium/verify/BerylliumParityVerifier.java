@@ -46,6 +46,7 @@ public final class BerylliumParityVerifier {
         PotentialEnergyBatchVerifier.verifyPotentialEnergyChangePreservesNegativeZeroMultiplierResult();
         PotentialEnergyBatchVerifier.verifyPotentialEnergyBatchSkipsChargeAccessForZeroMultiplier();
         PotentialEnergyBatchVerifier.verifyPotentialEnergyBatchPreservesExtractionOrder();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyBatchJavaPathPreservesSequentialAccumulation();
         verifyJavaIntegerOverflowSemantics();
         verifyNativeBridgeFallback();
         verifyNativeBridgeFallbackDouble();

@@ -75,6 +75,7 @@ public final class BerylliumNativeRuntimeVerifier {
         PotentialEnergyBatchVerifier.verifyPotentialEnergyChangePreservesNegativeZeroMultiplierResult();
         PotentialEnergyBatchVerifier.verifyPotentialEnergyBatchSkipsChargeAccessForZeroMultiplier();
         PotentialEnergyBatchVerifier.verifyPotentialEnergyBatchPreservesExtractionOrder();
+        PotentialEnergyBatchVerifier.verifyPotentialEnergyBatchJavaPathPreservesSequentialAccumulation();
         EntityDistanceSortVerifier.verifySortByDistance();
         EntityDistanceSortVerifier.verifySortByDistanceTieOrder();
         EntityDistanceSortVerifier.verifyFilterWithinExclusiveDistanceSortedByDistance();
