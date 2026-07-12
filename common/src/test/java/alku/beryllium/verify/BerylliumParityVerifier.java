@@ -57,6 +57,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeFilterAndSort();
         verifyNativeBridgeBlockSort();
         verifyNativeBridgeDoubleSort();
+        verifyNativeBridgeDoubleFusedSortAndRadiusPrefix();
         verifyNativeBridgeDoubleFilter();
         verifyNativeBridgeVariableRadiusFilter();
         verifyNativeBridgeAabbFilter();
@@ -104,6 +105,7 @@ public final class BerylliumParityVerifier {
         EntityDistanceSortVerifier.verifyFindFirstSortedByDistancePreservesTieOrder();
         EntityDistanceSortVerifier.verifyFindFirstSortedWithinExclusiveDistanceEvaluatesPredicateBeforeRadius();
         EntityDistanceSortVerifier.verifyFindFirstSortedWithinExclusiveDistanceShortCircuitsAfterRadius();
+        EntityDistanceSortVerifier.verifyFindFirstBySortedOrderWithinPrefixPreservesPredicateOrderAndShortCircuits();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
         BlockDistanceSortVerifier.verifyFindFirstSortedByBlockDistancePostFilterOrder();
@@ -245,6 +247,64 @@ public final class BerylliumParityVerifier {
         double[] positions = {0.0, 64.0, 0.0, 3.0, 68.0, 4.0, -1.0, 63.0, -2.0};
         int[] sorted = NativeBridge.sortByDistance(0.0, 64.0, 0.0, positions);
         assertArrayEquals(new int[] {0, 2, 1}, sorted, "Native bridge double distance sort");
+    }
+
+    private static void verifyNativeBridgeDoubleFusedSortAndRadiusPrefix() {
+        double[] positions = {
+            2.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0,
+            4.0, 0.0, 0.0
+        };
+        int[] output = {-1, -1, -1, -1, 77};
+        int count = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            positions,
+            output
+        );
+
+        assertEquals(2, count, "Native bridge fused distance sort radius prefix count");
+        assertArrayEquals(new int[] {1, 2, 0, 3}, Arrays.copyOf(output, 4), "Native bridge fused distance sort full order");
+        assertEquals(77, output[4], "Native bridge fused distance sort extra output capacity");
+
+        int[] boundaryOutput = new int[4];
+        int boundaryCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            positions,
+            boundaryOutput
+        );
+        assertEquals(0, boundaryCount, "Native bridge fused distance sort exact boundary prefix");
+        assertArrayEquals(new int[] {1, 2, 0, 3}, boundaryOutput, "Native bridge fused distance sort boundary order");
+
+        int[] nanOutput = new int[4];
+        int nanCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            Double.NaN,
+            positions,
+            nanOutput
+        );
+        assertEquals(0, nanCount, "Native bridge fused distance sort NaN radius prefix");
+        assertArrayEquals(new int[] {1, 2, 0, 3}, nanOutput, "Native bridge fused distance sort NaN radius order");
+
+        int[] infinityOutput = new int[4];
+        int infinityCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            Double.POSITIVE_INFINITY,
+            positions,
+            infinityOutput
+        );
+        assertEquals(4, infinityCount, "Native bridge fused distance sort infinite radius prefix");
+        assertArrayEquals(new int[] {1, 2, 0, 3}, infinityOutput, "Native bridge fused distance sort infinite radius order");
     }
 
     private static void verifyNativeBridgeBlockSort() {

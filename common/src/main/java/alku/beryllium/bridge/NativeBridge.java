@@ -729,6 +729,54 @@ public final class NativeBridge {
         return output;
     }
 
+    public static int sortByDistanceAndCountWithinRadiusExclusive(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        JavaComputeKernels.validatePositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+        int positionCount = positions.length / 3;
+        JavaComputeKernels.validateOutputCapacity(positionCount, output);
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.sortByDistanceAndCountWithinRadiusExclusive(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                positions,
+                output
+            );
+        }
+
+        int nativeCount = sortByDistanceAndCountWithinRadiusExclusiveDoubleNative(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            output
+        );
+        if (nativeCount < 0 || nativeCount > positionCount) {
+            return JavaComputeKernels.sortByDistanceAndCountWithinRadiusExclusive(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                positions,
+                output
+            );
+        }
+
+        return nativeCount;
+    }
+
     private static native int computeSquaredDistancesNative(
         int originX,
         int originY,
@@ -895,6 +943,15 @@ public final class NativeBridge {
         double originX,
         double originY,
         double originZ,
+        double[] positions,
+        int[] output
+    );
+
+    private static native int sortByDistanceAndCountWithinRadiusExclusiveDoubleNative(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
         double[] positions,
         int[] output
     );

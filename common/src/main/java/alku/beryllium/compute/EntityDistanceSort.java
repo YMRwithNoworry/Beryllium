@@ -275,10 +275,38 @@ public final class EntityDistanceSort {
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
         int[] order = NativeBridge.sortByDistance(originX, originY, originZ, positions);
-        for (int index : order) {
-            T value = values.get(index);
+        int orderCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            order
+        );
+        return findFirstBySortedOrderWithinPrefix(
+            values,
+            order,
+            orderCount,
+            beforeDistancePredicate,
+            afterDistancePredicate
+        );
+    }
+
+    static <T> Optional<T> findFirstBySortedOrderWithinPrefix(
+        List<? extends T> values,
+        int[] order,
+        int prefixCount,
+        Predicate<? super T> beforeDistancePredicate,
+        Predicate<? super T> afterDistancePredicate
+    ) {
+        if (prefixCount < 0 || prefixCount > order.length) {
+            throw new IllegalArgumentException("prefixCount must be within the order bounds");
+        }
+
+        for (int orderIndex = 0; orderIndex < order.length; orderIndex++) {
+            T value = values.get(order[orderIndex]);
             if (beforeDistancePredicate.test(value)
-                && squaredPackedDistance(originX, originY, originZ, positions, index) < radiusSquared
+                && orderIndex < prefixCount
                 && afterDistancePredicate.test(value)) {
                 return Optional.of(value);
             }
@@ -365,17 +393,4 @@ public final class EntityDistanceSort {
         return dx * dx + dy * dy + dz * dz;
     }
 
-    private static double squaredPackedDistance(
-        double originX,
-        double originY,
-        double originZ,
-        double[] positions,
-        int index
-    ) {
-        int offset = index * 3;
-        double dx = positions[offset] - originX;
-        double dy = positions[offset + 1] - originY;
-        double dz = positions[offset + 2] - originZ;
-        return dx * dx + dy * dy + dz * dz;
-    }
 }

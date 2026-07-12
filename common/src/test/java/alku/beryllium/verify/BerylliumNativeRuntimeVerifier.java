@@ -83,6 +83,7 @@ public final class BerylliumNativeRuntimeVerifier {
         EntityDistanceSortVerifier.verifyFindFirstSortedByDistancePreservesTieOrder();
         EntityDistanceSortVerifier.verifyFindFirstSortedWithinExclusiveDistanceEvaluatesPredicateBeforeRadius();
         EntityDistanceSortVerifier.verifyFindFirstSortedWithinExclusiveDistanceShortCircuitsAfterRadius();
+        EntityDistanceSortVerifier.verifyFindFirstBySortedOrderWithinPrefixPreservesPredicateOrderAndShortCircuits();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
         BlockDistanceSearchVerifier.verifyFindNearestByBlockDistance();
@@ -114,6 +115,7 @@ public final class BerylliumNativeRuntimeVerifier {
         verifyNativeSort();
         verifyNativeBlockSort();
         verifyNativeDoubleSort();
+        verifyNativeDoubleFusedSortAndRadiusPrefix();
     }
 
     private static void verifyNativeDistance() {
@@ -349,6 +351,44 @@ public final class BerylliumNativeRuntimeVerifier {
             -1.0, 63.0, -2.0
         });
         assertArrayEquals(new int[] {0, 2, 1}, order, "native double distance sort");
+    }
+
+    private static void verifyNativeDoubleFusedSortAndRadiusPrefix() {
+        double[] positions = {
+            2.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0,
+            4.0, 0.0, 0.0
+        };
+        int[] output = {-1, -1, -1, -1, 77};
+        int count = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            positions,
+            output
+        );
+
+        assertEquals(2, count, "native fused distance sort radius prefix count");
+        assertArrayEquals(new int[] {1, 2, 0, 3}, Arrays.copyOf(output, 4), "native fused distance sort full order");
+        assertEquals(77, output[4], "native fused distance sort extra output capacity");
+
+        int[] tiedOutput = new int[3];
+        int tiedCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            new double[] {
+                1.0, 0.0, 0.0,
+                -1.0, 0.0, 0.0,
+                0.0, 2.0, 0.0
+            },
+            tiedOutput
+        );
+        assertEquals(2, tiedCount, "native fused distance sort tie prefix");
+        assertArrayEquals(new int[] {0, 1, 2}, tiedOutput, "native fused distance sort tie order");
     }
 
     private static void verifyNativeBlockSort() {

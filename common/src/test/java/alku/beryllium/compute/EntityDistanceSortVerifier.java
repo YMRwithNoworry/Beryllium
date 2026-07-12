@@ -298,6 +298,60 @@ public final class EntityDistanceSortVerifier {
         assertListEquals(List.of(39, 38), afterDistance, "sorted-radius entity distance after-radius short-circuit order");
     }
 
+    public static void verifyFindFirstBySortedOrderWithinPrefixPreservesPredicateOrderAndShortCircuits() {
+        List<SimplePoint> points = List.of(
+            new SimplePoint(0, 1.0, 0.0, 0.0),
+            new SimplePoint(1, 2.0, 0.0, 0.0),
+            new SimplePoint(2, 3.0, 0.0, 0.0),
+            new SimplePoint(3, 4.0, 0.0, 0.0)
+        );
+        int[] order = {0, 1, 2, 3};
+        List<Integer> beforeDistance = new ArrayList<>();
+        List<Integer> afterDistance = new ArrayList<>();
+
+        var noMatch = EntityDistanceSort.findFirstBySortedOrderWithinPrefix(
+            points,
+            order,
+            2,
+            point -> {
+                beforeDistance.add(point.id);
+                return true;
+            },
+            point -> {
+                afterDistance.add(point.id);
+                return false;
+            }
+        );
+
+        if (noMatch.isPresent()) {
+            throw new AssertionError("expected no prefix match but got " + noMatch.get().id);
+        }
+        assertListEquals(List.of(0, 1, 2, 3), beforeDistance, "prefix helper before predicate order");
+        assertListEquals(List.of(0, 1), afterDistance, "prefix helper after predicate prefix order");
+
+        beforeDistance.clear();
+        afterDistance.clear();
+        var match = EntityDistanceSort.findFirstBySortedOrderWithinPrefix(
+            points,
+            new int[] {1, 0, 2, 3},
+            2,
+            point -> {
+                beforeDistance.add(point.id);
+                return point.id != 1;
+            },
+            point -> {
+                afterDistance.add(point.id);
+                return true;
+            }
+        ).orElseThrow(() -> new AssertionError("expected a prefix match"));
+
+        if (match.id != 0) {
+            throw new AssertionError("prefix helper match mismatch, expected 0 but got " + match.id);
+        }
+        assertListEquals(List.of(1, 0), beforeDistance, "prefix helper short-circuit before order");
+        assertListEquals(List.of(0), afterDistance, "prefix helper short-circuit after order");
+    }
+
     private static List<SimplePoint> descendingAxisPoints(int count) {
         List<SimplePoint> points = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {

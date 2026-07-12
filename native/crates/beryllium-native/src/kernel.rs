@@ -985,6 +985,77 @@ pub fn sort_by_distance_f64(
     Ok(())
 }
 
+/// Sorts packed f64 x/y/z triples by squared distance and returns the strict radius prefix length.
+pub fn sort_by_distance_and_count_within_radius_f64_exclusive(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    if radius_squared < 0.0 || positions.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    if output.len() < position_count {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    let mut indexed_distances: Vec<(i32, f64)> = if position_count >= PARALLEL_THRESHOLD {
+        (0..position_count as i32)
+            .into_par_iter()
+            .map(|index| {
+                (
+                    index,
+                    squared_distance_at_f64(
+                        origin_x,
+                        origin_y,
+                        origin_z,
+                        positions,
+                        index as usize,
+                    ),
+                )
+            })
+            .collect()
+    } else {
+        (0..position_count as i32)
+            .map(|index| {
+                (
+                    index,
+                    squared_distance_at_f64(
+                        origin_x,
+                        origin_y,
+                        origin_z,
+                        positions,
+                        index as usize,
+                    ),
+                )
+            })
+            .collect()
+    };
+
+    if indexed_distances.len() >= PARALLEL_THRESHOLD {
+        indexed_distances.par_sort_by(|left, right| {
+            compare_distance_order_f64(left.0, left.1, right.0, right.1)
+        });
+    } else {
+        indexed_distances
+            .sort_by(|left, right| compare_distance_order_f64(left.0, left.1, right.0, right.1));
+    }
+
+    let mut prefix_count = 0;
+    for (output_index, (index, distance)) in indexed_distances.iter().enumerate() {
+        output[output_index] = *index;
+        if *distance < radius_squared {
+            prefix_count += 1;
+        }
+    }
+
+    Ok(prefix_count)
+}
+
 fn squared_distance_at(
     origin_x: i32,
     origin_y: i32,
@@ -1215,12 +1286,15 @@ fn compare_java_double(left: f64, right: f64) -> Ordering {
         Ordering::Less
     } else if left > right {
         Ordering::Greater
-    } else if left.is_nan() && !right.is_nan() {
-        Ordering::Greater
-    } else if !left.is_nan() && right.is_nan() {
-        Ordering::Less
+    } else if left.is_nan() || right.is_nan() {
+        match (left.is_nan(), right.is_nan()) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (false, false) => unreachable!(),
+        }
     } else {
-        Ordering::Equal
+        (left.to_bits() as i64).cmp(&(right.to_bits() as i64))
     }
 }
 
@@ -1778,6 +1852,92 @@ mod tests {
         let mut output = [0; 3];
         sort_by_distance_f64(0.0, 0.0, 0.0, &positions, &mut output).unwrap();
         assert_eq!(output, [0, 1, 2]);
+    }
+
+    #[test]
+    fn sort_by_distance_and_count_within_radius_f64_exclusive_should_write_full_order_and_prefix() {
+        let positions = [2.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 4.0, 0.0, 0.0];
+        let mut output = [0, 0, 0, 0, 77];
+
+        let count = sort_by_distance_and_count_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            &positions,
+            &mut output,
+        )
+        .unwrap();
+
+        assert_eq!(count, 2);
+        assert_eq!(&output[..4], &[1, 2, 0, 3]);
+        assert_eq!(output[4], 77);
+    }
+
+    #[test]
+    fn sort_by_distance_and_count_within_radius_f64_exclusive_should_preserve_special_radius_semantics(
+    ) {
+        let positions = [2.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 4.0, 0.0, 0.0];
+        let mut output = [0; 4];
+
+        let boundary_count = sort_by_distance_and_count_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            &positions,
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(boundary_count, 0);
+
+        let nan_count = sort_by_distance_and_count_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            f64::NAN,
+            &positions,
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(nan_count, 0);
+
+        let infinity_count = sort_by_distance_and_count_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            f64::INFINITY,
+            &positions,
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(infinity_count, 4);
+    }
+
+    #[test]
+    fn sort_by_distance_and_count_within_radius_f64_exclusive_should_match_parallel_reference_order(
+    ) {
+        let positions: Vec<f64> = (0..5000)
+            .flat_map(|index| [(4999 - index) as f64, 0.0, 0.0])
+            .collect();
+        let mut output = vec![0; 5000];
+
+        let count = sort_by_distance_and_count_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            1024.0,
+            &positions,
+            &mut output,
+        )
+        .unwrap();
+
+        assert_eq!(count, 32);
+        assert_eq!(
+            &output[..count],
+            &(4968..5000).rev().collect::<Vec<_>>()[..]
+        );
+        assert_eq!(&output[count..], &(0..4968).rev().collect::<Vec<_>>()[..]);
     }
 
     #[test]

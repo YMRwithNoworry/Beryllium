@@ -11,7 +11,8 @@ use crate::{
     kernel::find_nearest_block_corner_index_within_radius, kernel::find_nearest_index_f64,
     kernel::find_nearest_index_f64_exclusive, kernel::has_any_within_radius_f64_exclusive,
     kernel::potential_energy_change, kernel::sort_by_block_distance, kernel::sort_by_distance,
-    kernel::sort_by_distance_f64, kernel::sort_within_radius_f64_exclusive, NativeError,
+    kernel::sort_by_distance_and_count_within_radius_f64_exclusive, kernel::sort_by_distance_f64,
+    kernel::sort_within_radius_f64_exclusive, NativeError,
 };
 
 /// Result code returned by the FFI layer.
@@ -398,6 +399,28 @@ pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_sortByDistanceDou
     output: JIntArray<'_>,
 ) -> jint {
     sort_by_distance_double_jni(env, origin_x, origin_y, origin_z, positions, output).code()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_sortByDistanceAndCountWithinRadiusExclusiveDoubleNative(
+    env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    origin_x: jdouble,
+    origin_y: jdouble,
+    origin_z: jdouble,
+    radius_squared: jdouble,
+    positions: JDoubleArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    sort_by_distance_and_count_within_radius_exclusive_double_jni(
+        env,
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        positions,
+        output,
+    )
 }
 
 #[no_mangle]
@@ -1286,6 +1309,56 @@ fn sort_by_distance_double_jni(
     }
 
     NativeStatus::Ok
+}
+
+fn sort_by_distance_and_count_within_radius_exclusive_double_jni(
+    env: JNIEnv<'_>,
+    origin_x: jdouble,
+    origin_y: jdouble,
+    origin_z: jdouble,
+    radius_squared: jdouble,
+    positions: JDoubleArray<'_>,
+    output: JIntArray<'_>,
+) -> jint {
+    let positions_len = match env.get_array_length(&positions) {
+        Ok(value) => value as usize,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+    let output_len = match env.get_array_length(&output) {
+        Ok(value) => value as usize,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+
+    let mut positions_buffer = vec![0.0; positions_len];
+    if env
+        .get_double_array_region(&positions, 0, &mut positions_buffer)
+        .is_err()
+    {
+        return native_count_error_code(NativeStatus::Jni);
+    }
+
+    let position_count = positions_len / 3;
+    let mut output_buffer = vec![0; output_len];
+    let count = match sort_by_distance_and_count_within_radius_f64_exclusive(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        &positions_buffer,
+        &mut output_buffer,
+    ) {
+        Ok(value) => value,
+        Err(error) => return native_count_error_code(error.into()),
+    };
+
+    if env
+        .set_int_array_region(&output, 0, &output_buffer[..position_count])
+        .is_err()
+    {
+        return native_count_error_code(NativeStatus::Jni);
+    }
+
+    count as jint
 }
 
 fn sort_within_radius_exclusive_double_jni(
