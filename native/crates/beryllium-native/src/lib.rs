@@ -4,16 +4,19 @@ mod kernel;
 
 pub use error::NativeError;
 pub use ffi::{
-    Java_alku_beryllium_bridge_NativeBridge_computePotentialEnergyChangeNative,
-    Java_alku_beryllium_bridge_NativeBridge_computeSquaredDistancesNative,
-    Java_alku_beryllium_bridge_NativeBridge_countWithinRadiusNative,
-    Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCenterIndexNative,
-    Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCenterIndexPrefixNative,
-    Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCornerIndexNative,
-    Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCornerIndexWithinRadiusNative,
-    Java_alku_beryllium_bridge_NativeBridge_sortByDistanceAndCountWithinRadiusExclusiveDoubleNative,
-    Java_alku_beryllium_bridge_NativeBridge_sortByDistanceDoubleNative,
-    Java_alku_beryllium_bridge_NativeBridge_sortWithinRadiusExclusiveDoubleNative, NativeStatus,
+    beryllium_compute_potential_energy_change, beryllium_compute_squared_distances,
+    beryllium_compute_squared_distances_double, beryllium_count_within_radius,
+    beryllium_filter_intersecting_aabb_double, beryllium_filter_within_aabb_double,
+    beryllium_filter_within_exclusive_chunk_distance, beryllium_filter_within_radii_double,
+    beryllium_filter_within_radius, beryllium_filter_within_radius_double,
+    beryllium_filter_within_radius_exclusive_double, beryllium_find_nearest_block_center_index,
+    beryllium_find_nearest_block_center_index_prefix, beryllium_find_nearest_block_corner_index,
+    beryllium_find_nearest_block_corner_index_within_radius, beryllium_find_nearest_index_double,
+    beryllium_find_nearest_index_exclusive_double,
+    beryllium_has_any_within_radius_exclusive_double, beryllium_sort_by_block_distance,
+    beryllium_sort_by_distance,
+    beryllium_sort_by_distance_and_count_within_radius_exclusive_double,
+    beryllium_sort_by_distance_double, beryllium_sort_within_radius_exclusive_double, NativeStatus,
 };
 pub use kernel::{
     compute_squared_distances, count_within_radius, find_nearest_block_center_index,

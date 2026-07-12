@@ -17,7 +17,9 @@ public final class NativeBridge {
 
     public static synchronized NativeStatus initialize() {
         if (!initialized) {
-            status = NativeLibraryLoader.tryLoad() ? NativeStatus.OK : NativeStatus.UNAVAILABLE;
+            status = NativeLibraryLoader.tryLoad() && FfmNativeBridge.initialize()
+                ? NativeStatus.OK
+                : NativeStatus.UNAVAILABLE;
             initialized = true;
         }
 
@@ -30,6 +32,10 @@ public final class NativeBridge {
 
     public static NativeStatus status() {
         return status;
+    }
+
+    public static boolean usesFfm() {
+        return isLoaded() && FfmNativeBridge.isAvailable();
     }
 
     public static long[] computeSquaredDistances(int originX, int originY, int originZ, int[] positions) {
@@ -357,6 +363,37 @@ public final class NativeBridge {
         );
         if (nativeCount < 0) {
             return JavaComputeKernels.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, output);
+        }
+
+        return nativeCount;
+    }
+
+    public static int filterWithinExclusiveChunkDistance(
+        double originX,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        JavaComputeKernels.validateXzPositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+        JavaComputeKernels.validateOutputCapacity(positions.length / 2, output);
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.filterWithinExclusiveChunkDistance(originX, originZ, radiusSquared, positions, output);
+        }
+
+        int nativeCount = filterWithinExclusiveChunkDistanceNative(
+            originX,
+            originZ,
+            radiusSquared,
+            positions,
+            output
+        );
+        if (nativeCount < 0 || nativeCount > positions.length / 2) {
+            return JavaComputeKernels.filterWithinExclusiveChunkDistance(originX, originZ, radiusSquared, positions, output);
         }
 
         return nativeCount;
@@ -777,23 +814,27 @@ public final class NativeBridge {
         return nativeCount;
     }
 
-    private static native int computeSquaredDistancesNative(
+    private static int computeSquaredDistancesNative(
         int originX,
         int originY,
         int originZ,
         int[] positions,
         long[] output
-    );
+    ) {
+        return FfmNativeBridge.computeSquaredDistances(originX, originY, originZ, positions, output);
+    }
 
-    private static native int computeSquaredDistancesDoubleNative(
+    private static int computeSquaredDistancesDoubleNative(
         double originX,
         double originY,
         double originZ,
         double[] positions,
         double[] output
-    );
+    ) {
+        return FfmNativeBridge.computeSquaredDistances(originX, originY, originZ, positions, output);
+    }
 
-    private static native int computePotentialEnergyChangeNative(
+    private static int computePotentialEnergyChangeNative(
         int originX,
         int originY,
         int originZ,
@@ -801,107 +842,151 @@ public final class NativeBridge {
         double[] charges,
         double chargeMultiplier,
         double[] output
-    );
+    ) {
+        return FfmNativeBridge.computePotentialEnergyChange(
+            originX,
+            originY,
+            originZ,
+            positions,
+            charges,
+            chargeMultiplier,
+            output
+        );
+    }
 
-    private static native int filterWithinRadiusNative(
+    private static int filterWithinRadiusNative(
         int originX,
         int originY,
         int originZ,
         long radiusSquared,
         int[] positions,
         int[] output
-    );
+    ) {
+        return FfmNativeBridge.filterWithinRadius(originX, originY, originZ, radiusSquared, positions, output);
+    }
 
-    private static native int countWithinRadiusNative(
+    private static int countWithinRadiusNative(
         int originX,
         int originY,
         int originZ,
         long radiusSquared,
         int[] positions
-    );
+    ) {
+        return FfmNativeBridge.countWithinRadius(originX, originY, originZ, radiusSquared, positions);
+    }
 
-    private static native int filterWithinRadiusDoubleNative(
+    private static int filterWithinRadiusDoubleNative(
         double originX,
         double originY,
         double originZ,
         double radiusSquared,
         double[] positions,
         int[] output
-    );
+    ) {
+        return FfmNativeBridge.filterWithinRadius(originX, originY, originZ, radiusSquared, positions, output);
+    }
 
-    private static native int filterWithinRadiusExclusiveDoubleNative(
+    private static int filterWithinRadiusExclusiveDoubleNative(
         double originX,
         double originY,
         double originZ,
         double radiusSquared,
         double[] positions,
         int[] output
-    );
+    ) {
+        return FfmNativeBridge.filterWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, output);
+    }
 
-    private static native int filterWithinRadiiDoubleNative(
+    private static int filterWithinExclusiveChunkDistanceNative(
+        double originX,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        return FfmNativeBridge.filterWithinExclusiveChunkDistance(originX, originZ, radiusSquared, positions, output);
+    }
+
+    private static int filterWithinRadiiDoubleNative(
         double originX,
         double originY,
         double originZ,
         double[] positions,
         double[] radiiSquared,
         int[] output
-    );
+    ) {
+        return FfmNativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared, output);
+    }
 
-    private static native int findNearestIndexDoubleNative(
+    private static int findNearestIndexDoubleNative(
         double originX,
         double originY,
         double originZ,
         double maxDistanceSquared,
         double[] positions
-    );
+    ) {
+        return FfmNativeBridge.findNearestIndex(originX, originY, originZ, maxDistanceSquared, positions);
+    }
 
-    private static native int findNearestIndexExclusiveDoubleNative(
+    private static int findNearestIndexExclusiveDoubleNative(
         double originX,
         double originY,
         double originZ,
         double maxDistanceSquared,
         double[] positions
-    );
+    ) {
+        return FfmNativeBridge.findNearestIndexExclusive(originX, originY, originZ, maxDistanceSquared, positions);
+    }
 
-    private static native int hasAnyWithinRadiusExclusiveDoubleNative(
+    private static int hasAnyWithinRadiusExclusiveDoubleNative(
         double originX,
         double originY,
         double originZ,
         double maxDistanceSquared,
         double[] positions
-    );
+    ) {
+        return FfmNativeBridge.hasAnyWithinRadiusExclusive(originX, originY, originZ, maxDistanceSquared, positions);
+    }
 
-    private static native int findNearestBlockCenterIndexNative(
+    private static int findNearestBlockCenterIndexNative(
         double originX,
         double originY,
         double originZ,
         int[] positions
-    );
+    ) {
+        return FfmNativeBridge.findNearestBlockCenterIndex(originX, originY, originZ, positions);
+    }
 
-    private static native int findNearestBlockCenterIndexPrefixNative(
+    private static int findNearestBlockCenterIndexPrefixNative(
         double originX,
         double originY,
         double originZ,
         int[] positions,
         int positionCount
-    );
+    ) {
+        return FfmNativeBridge.findNearestBlockCenterIndex(originX, originY, originZ, positions, positionCount);
+    }
 
-    private static native int findNearestBlockCornerIndexNative(
+    private static int findNearestBlockCornerIndexNative(
         int originX,
         int originY,
         int originZ,
         int[] positions
-    );
+    ) {
+        return FfmNativeBridge.findNearestBlockCornerIndex(originX, originY, originZ, positions);
+    }
 
-    private static native int findNearestBlockCornerIndexWithinRadiusNative(
+    private static int findNearestBlockCornerIndexWithinRadiusNative(
         int originX,
         int originY,
         int originZ,
         long radiusSquared,
         int[] positions
-    );
+    ) {
+        return FfmNativeBridge.findNearestBlockCornerIndexWithinRadius(originX, originY, originZ, radiusSquared, positions);
+    }
 
-    private static native int filterWithinAabbDoubleNative(
+    private static int filterWithinAabbDoubleNative(
         double minX,
         double minY,
         double minZ,
@@ -910,9 +995,20 @@ public final class NativeBridge {
         double maxZ,
         double[] positions,
         int[] output
-    );
+    ) {
+        return FfmNativeBridge.filterWithinAabb(
+            minX,
+            minY,
+            minZ,
+            maxX,
+            maxY,
+            maxZ,
+            positions,
+            output
+        );
+    }
 
-    private static native int filterIntersectingAabbDoubleNative(
+    private static int filterIntersectingAabbDoubleNative(
         double queryMinX,
         double queryMinY,
         double queryMinZ,
@@ -921,47 +1017,75 @@ public final class NativeBridge {
         double queryMaxZ,
         double[] boxes,
         int[] output
-    );
+    ) {
+        return FfmNativeBridge.filterIntersectingAabb(
+            queryMinX,
+            queryMinY,
+            queryMinZ,
+            queryMaxX,
+            queryMaxY,
+            queryMaxZ,
+            boxes,
+            output
+        );
+    }
 
-    private static native int sortByDistanceNative(
+    private static int sortByDistanceNative(
         int originX,
         int originY,
         int originZ,
         int[] positions,
         int[] output
-    );
+    ) {
+        return FfmNativeBridge.sortByDistance(originX, originY, originZ, positions, output);
+    }
 
-    private static native int sortByBlockDistanceNative(
+    private static int sortByBlockDistanceNative(
         int originX,
         int originY,
         int originZ,
         int[] positions,
         int[] output
-    );
+    ) {
+        return FfmNativeBridge.sortByBlockDistance(originX, originY, originZ, positions, output);
+    }
 
-    private static native int sortByDistanceDoubleNative(
+    private static int sortByDistanceDoubleNative(
         double originX,
         double originY,
         double originZ,
         double[] positions,
         int[] output
-    );
+    ) {
+        return FfmNativeBridge.sortByDistance(originX, originY, originZ, positions, output);
+    }
 
-    private static native int sortByDistanceAndCountWithinRadiusExclusiveDoubleNative(
+    private static int sortByDistanceAndCountWithinRadiusExclusiveDoubleNative(
         double originX,
         double originY,
         double originZ,
         double radiusSquared,
         double[] positions,
         int[] output
-    );
+    ) {
+        return FfmNativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            output
+        );
+    }
 
-    private static native int sortWithinRadiusExclusiveDoubleNative(
+    private static int sortWithinRadiusExclusiveDoubleNative(
         double originX,
         double originY,
         double originZ,
         double radiusSquared,
         double[] positions,
         int[] output
-    );
+    ) {
+        return FfmNativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, output);
+    }
 }

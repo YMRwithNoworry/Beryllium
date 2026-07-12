@@ -1,26 +1,26 @@
 # 最近物品融合排序与半径前缀实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:test-driven-development for every production change. Execute the steps task-by-task and keep the Java fallback, JNI bridge, Rust kernel, and both verifier entry points synchronized.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:test-driven-development for every production change. Execute the steps task-by-task and keep the Java fallback, FFM bridge, Rust kernel, and both verifier entry points synchronized.
 
-**Goal:** 在保持最近物品搜索排序、半径边界、谓词时序和短路语义不变的前提下，用一次 Rust JNI 调用返回完整稳定距离排序和严格半径前缀长度，消除大批量路径的 Java 距离重算。
+**Goal:** 在保持最近物品搜索排序、半径边界、谓词时序和短路语义不变的前提下，用一次 Rust C ABI + Java FFM downcall 返回完整稳定距离排序和严格半径前缀长度，消除大批量路径的 Java 距离重算。
 
-**Architecture:** `JavaComputeKernels` 先实现缓存平方距离的 Java 参考内核；`NativeBridge` 校验输入、调用 JNI 并对错误/越界计数回退到参考内核；Rust `kernel.rs` 在一次距离计算后排序并统计前缀，`ffi.rs` 只传递 `int[]` 排序输出和一个计数。`EntityDistanceSort` 只在大批量分支使用融合 API，继续在 Java 按完整排序调用前置谓词，并只对前缀内候选调用后置谓词。
+**Architecture:** `JavaComputeKernels` 先实现缓存平方距离的 Java 参考内核；`NativeBridge` 校验输入、通过 FFM 调用 C ABI 并对错误/越界计数回退到参考内核；Rust `kernel.rs` 在一次距离计算后排序并统计前缀，`ffi.rs` 只传递 primitive buffer 指针、长度和一个计数。`EntityDistanceSort` 只在大批量分支使用融合 API，继续在 Java 按完整排序调用前置谓词，并只对前缀内候选调用后置谓词。
 
-**Tech Stack:** Java 21、Architectury Loom、JNI、Rust 2021、Rayon、现有 JavaExec parity/native-runtime verifier。
+**Tech Stack:** Java 21 FFM preview、Architectury Loom、Rust 2021 稳定 C ABI、Rayon、现有 JavaExec parity/native-runtime verifier。
 
 ---
 
 ## 文件职责
 
 - `common/src/main/java/alku/beryllium/compute/JavaComputeKernels.java`：保存距离一次计算后的 Java 参考排序和严格前缀计数。
-- `common/src/main/java/alku/beryllium/bridge/NativeBridge.java`：暴露融合 API、执行输入校验、处理 JNI 负数/越界计数并回退。
+- `common/src/main/java/alku/beryllium/bridge/NativeBridge.java`：暴露融合 API、执行输入校验、处理 FFM 负数/越界计数并回退。
 - `common/src/main/java/alku/beryllium/compute/EntityDistanceSort.java`：接入最近物品大批量路径，保持谓词调用与短路顺序。
 - `common/src/test/java/alku/beryllium/compute/EntityDistanceSortVerifier.java`：验证调用方行为、前后置谓词和短路。
 - `common/src/test/java/alku/beryllium/verify/BerylliumParityVerifier.java`：验证 Java kernel 与 NativeBridge 的公共契约。
-- `common/src/test/java/alku/beryllium/verify/BerylliumNativeRuntimeVerifier.java`：在真实 DLL 加载时执行融合 JNI 路径。
+- `common/src/test/java/alku/beryllium/verify/BerylliumNativeRuntimeVerifier.java`：在真实 DLL 加载时执行融合 FFM 路径。
 - `native/crates/beryllium-native/src/kernel.rs`：实现 f64 融合内核、特殊浮点值和 Rayon 大批量测试。
-- `native/crates/beryllium-native/src/ffi.rs`：实现 JNI 导出、数组拷贝和负计数错误编码。
-- `native/crates/beryllium-native/src/lib.rs`：重新导出新增 JNI 函数和 Rust kernel。
+- `native/crates/beryllium-native/src/ffi.rs`：实现稳定 C ABI 导出、指针切片和负计数错误编码。
+- `native/crates/beryllium-native/src/lib.rs`：重新导出新增 C ABI 函数和 Rust kernel。
 
 ## Task 1: Java 参考契约 RED
 
@@ -100,7 +100,7 @@ git push origin master
 - Modify: `common/src/test/java/alku/beryllium/verify/BerylliumParityVerifier.java`
 - Modify: `common/src/test/java/alku/beryllium/verify/BerylliumNativeRuntimeVerifier.java`
 - Modify: `native/crates/beryllium-native/src/ffi.rs` only after the Java bridge RED is observed
-- Modify: `native/crates/beryllium-native/src/lib.rs` only with the JNI implementation
+- Modify: `native/crates/beryllium-native/src/lib.rs` only with the C ABI implementation
 
 - [ ] **Step 1: Add the bridge wishes and fallback assertions.**
 
@@ -108,7 +108,7 @@ Add a public `NativeBridge.sortByDistanceAndCountWithinRadiusExclusive` output-b
 
 Use the existing `NativeBridge.isLoaded()` behavior and do not expose test-only mutable native state. A package-visible helper may be used for count validation if needed, but the public method must retain the normal loaded/unloaded fallback contract.
 
-- [ ] **Step 2: Run the bridge verifier before adding JNI and confirm RED.**
+- [ ] **Step 2: Run the bridge verifier before adding FFM and confirm RED.**
 
 Run:
 
@@ -118,15 +118,15 @@ export PATH="$JAVA_HOME/bin:$PATH"
 "/c/tmp/gradle-8121/gradle-8.12.1/bin/gradle.bat" --no-daemon :common:javaParityTest
 ```
 
-Expected: compilation fails because the wished-for JNI declaration/bridge method is not present, or runtime reports the missing native symbol once the Java declaration is present. This RED establishes that the bridge tests exercise a new contract.
+Expected: compilation fails because the wished-for FFM bridge method is not present, or runtime reports the missing C ABI symbol once the Java bridge is present. This RED establishes that the bridge tests exercise a new contract.
 
-- [ ] **Step 3: Implement Java bridge and JNI fallback handling.**
+- [ ] **Step 3: Implement Java bridge and FFM fallback handling.**
 
-Add the private native declaration `sortByDistanceAndCountWithinRadiusExclusiveDoubleNative`. Validate input before JNI. If native is unavailable, call the Java reference method. If JNI returns `< 0` or `> N`, call the Java reference method; otherwise return the native count after the full output has been written.
+Add the private FFM delegate `sortByDistanceAndCountWithinRadiusExclusiveDoubleNative`. Validate input before FFM. If native is unavailable, call the Java reference method. If FFM returns `< 0` or `> N`, call the Java reference method; otherwise return the native count after the full output has been written.
 
 - [ ] **Step 4: Keep bridge tests GREEN with a temporary Java-side error-path seam only if required.**
 
-Run the parity verifier. If direct synthetic error counts cannot be injected without production-only state, test the shared count-validation/fallback helper with package-local verifier access and keep the JNI method free of test hooks. Remove any temporary seam that is not needed by runtime behavior.
+Run the parity verifier. If direct synthetic error counts cannot be injected without production-only state, test the shared count-validation/fallback helper with package-local verifier access and keep the FFM method free of test hooks. Remove any temporary seam that is not needed by runtime behavior.
 
 - [ ] **Step 5: Commit and push the bridge slice.**
 
@@ -136,7 +136,7 @@ git commit -m '-（增加融合距离排序Native桥接契约）'
 git push origin master
 ```
 
-## Task 4: Rust kernel and JNI GREEN
+## Task 4: Rust kernel and FFM GREEN
 
 **Files:**
 
@@ -161,9 +161,9 @@ Expected: compile failure naming the missing fused kernel function.
 
 Add `sort_by_distance_and_count_within_radius_f64_exclusive` returning `Result<usize, NativeError>`. Validate non-negative radius, triple-aligned positions, and output capacity. Build indexed `(i32, f64)` distances once using the existing `PARALLEL_THRESHOLD`; sort with `compare_distance_order_f64`, write all indices, and count the initial entries whose cached distance is `< radius_squared`. Never recompute distance during sorting or prefix counting.
 
-- [ ] **Step 4: Implement the JNI entry point and exports.**
+- [ ] **Step 4: Implement the C ABI entry point and exports.**
 
-Add `Java_alku_beryllium_bridge_NativeBridge_sortByDistanceAndCountWithinRadiusExclusiveDoubleNative`, reuse the existing f64 array copy patterns, call the Rust kernel, write `output_buffer[..position_count]`, return the prefix count, and encode all errors with `native_count_error_code`. Re-export the JNI function and kernel from `lib.rs`.
+Add `beryllium_sort_by_distance_and_count_within_radius_exclusive_double`, accept primitive buffer pointers and lengths, call the Rust kernel, write `output[..position_count]`, return the prefix count, and encode all errors with the FFM count contract. Re-export the C ABI function and kernel from `lib.rs`.
 
 - [ ] **Step 5: Run Rust tests and the native runtime verifier.**
 
@@ -177,11 +177,11 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 Expected: all Rust tests and Java native-runtime assertions pass, including the complete output and prefix contract.
 
-- [ ] **Step 6: Commit and push the Rust/JNI slice.**
+- [ ] **Step 6: Commit and push the Rust/FFM slice.**
 
 ```bash
 git add native/crates/beryllium-native/src/kernel.rs native/crates/beryllium-native/src/ffi.rs native/crates/beryllium-native/src/lib.rs common/src/test/java/alku/beryllium/verify/BerylliumNativeRuntimeVerifier.java
-git commit -m '-（实现融合距离排序Rust内核与JNI）'
+git commit -m '-（实现融合距离排序Rust内核与FFM）'
 git push origin master
 ```
 
@@ -226,7 +226,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 "/c/tmp/gradle-8121/gradle-8.12.1/bin/gradle.bat" --no-daemon :common:javaParityTest :common:nativeRuntimeTest
 ```
 
-Expected: all old and new predicate-order, boundary, tie, and short-circuit assertions pass through Java fallback and real JNI paths.
+Expected: all old and new predicate-order, boundary, tie, and short-circuit assertions pass through Java fallback and real FFM paths.
 
 - [ ] **Step 5: Commit and push the integration slice.**
 
@@ -258,7 +258,7 @@ Expected: every command exits `0`; both remapped jars pass `verifyNativePackage`
 
 - [ ] **Step 2: Audit the diff and behavior against the design.**
 
-Check that the output is a full permutation, prefix uses strict `<`, no Java distance array was added, only one JNI call is used by the large path, predicates remain Java-side, and fallback handles negative/out-of-range native counts. Search for `TODO`, `TBD`, accidental debug output, and changes outside the listed files.
+Check that the output is a full permutation, prefix uses strict `<`, no Java distance array was added, only one FFM downcall is used by the large path, predicates remain Java-side, and fallback handles negative/out-of-range native counts. Search for `TODO`, `TBD`, accidental debug output, and changes outside the listed files.
 
 - [ ] **Step 3: Commit and push any final fixes.**
 

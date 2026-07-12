@@ -10,8 +10,4 @@ pub enum NativeError {
     /// The output buffer does not match the expected size.
     #[error("output length mismatch")]
     OutputLengthMismatch,
-
-    /// The JVM rejected an array operation.
-    #[error("jni error")]
-    Jni,
 }

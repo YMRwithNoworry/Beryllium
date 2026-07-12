@@ -1,11 +1,8 @@
-use jni::objects::{JClass, JDoubleArray, JIntArray, JLongArray, ReleaseMode};
-use jni::sys::{jdouble, jint, jlong};
-use jni::JNIEnv;
-
 use crate::{
     kernel::compute_squared_distances, kernel::compute_squared_distances_f64,
     kernel::count_within_radius, kernel::filter_intersecting_aabb_f64,
-    kernel::filter_within_aabb_f64, kernel::filter_within_radii_f64, kernel::filter_within_radius,
+    kernel::filter_within_aabb_f64, kernel::filter_within_exclusive_chunk_distance,
+    kernel::filter_within_radii_f64, kernel::filter_within_radius,
     kernel::filter_within_radius_f64, kernel::filter_within_radius_f64_exclusive,
     kernel::find_nearest_block_center_index, kernel::find_nearest_block_corner_index,
     kernel::find_nearest_block_corner_index_within_radius, kernel::find_nearest_index_f64,
@@ -15,18 +12,22 @@ use crate::{
     kernel::sort_within_radius_f64_exclusive, NativeError,
 };
 
-/// Result code returned by the FFI layer.
+/// Result code returned by the stable C ABI.
 #[repr(i32)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum NativeStatus {
     /// The call succeeded.
     Ok = 0,
-    /// The call failed with invalid input.
+    /// The caller passed invalid input or a null non-empty buffer.
     InvalidInput = 1,
     /// The output buffer had an unexpected size.
     OutputLengthMismatch = 2,
-    /// The JNI layer failed while copying data.
-    Jni = 3,
+}
+
+impl NativeStatus {
+    fn code(self) -> i32 {
+        self as i32
+    }
 }
 
 impl From<NativeError> for NativeStatus {
@@ -34,994 +35,519 @@ impl From<NativeError> for NativeStatus {
         match error {
             NativeError::InvalidInput => Self::InvalidInput,
             NativeError::OutputLengthMismatch => Self::OutputLengthMismatch,
-            NativeError::Jni => Self::Jni,
         }
     }
 }
 
-/// JNI entry point for batched squared-distance calculation.
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_computeSquaredDistancesNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    positions: JIntArray<'_>,
-    output: JLongArray<'_>,
-) -> jint {
-    compute_squared_distances_jni(env, origin_x, origin_y, origin_z, positions, output).code()
+unsafe fn read_slice<'a, T>(pointer: *const T, length: usize) -> Result<&'a [T], NativeStatus> {
+    if length == 0 {
+        return Ok(&[]);
+    }
+    if pointer.is_null() {
+        return Err(NativeStatus::InvalidInput);
+    }
+    Ok(unsafe { std::slice::from_raw_parts(pointer, length) })
 }
 
-/// JNI entry point for batched squared-distance calculation on f64 positions.
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_computeSquaredDistancesDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JDoubleArray<'_>,
-) -> jint {
-    compute_squared_distances_double_jni(env, origin_x, origin_y, origin_z, positions, output)
-        .code()
+unsafe fn write_slice<'a, T>(pointer: *mut T, length: usize) -> Result<&'a mut [T], NativeStatus> {
+    if length == 0 {
+        return Ok(&mut []);
+    }
+    if pointer.is_null() {
+        return Err(NativeStatus::InvalidInput);
+    }
+    Ok(unsafe { std::slice::from_raw_parts_mut(pointer, length) })
+}
+
+fn status_result(result: Result<(), NativeError>) -> i32 {
+    match result {
+        Ok(()) => NativeStatus::Ok.code(),
+        Err(error) => NativeStatus::from(error).code(),
+    }
+}
+
+fn count_result(result: Result<usize, NativeError>) -> i32 {
+    match result {
+        Ok(count) => i32::try_from(count).unwrap_or(-1 - NativeStatus::InvalidInput.code()),
+        Err(error) => -1 - NativeStatus::from(error).code(),
+    }
+}
+
+fn index_result(result: Result<Option<usize>, NativeError>) -> i32 {
+    match result {
+        Ok(Some(index)) => i32::try_from(index).unwrap_or(-1 - NativeStatus::InvalidInput.code()),
+        Ok(None) => -1,
+        Err(error) => -1 - NativeStatus::from(error).code(),
+    }
+}
+
+fn boolean_result(result: Result<bool, NativeError>) -> i32 {
+    match result {
+        Ok(true) => 1,
+        Ok(false) => 0,
+        Err(error) => -1 - NativeStatus::from(error).code(),
+    }
 }
 
 #[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_computePotentialEnergyChangeNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    positions: JIntArray<'_>,
-    charges: JDoubleArray<'_>,
-    charge_multiplier: jdouble,
-    output: JDoubleArray<'_>,
-) -> jint {
-    compute_potential_energy_change_jni(
-        env,
+pub unsafe extern "C" fn beryllium_compute_squared_distances(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    positions: *const i32,
+    positions_length: usize,
+    output: *mut i64,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+
+    status_result(compute_squared_distances(
+        origin_x, origin_y, origin_z, positions, output,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_compute_squared_distances_double(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    positions: *const f64,
+    positions_length: usize,
+    output: *mut f64,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+
+    status_result(compute_squared_distances_f64(
+        origin_x, origin_y, origin_z, positions, output,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_compute_potential_energy_change(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    positions: *const i32,
+    positions_length: usize,
+    charges: *const f64,
+    charges_length: usize,
+    charge_multiplier: f64,
+    output: *mut f64,
+    output_length: usize,
+) -> i32 {
+    if output_length != 1 {
+        return NativeStatus::OutputLengthMismatch.code();
+    }
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let charges = match unsafe { read_slice(charges, charges_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+
+    match potential_energy_change(
         origin_x,
         origin_y,
         origin_z,
         positions,
         charges,
         charge_multiplier,
-        output,
-    )
-    .code()
+    ) {
+        Ok(value) => {
+            output[0] = value;
+            NativeStatus::Ok.code()
+        }
+        Err(error) => NativeStatus::from(error).code(),
+    }
 }
 
 #[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinRadiusNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    radius_squared: jlong,
-    positions: JIntArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    filter_within_radius_jni(
-        env,
+pub unsafe extern "C" fn beryllium_filter_within_radius(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    radius_squared: i64,
+    positions: *const i32,
+    positions_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(filter_within_radius(
         origin_x,
         origin_y,
         origin_z,
         radius_squared,
         positions,
         output,
-    )
+    ))
 }
 
 #[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_countWithinRadiusNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    radius_squared: jlong,
-    positions: JIntArray<'_>,
-) -> jint {
-    count_within_radius_jni(env, origin_x, origin_y, origin_z, radius_squared, positions)
+pub unsafe extern "C" fn beryllium_count_within_radius(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    radius_squared: i64,
+    positions: *const i32,
+    positions_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(count_within_radius(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        positions,
+    ))
 }
 
 #[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinRadiusDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    radius_squared: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    filter_within_radius_double_jni(
-        env,
+pub unsafe extern "C" fn beryllium_filter_within_radius_double(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: *const f64,
+    positions_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(filter_within_radius_f64(
         origin_x,
         origin_y,
         origin_z,
         radius_squared,
         positions,
         output,
-    )
+    ))
 }
 
 #[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinRadiusExclusiveDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    radius_squared: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    filter_within_radius_exclusive_double_jni(
-        env,
+pub unsafe extern "C" fn beryllium_filter_within_radius_exclusive_double(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: *const f64,
+    positions_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(filter_within_radius_f64_exclusive(
         origin_x,
         origin_y,
         origin_z,
         radius_squared,
         positions,
         output,
-    )
+    ))
 }
 
 #[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinRadiiDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    positions: JDoubleArray<'_>,
-    radii_squared: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    filter_within_radii_double_jni(
-        env,
+pub unsafe extern "C" fn beryllium_filter_within_exclusive_chunk_distance(
+    origin_x: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: *const f64,
+    positions_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(filter_within_exclusive_chunk_distance(
+        origin_x,
+        origin_z,
+        radius_squared,
+        positions,
+        output,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_filter_within_radii_double(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    positions: *const f64,
+    positions_length: usize,
+    radii_squared: *const f64,
+    radii_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let radii_squared = match unsafe { read_slice(radii_squared, radii_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(filter_within_radii_f64(
         origin_x,
         origin_y,
         origin_z,
         positions,
         radii_squared,
         output,
-    )
+    ))
 }
 
 #[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterWithinAabbDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    min_x: jdouble,
-    min_y: jdouble,
-    min_z: jdouble,
-    max_x: jdouble,
-    max_y: jdouble,
-    max_z: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    filter_within_aabb_double_jni(
-        env, min_x, min_y, min_z, max_x, max_y, max_z, positions, output,
-    )
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_filterIntersectingAabbDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    query_min_x: jdouble,
-    query_min_y: jdouble,
-    query_min_z: jdouble,
-    query_max_x: jdouble,
-    query_max_y: jdouble,
-    query_max_z: jdouble,
-    boxes: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    filter_intersecting_aabb_double_jni(
-        env,
-        query_min_x,
-        query_min_y,
-        query_min_z,
-        query_max_x,
-        query_max_y,
-        query_max_z,
-        boxes,
-        output,
-    )
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_findNearestIndexDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    max_distance_squared: jdouble,
-    positions: JDoubleArray<'_>,
-) -> jint {
-    find_nearest_index_double_jni(
-        env,
-        origin_x,
-        origin_y,
-        origin_z,
-        max_distance_squared,
-        positions,
-    )
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_findNearestIndexExclusiveDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    max_distance_squared: jdouble,
-    positions: JDoubleArray<'_>,
-) -> jint {
-    find_nearest_index_exclusive_double_jni(
-        env,
-        origin_x,
-        origin_y,
-        origin_z,
-        max_distance_squared,
-        positions,
-    )
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_hasAnyWithinRadiusExclusiveDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    max_distance_squared: jdouble,
-    positions: JDoubleArray<'_>,
-) -> jint {
-    has_any_within_radius_exclusive_double_jni(
-        env,
-        origin_x,
-        origin_y,
-        origin_z,
-        max_distance_squared,
-        positions,
-    )
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCenterIndexNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    positions: JIntArray<'_>,
-) -> jint {
-    find_nearest_block_center_index_jni(env, origin_x, origin_y, origin_z, positions)
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCenterIndexPrefixNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    positions: JIntArray<'_>,
-    position_count: jint,
-) -> jint {
-    find_nearest_block_center_index_prefix_jni(
-        env,
-        origin_x,
-        origin_y,
-        origin_z,
-        positions,
-        position_count,
-    )
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCornerIndexNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    positions: JIntArray<'_>,
-) -> jint {
-    find_nearest_block_corner_index_jni(env, origin_x, origin_y, origin_z, positions)
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_findNearestBlockCornerIndexWithinRadiusNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    radius_squared: jlong,
-    positions: JIntArray<'_>,
-) -> jint {
-    find_nearest_block_corner_index_within_radius_jni(
-        env,
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        positions,
-    )
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_sortByDistanceNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    positions: JIntArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    sort_by_distance_jni(env, origin_x, origin_y, origin_z, positions, output).code()
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_sortByBlockDistanceNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    positions: JIntArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    sort_by_block_distance_jni(env, origin_x, origin_y, origin_z, positions, output).code()
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_sortByDistanceDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    sort_by_distance_double_jni(env, origin_x, origin_y, origin_z, positions, output).code()
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_sortByDistanceAndCountWithinRadiusExclusiveDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    radius_squared: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    sort_by_distance_and_count_within_radius_exclusive_double_jni(
-        env,
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        positions,
-        output,
-    )
-}
-
-#[no_mangle]
-pub extern "system" fn Java_alku_beryllium_bridge_NativeBridge_sortWithinRadiusExclusiveDoubleNative(
-    env: JNIEnv<'_>,
-    _class: JClass<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    radius_squared: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    sort_within_radius_exclusive_double_jni(
-        env,
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        positions,
-        output,
-    )
-}
-
-fn compute_squared_distances_jni(
-    env: JNIEnv<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    positions: JIntArray<'_>,
-    output: JLongArray<'_>,
-) -> NativeStatus {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-
-    let mut positions_buffer = vec![0; positions_len];
-    if env
-        .get_int_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni;
-    }
-
-    let mut output_buffer = vec![0; output_len];
-    if let Err(error) = compute_squared_distances(
-        origin_x,
-        origin_y,
-        origin_z,
-        &positions_buffer,
-        &mut output_buffer,
-    ) {
-        return error.into();
-    }
-
-    if env
-        .set_long_array_region(&output, 0, cast_i64_to_jlong(&output_buffer))
-        .is_err()
-    {
-        return NativeStatus::Jni;
-    }
-
-    NativeStatus::Ok
-}
-
-fn compute_squared_distances_double_jni(
-    env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JDoubleArray<'_>,
-) -> NativeStatus {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-
-    let mut positions_buffer = vec![0.0; positions_len];
-    if env
-        .get_double_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni;
-    }
-
-    let mut output_buffer = vec![0.0; output_len];
-    if let Err(error) = compute_squared_distances_f64(
-        origin_x,
-        origin_y,
-        origin_z,
-        &positions_buffer,
-        &mut output_buffer,
-    ) {
-        return error.into();
-    }
-
-    if env
-        .set_double_array_region(&output, 0, &output_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni;
-    }
-
-    NativeStatus::Ok
-}
-
-fn compute_potential_energy_change_jni(
-    env: JNIEnv<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    positions: JIntArray<'_>,
-    charges: JDoubleArray<'_>,
-    charge_multiplier: jdouble,
-    output: JDoubleArray<'_>,
-) -> NativeStatus {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-    let charges_len = match env.get_array_length(&charges) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-
-    if output_len != 1 {
-        return NativeStatus::OutputLengthMismatch;
-    }
-
-    let mut positions_buffer = vec![0; positions_len];
-    if env
-        .get_int_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni;
-    }
-
-    let mut charges_buffer = vec![0.0; charges_len];
-    if env
-        .get_double_array_region(&charges, 0, &mut charges_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni;
-    }
-
-    let energy = match potential_energy_change(
-        origin_x,
-        origin_y,
-        origin_z,
-        &positions_buffer,
-        &charges_buffer,
-        charge_multiplier,
-    ) {
-        Ok(value) => value,
-        Err(error) => return error.into(),
-    };
-
-    if env.set_double_array_region(&output, 0, &[energy]).is_err() {
-        return NativeStatus::Jni;
-    }
-
-    NativeStatus::Ok
-}
-
-fn filter_within_radius_jni(
-    env: JNIEnv<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    radius_squared: jlong,
-    positions: JIntArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni.code(),
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni.code(),
-    };
-
-    let mut positions_buffer = vec![0; positions_len];
-    if env
-        .get_int_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni.code();
-    }
-
-    let mut output_buffer = vec![0; output_len];
-    let count = match filter_within_radius(
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        &positions_buffer,
-        &mut output_buffer,
-    ) {
-        Ok(value) => value,
-        Err(error) => return native_count_error_code(error.into()),
-    };
-
-    if env
-        .set_int_array_region(&output, 0, &output_buffer[..count])
-        .is_err()
-    {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
-    count as jint
-}
-
-fn count_within_radius_jni(
-    env: JNIEnv<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    radius_squared: jlong,
-    positions: JIntArray<'_>,
-) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni.code(),
-    };
-
-    let mut positions_buffer = vec![0; positions_len];
-    if env
-        .get_int_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni.code();
-    }
-
-    match count_within_radius(
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        &positions_buffer,
-    ) {
-        Ok(value) => value as jint,
-        Err(error) => native_count_error_code(error.into()),
-    }
-}
-
-fn filter_within_radius_double_jni(
-    mut env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    radius_squared: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    let positions_buffer =
-        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
-            Ok(value) => value,
-            Err(_) => return native_count_error_code(NativeStatus::Jni),
-        };
-    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
-    {
-        Ok(value) => value,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let count = match filter_within_radius_double_buffers(
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        &positions_buffer,
-        &mut output_buffer,
-    ) {
-        Ok(value) => value,
-        Err(error) => return native_count_error_code(error.into()),
-    };
-
-    count as jint
-}
-
-fn filter_within_radius_exclusive_double_jni(
-    mut env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    radius_squared: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    let positions_buffer =
-        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
-            Ok(value) => value,
-            Err(_) => return native_count_error_code(NativeStatus::Jni),
-        };
-    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
-    {
-        Ok(value) => value,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let count = match filter_within_radius_exclusive_double_buffers(
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        &positions_buffer,
-        &mut output_buffer,
-    ) {
-        Ok(value) => value,
-        Err(error) => return native_count_error_code(error.into()),
-    };
-
-    count as jint
-}
-
-fn filter_within_radii_double_jni(
-    mut env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    positions: JDoubleArray<'_>,
-    radii_squared: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    let positions_buffer =
-        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
-            Ok(value) => value,
-            Err(_) => return native_count_error_code(NativeStatus::Jni),
-        };
-    let radii_squared_buffer =
-        match unsafe { env.get_array_elements(&radii_squared, ReleaseMode::NoCopyBack) } {
-            Ok(value) => value,
-            Err(_) => return native_count_error_code(NativeStatus::Jni),
-        };
-    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
-    {
-        Ok(value) => value,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let count = match filter_within_radii_double_buffers(
-        origin_x,
-        origin_y,
-        origin_z,
-        &positions_buffer,
-        &radii_squared_buffer,
-        &mut output_buffer,
-    ) {
-        Ok(value) => value,
-        Err(error) => return native_count_error_code(error.into()),
-    };
-
-    count as jint
-}
-
-fn filter_within_aabb_double_jni(
-    mut env: JNIEnv<'_>,
-    min_x: jdouble,
-    min_y: jdouble,
-    min_z: jdouble,
-    max_x: jdouble,
-    max_y: jdouble,
-    max_z: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    let positions_buffer =
-        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
-            Ok(value) => value,
-            Err(_) => return native_count_error_code(NativeStatus::Jni),
-        };
-    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
-    {
-        Ok(value) => value,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let count = match filter_within_aabb_double_buffers(
-        min_x,
-        min_y,
-        min_z,
-        max_x,
-        max_y,
-        max_z,
-        &positions_buffer,
-        &mut output_buffer,
-    ) {
-        Ok(value) => value,
-        Err(error) => return native_count_error_code(error.into()),
-    };
-
-    count as jint
-}
-
-fn filter_intersecting_aabb_double_jni(
-    mut env: JNIEnv<'_>,
-    query_min_x: jdouble,
-    query_min_y: jdouble,
-    query_min_z: jdouble,
-    query_max_x: jdouble,
-    query_max_y: jdouble,
-    query_max_z: jdouble,
-    boxes: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    let boxes_buffer = match unsafe { env.get_array_elements(&boxes, ReleaseMode::NoCopyBack) } {
-        Ok(value) => value,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
-    {
-        Ok(value) => value,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let count = match filter_intersecting_aabb_double_buffers(
-        query_min_x,
-        query_min_y,
-        query_min_z,
-        query_max_x,
-        query_max_y,
-        query_max_z,
-        &boxes_buffer,
-        &mut output_buffer,
-    ) {
-        Ok(value) => value,
-        Err(error) => return native_count_error_code(error.into()),
-    };
-
-    count as jint
-}
-
-fn find_nearest_index_double_jni(
-    mut env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    max_distance_squared: jdouble,
-    positions: JDoubleArray<'_>,
-) -> jint {
-    let positions_buffer =
-        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
-            Ok(value) => value,
-            Err(_) => return native_index_error_code(NativeStatus::Jni),
-        };
-
-    match find_nearest_index_double_buffers(
-        origin_x,
-        origin_y,
-        origin_z,
-        max_distance_squared,
-        &positions_buffer,
-    ) {
-        Ok(Some(index)) => index as jint,
-        Ok(None) => -1,
-        Err(error) => native_index_error_code(error.into()),
-    }
-}
-
-fn find_nearest_index_exclusive_double_jni(
-    mut env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    max_distance_squared: jdouble,
-    positions: JDoubleArray<'_>,
-) -> jint {
-    let positions_buffer =
-        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
-            Ok(value) => value,
-            Err(_) => return native_index_error_code(NativeStatus::Jni),
-        };
-
-    match find_nearest_index_exclusive_double_buffers(
-        origin_x,
-        origin_y,
-        origin_z,
-        max_distance_squared,
-        &positions_buffer,
-    ) {
-        Ok(Some(index)) => index as jint,
-        Ok(None) => -1,
-        Err(error) => native_index_error_code(error.into()),
-    }
-}
-
-fn has_any_within_radius_exclusive_double_jni(
-    mut env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    max_distance_squared: jdouble,
-    positions: JDoubleArray<'_>,
-) -> jint {
-    let positions_buffer =
-        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
-            Ok(value) => value,
-            Err(_) => return native_boolean_error_code(NativeStatus::Jni),
-        };
-
-    match has_any_within_radius_exclusive_double_buffers(
-        origin_x,
-        origin_y,
-        origin_z,
-        max_distance_squared,
-        &positions_buffer,
-    ) {
-        Ok(true) => 1,
-        Ok(false) => 0,
-        Err(error) => native_boolean_error_code(error.into()),
-    }
-}
-
-fn filter_within_radius_double_buffers(
+pub unsafe extern "C" fn beryllium_find_nearest_index_double(
     origin_x: f64,
     origin_y: f64,
     origin_z: f64,
-    radius_squared: f64,
-    positions: &[f64],
-    output: &mut [i32],
-) -> Result<usize, NativeError> {
-    filter_within_radius_f64(
+    max_distance_squared: f64,
+    positions: *const f64,
+    positions_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    index_result(find_nearest_index_f64(
+        origin_x,
+        origin_y,
+        origin_z,
+        max_distance_squared,
+        positions,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_find_nearest_index_exclusive_double(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    max_distance_squared: f64,
+    positions: *const f64,
+    positions_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    index_result(find_nearest_index_f64_exclusive(
+        origin_x,
+        origin_y,
+        origin_z,
+        max_distance_squared,
+        positions,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_has_any_within_radius_exclusive_double(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    max_distance_squared: f64,
+    positions: *const f64,
+    positions_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    boolean_result(has_any_within_radius_f64_exclusive(
+        origin_x,
+        origin_y,
+        origin_z,
+        max_distance_squared,
+        positions,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_find_nearest_block_center_index(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    positions: *const i32,
+    positions_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    index_result(find_nearest_block_center_index(
+        origin_x, origin_y, origin_z, positions,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_find_nearest_block_center_index_prefix(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    positions: *const i32,
+    positions_length: usize,
+    position_count: i32,
+) -> i32 {
+    let position_count = match usize::try_from(position_count) {
+        Ok(value) => value,
+        Err(_) => return -1 - NativeStatus::InvalidInput.code(),
+    };
+    let used_length = match position_count.checked_mul(3) {
+        Some(value) if value <= positions_length => value,
+        _ => return -1 - NativeStatus::InvalidInput.code(),
+    };
+    let positions = match unsafe { read_slice(positions, used_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    index_result(find_nearest_block_center_index(
+        origin_x, origin_y, origin_z, positions,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_find_nearest_block_corner_index(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    positions: *const i32,
+    positions_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    index_result(find_nearest_block_corner_index(
+        origin_x, origin_y, origin_z, positions,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_find_nearest_block_corner_index_within_radius(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    radius_squared: i64,
+    positions: *const i32,
+    positions_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    index_result(find_nearest_block_corner_index_within_radius(
         origin_x,
         origin_y,
         origin_z,
         radius_squared,
         positions,
-        output,
-    )
+    ))
 }
 
-fn filter_within_radius_exclusive_double_buffers(
-    origin_x: f64,
-    origin_y: f64,
-    origin_z: f64,
-    radius_squared: f64,
-    positions: &[f64],
-    output: &mut [i32],
-) -> Result<usize, NativeError> {
-    filter_within_radius_f64_exclusive(
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        positions,
-        output,
-    )
-}
-
-fn filter_within_radii_double_buffers(
-    origin_x: f64,
-    origin_y: f64,
-    origin_z: f64,
-    positions: &[f64],
-    radii_squared: &[f64],
-    output: &mut [i32],
-) -> Result<usize, NativeError> {
-    filter_within_radii_f64(
-        origin_x,
-        origin_y,
-        origin_z,
-        positions,
-        radii_squared,
-        output,
-    )
-}
-
-fn filter_within_aabb_double_buffers(
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_filter_within_aabb_double(
     min_x: f64,
     min_y: f64,
     min_z: f64,
     max_x: f64,
     max_y: f64,
     max_z: f64,
-    positions: &[f64],
-    output: &mut [i32],
-) -> Result<usize, NativeError> {
-    filter_within_aabb_f64(min_x, min_y, min_z, max_x, max_y, max_z, positions, output)
+    positions: *const f64,
+    positions_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(filter_within_aabb_f64(
+        min_x, min_y, min_z, max_x, max_y, max_z, positions, output,
+    ))
 }
 
-fn filter_intersecting_aabb_double_buffers(
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_filter_intersecting_aabb_double(
     query_min_x: f64,
     query_min_y: f64,
     query_min_z: f64,
     query_max_x: f64,
     query_max_y: f64,
     query_max_z: f64,
-    boxes: &[f64],
-    output: &mut [i32],
-) -> Result<usize, NativeError> {
-    filter_intersecting_aabb_f64(
+    boxes: *const f64,
+    boxes_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let boxes = match unsafe { read_slice(boxes, boxes_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(filter_intersecting_aabb_f64(
         query_min_x,
         query_min_y,
         query_min_z,
@@ -1030,608 +556,187 @@ fn filter_intersecting_aabb_double_buffers(
         query_max_z,
         boxes,
         output,
-    )
+    ))
 }
 
-fn find_nearest_index_double_buffers(
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_sort_by_distance(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    positions: *const i32,
+    positions_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    status_result(sort_by_distance(
+        origin_x, origin_y, origin_z, positions, output,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_sort_by_block_distance(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    positions: *const i32,
+    positions_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    status_result(sort_by_block_distance(
+        origin_x, origin_y, origin_z, positions, output,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_sort_by_distance_double(
     origin_x: f64,
     origin_y: f64,
     origin_z: f64,
-    max_distance_squared: f64,
-    positions: &[f64],
-) -> Result<Option<usize>, NativeError> {
-    find_nearest_index_f64(
-        origin_x,
-        origin_y,
-        origin_z,
-        max_distance_squared,
-        positions,
-    )
-}
-
-fn find_nearest_index_exclusive_double_buffers(
-    origin_x: f64,
-    origin_y: f64,
-    origin_z: f64,
-    max_distance_squared: f64,
-    positions: &[f64],
-) -> Result<Option<usize>, NativeError> {
-    find_nearest_index_f64_exclusive(
-        origin_x,
-        origin_y,
-        origin_z,
-        max_distance_squared,
-        positions,
-    )
-}
-
-fn has_any_within_radius_exclusive_double_buffers(
-    origin_x: f64,
-    origin_y: f64,
-    origin_z: f64,
-    max_distance_squared: f64,
-    positions: &[f64],
-) -> Result<bool, NativeError> {
-    has_any_within_radius_f64_exclusive(
-        origin_x,
-        origin_y,
-        origin_z,
-        max_distance_squared,
-        positions,
-    )
-}
-
-fn find_nearest_block_center_index_jni(
-    env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    positions: JIntArray<'_>,
-) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_index_error_code(NativeStatus::Jni),
-    };
-
-    let mut positions_buffer = vec![0; positions_len];
-    if env
-        .get_int_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return native_index_error_code(NativeStatus::Jni);
-    }
-
-    match find_nearest_block_center_index(origin_x, origin_y, origin_z, &positions_buffer) {
-        Ok(Some(index)) => index as jint,
-        Ok(None) => -1,
-        Err(error) => native_index_error_code(error.into()),
-    }
-}
-
-fn find_nearest_block_center_index_prefix_jni(
-    env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    positions: JIntArray<'_>,
-    position_count: jint,
-) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_index_error_code(NativeStatus::Jni),
-    };
-    let position_count = match usize::try_from(position_count) {
+    positions: *const f64,
+    positions_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
         Ok(value) => value,
-        Err(_) => return native_index_error_code(NativeStatus::InvalidInput),
+        Err(error) => return error.code(),
     };
-    let used_positions_len = match position_count.checked_mul(3) {
-        Some(value) if value <= positions_len => value,
-        _ => return native_index_error_code(NativeStatus::InvalidInput),
-    };
-
-    let mut positions_buffer = vec![0; used_positions_len];
-    if !positions_buffer.is_empty()
-        && env
-            .get_int_array_region(&positions, 0, &mut positions_buffer)
-            .is_err()
-    {
-        return native_index_error_code(NativeStatus::Jni);
-    }
-
-    match find_nearest_block_center_index(origin_x, origin_y, origin_z, &positions_buffer) {
-        Ok(Some(index)) => index as jint,
-        Ok(None) => -1,
-        Err(error) => native_index_error_code(error.into()),
-    }
-}
-
-fn find_nearest_block_corner_index_jni(
-    env: JNIEnv<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    positions: JIntArray<'_>,
-) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_index_error_code(NativeStatus::Jni),
-    };
-
-    let mut positions_buffer = vec![0; positions_len];
-    if env
-        .get_int_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return native_index_error_code(NativeStatus::Jni);
-    }
-
-    match find_nearest_block_corner_index(origin_x, origin_y, origin_z, &positions_buffer) {
-        Ok(Some(index)) => index as jint,
-        Ok(None) => -1,
-        Err(error) => native_index_error_code(error.into()),
-    }
-}
-
-fn find_nearest_block_corner_index_within_radius_jni(
-    env: JNIEnv<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    radius_squared: jlong,
-    positions: JIntArray<'_>,
-) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_index_error_code(NativeStatus::Jni),
-    };
-
-    let mut positions_buffer = vec![0; positions_len];
-    if env
-        .get_int_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return native_index_error_code(NativeStatus::Jni);
-    }
-
-    match find_nearest_block_corner_index_within_radius(
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        &positions_buffer,
-    ) {
-        Ok(Some(index)) => index as jint,
-        Ok(None) => -1,
-        Err(error) => native_index_error_code(error.into()),
-    }
-}
-
-fn sort_by_distance_jni(
-    env: JNIEnv<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    positions: JIntArray<'_>,
-    output: JIntArray<'_>,
-) -> NativeStatus {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-
-    let mut positions_buffer = vec![0; positions_len];
-    if env
-        .get_int_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni;
-    }
-
-    let mut output_buffer = vec![0; output_len];
-    if let Err(error) = sort_by_distance(
-        origin_x,
-        origin_y,
-        origin_z,
-        &positions_buffer,
-        &mut output_buffer,
-    ) {
-        return error.into();
-    }
-
-    if env
-        .set_int_array_region(&output, 0, &output_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni;
-    }
-
-    NativeStatus::Ok
-}
-
-fn sort_by_block_distance_jni(
-    env: JNIEnv<'_>,
-    origin_x: jint,
-    origin_y: jint,
-    origin_z: jint,
-    positions: JIntArray<'_>,
-    output: JIntArray<'_>,
-) -> NativeStatus {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-
-    let mut positions_buffer = vec![0; positions_len];
-    if env
-        .get_int_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni;
-    }
-
-    let mut output_buffer = vec![0; output_len];
-    if let Err(error) = sort_by_block_distance(
-        origin_x,
-        origin_y,
-        origin_z,
-        &positions_buffer,
-        &mut output_buffer,
-    ) {
-        return error.into();
-    }
-
-    if env
-        .set_int_array_region(&output, 0, &output_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni;
-    }
-
-    NativeStatus::Ok
-}
-
-fn sort_by_distance_double_jni(
-    mut env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> NativeStatus {
-    let positions_buffer =
-        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
-            Ok(value) => value,
-            Err(_) => return NativeStatus::Jni,
-        };
-    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
-    {
+    let output = match unsafe { write_slice(output, output_length) } {
         Ok(value) => value,
-        Err(_) => return NativeStatus::Jni,
+        Err(error) => return error.code(),
     };
-
-    if let Err(error) = sort_by_distance_double_buffers(
-        origin_x,
-        origin_y,
-        origin_z,
-        &positions_buffer,
-        &mut output_buffer,
-    ) {
-        return error.into();
-    }
-
-    NativeStatus::Ok
+    status_result(sort_by_distance_f64(
+        origin_x, origin_y, origin_z, positions, output,
+    ))
 }
 
-fn sort_by_distance_and_count_within_radius_exclusive_double_jni(
-    mut env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    radius_squared: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    let positions_buffer =
-        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
-            Ok(value) => value,
-            Err(_) => return native_count_error_code(NativeStatus::Jni),
-        };
-    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
-    {
-        Ok(value) => value,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-
-    let count = match sort_by_distance_and_count_within_radius_exclusive_double_buffers(
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        &positions_buffer,
-        &mut output_buffer,
-    ) {
-        Ok(value) => value,
-        Err(error) => return native_count_error_code(error.into()),
-    };
-
-    count as jint
-}
-
-fn sort_by_distance_and_count_within_radius_exclusive_double_buffers(
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_sort_by_distance_and_count_within_radius_exclusive_double(
     origin_x: f64,
     origin_y: f64,
     origin_z: f64,
     radius_squared: f64,
-    positions: &[f64],
-    output: &mut [i32],
-) -> Result<usize, NativeError> {
-    sort_by_distance_and_count_within_radius_f64_exclusive(
+    positions: *const f64,
+    positions_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(sort_by_distance_and_count_within_radius_f64_exclusive(
         origin_x,
         origin_y,
         origin_z,
         radius_squared,
         positions,
         output,
-    )
+    ))
 }
 
-fn sort_within_radius_exclusive_double_jni(
-    mut env: JNIEnv<'_>,
-    origin_x: jdouble,
-    origin_y: jdouble,
-    origin_z: jdouble,
-    radius_squared: jdouble,
-    positions: JDoubleArray<'_>,
-    output: JIntArray<'_>,
-) -> jint {
-    let positions_buffer =
-        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
-            Ok(value) => value,
-            Err(_) => return native_count_error_code(NativeStatus::Jni),
-        };
-    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
-    {
-        Ok(value) => value,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let count = match sort_within_radius_exclusive_double_buffers(
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        &positions_buffer,
-        &mut output_buffer,
-    ) {
-        Ok(value) => value,
-        Err(error) => return native_count_error_code(error.into()),
-    };
-
-    count as jint
-}
-
-fn sort_by_distance_double_buffers(
-    origin_x: f64,
-    origin_y: f64,
-    origin_z: f64,
-    positions: &[f64],
-    output: &mut [i32],
-) -> Result<(), NativeError> {
-    sort_by_distance_f64(origin_x, origin_y, origin_z, positions, output)
-}
-
-fn sort_within_radius_exclusive_double_buffers(
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_sort_within_radius_exclusive_double(
     origin_x: f64,
     origin_y: f64,
     origin_z: f64,
     radius_squared: f64,
-    positions: &[f64],
-    output: &mut [i32],
-) -> Result<usize, NativeError> {
-    sort_within_radius_f64_exclusive(
+    positions: *const f64,
+    positions_length: usize,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(sort_within_radius_f64_exclusive(
         origin_x,
         origin_y,
         origin_z,
         radius_squared,
         positions,
         output,
-    )
-}
-
-fn cast_i64_to_jlong(values: &[i64]) -> &[jlong] {
-    values
-}
-
-fn native_index_error_code(status: NativeStatus) -> jint {
-    -1 - status.code()
-}
-
-fn native_count_error_code(status: NativeStatus) -> jint {
-    -1 - status.code()
-}
-
-fn native_boolean_error_code(status: NativeStatus) -> jint {
-    -1 - status.code()
-}
-
-impl NativeStatus {
-    fn code(self) -> jint {
-        self as jint
-    }
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        filter_intersecting_aabb_double_buffers, filter_within_aabb_double_buffers,
-        filter_within_radii_double_buffers, filter_within_radius_double_buffers,
-        filter_within_radius_exclusive_double_buffers, find_nearest_index_double_buffers,
-        find_nearest_index_exclusive_double_buffers,
-        has_any_within_radius_exclusive_double_buffers,
-        sort_by_distance_and_count_within_radius_exclusive_double_buffers,
-        sort_by_distance_double_buffers, sort_within_radius_exclusive_double_buffers,
+        beryllium_compute_squared_distances, beryllium_count_within_radius,
+        beryllium_filter_within_radius_double,
     };
 
     #[test]
-    fn double_filter_buffer_helpers_preserve_order_and_tail() {
-        let positions = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 1.0, 0.0, 0.0];
-        let mut inclusive_output = [77; 3];
-        let mut exclusive_output = [88; 3];
+    fn c_abi_distance_entry_point_writes_native_output() {
+        let positions = [0, 64, 0, 3, 68, 4, -1, 63, -2];
+        let mut output = [0_i64; 3];
+        let status = unsafe {
+            beryllium_compute_squared_distances(
+                0,
+                64,
+                0,
+                positions.as_ptr(),
+                positions.len(),
+                output.as_mut_ptr(),
+                output.len(),
+            )
+        };
 
-        let inclusive_count = filter_within_radius_double_buffers(
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            &positions,
-            &mut inclusive_output,
-        )
-        .expect("valid inclusive filter buffers");
-        let exclusive_count = filter_within_radius_exclusive_double_buffers(
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            &positions,
-            &mut exclusive_output,
-        )
-        .expect("valid exclusive filter buffers");
-
-        assert_eq!(inclusive_count, 2);
-        assert_eq!(&inclusive_output[..inclusive_count], &[0, 2]);
-        assert_eq!(inclusive_output[inclusive_count], 77);
-        assert_eq!(exclusive_count, 1);
-        assert_eq!(&exclusive_output[..exclusive_count], &[0]);
-        assert_eq!(&exclusive_output[exclusive_count..], &[88, 88]);
+        assert_eq!(status, 0);
+        assert_eq!(output, [0, 41, 6]);
     }
 
     #[test]
-    fn double_variable_radius_and_aabb_helpers_keep_boundaries() {
-        let positions = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 3.0, 3.0, 3.0];
-        let radii_squared = [0.0, 4.0, 1.0];
-        let mut radius_output = [99; 3];
-        let radius_count = filter_within_radii_double_buffers(
-            0.0,
-            0.0,
-            0.0,
-            &positions,
-            &radii_squared,
-            &mut radius_output,
-        )
-        .expect("valid variable-radius buffers");
-
-        let mut aabb_output = [98; 3];
-        let aabb_count = filter_within_aabb_double_buffers(
-            0.0,
-            0.0,
-            0.0,
-            3.0,
-            3.0,
-            3.0,
-            &positions,
-            &mut aabb_output,
-        )
-        .expect("valid AABB buffers");
-
-        assert_eq!(radius_count, 2);
-        assert_eq!(&radius_output[..radius_count], &[0, 1]);
-        assert_eq!(radius_output[radius_count], 99);
-        assert_eq!(aabb_count, 2);
-        assert_eq!(&aabb_output[..aabb_count], &[0, 1]);
-        assert_eq!(aabb_output[aabb_count], 98);
+    fn c_abi_zero_length_null_pointer_is_valid() {
+        let count = unsafe { beryllium_count_within_radius(0, 0, 0, 1, std::ptr::null(), 0) };
+        assert_eq!(count, 0);
     }
 
     #[test]
-    fn double_box_nearest_and_any_helpers_preserve_semantics() {
-        let boxes = [
-            -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 3.0, 3.0, 3.0,
-        ];
-        let mut box_output = [66; 3];
-        let box_count = filter_intersecting_aabb_double_buffers(
-            -1.0,
-            -1.0,
-            -1.0,
-            3.0,
-            3.0,
-            3.0,
-            &boxes,
-            &mut box_output,
-        )
-        .expect("valid intersecting-AABB buffers");
+    fn c_abi_filter_preserves_output_tail() {
+        let positions = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0];
+        let mut output = [77, 88];
+        let count = unsafe {
+            beryllium_filter_within_radius_double(
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                positions.as_ptr(),
+                positions.len(),
+                output.as_mut_ptr(),
+                output.len(),
+            )
+        };
 
-        let positions = [2.0, 0.0, 0.0, -2.0, 0.0, 0.0, 1.0, 0.0, 0.0];
-        let nearest = find_nearest_index_double_buffers(0.0, 0.0, 0.0, 4.0, &positions)
-            .expect("valid inclusive nearest buffers");
-        let nearest_exclusive =
-            find_nearest_index_exclusive_double_buffers(0.0, 0.0, 0.0, 1.0, &positions)
-                .expect("valid exclusive nearest buffers");
-        let any_on_boundary =
-            has_any_within_radius_exclusive_double_buffers(0.0, 0.0, 0.0, 1.0, &positions)
-                .expect("valid exclusive any buffers");
-
-        assert_eq!(box_count, 2);
-        assert_eq!(&box_output[..box_count], &[0, 1]);
-        assert_eq!(box_output[box_count], 66);
-        assert_eq!(nearest, Some(2));
-        assert_eq!(nearest_exclusive, None);
-        assert!(!any_on_boundary);
-    }
-
-    #[test]
-    fn double_sort_buffer_helper_writes_stable_order() {
-        let positions = [0.0, 64.0, 0.0, 3.0, 68.0, 4.0, -1.0, 63.0, -2.0];
-        let mut output = [0; 3];
-
-        sort_by_distance_double_buffers(0.0, 64.0, 0.0, &positions, &mut output)
-            .expect("valid double sort buffers");
-
-        assert_eq!(output, [0, 2, 1]);
-    }
-
-    #[test]
-    fn exclusive_double_sort_buffer_helper_preserves_prefix_and_tail() {
-        let positions = [2.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 4.0, 0.0, 0.0];
-        let mut output = [77; 4];
-
-        let count = sort_within_radius_exclusive_double_buffers(
-            0.0,
-            0.0,
-            0.0,
-            4.0,
-            &positions,
-            &mut output,
-        )
-        .expect("valid exclusive sort buffers");
-
-        assert_eq!(count, 2);
-        assert_eq!(&output[..count], &[1, 2]);
-        assert_eq!(&output[count..], &[77, 77]);
-    }
-
-    #[test]
-    fn fused_double_buffer_helper_writes_full_order_and_strict_prefix() {
-        let positions = [2.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 4.0, 0.0, 0.0];
-        let mut output = [-1; 5];
-
-        let count = sort_by_distance_and_count_within_radius_exclusive_double_buffers(
-            0.0,
-            0.0,
-            0.0,
-            4.0,
-            &positions,
-            &mut output,
-        )
-        .expect("valid fused buffers");
-
-        assert_eq!(count, 2);
-        assert_eq!(&output[..4], &[1, 2, 0, 3]);
-        assert_eq!(output[4], -1);
+        assert_eq!(count, 1);
+        assert_eq!(output, [0, 88]);
     }
 }

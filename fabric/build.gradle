@@ -66,11 +66,15 @@ tasks.register('verifyNativePackage') {
         def requiredEntries = [
             nativeEntry,
             'alku/beryllium/bridge/NativeBridge.class',
+            'alku/beryllium/bridge/FfmNativeBridge.class',
             'alku/beryllium/compute/EntitySectionBatch.class',
             'alku/beryllium/compute/NativeBatching.class',
             'alku/beryllium/compute/NearestEntitySearch.class',
+            'alku/beryllium/compute/ChunkDistanceSearch.class',
             'alku/beryllium/mixin/EntitySectionAccessor.class',
             'alku/beryllium/mixin/EntitySectionMixin.class',
+            'alku/beryllium/mixin/ChunkMapAccessor.class',
+            'alku/beryllium/mixin/ChunkMapMixin.class',
             'beryllium.mixins.json'
         ]
 

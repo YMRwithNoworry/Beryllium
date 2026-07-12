@@ -5,6 +5,7 @@ import alku.beryllium.bridge.NativeStatus;
 import alku.beryllium.compute.JavaComputeKernels;
 import alku.beryllium.compute.EntityDistanceSort;
 import alku.beryllium.compute.EntityPacking;
+import alku.beryllium.compute.ChunkDistanceSearch;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -21,6 +22,7 @@ import java.util.function.DoubleSupplier;
  */
 public final class BerylliumPerformanceBenchmark {
     private static final int[] CANDIDATE_COUNTS = {256, 1024, 4096, 8192};
+    private static final int[] CHUNK_PLAYER_COUNTS = {32, 128, 512, 2048, 4096, 8192};
     private static final int WARMUP_ITERATIONS = 100;
     private static final int MEASUREMENT_ITERATIONS = 300;
     private static final int POTENTIAL_CHARGE_COUNT = 8192;
@@ -66,6 +68,7 @@ public final class BerylliumPerformanceBenchmark {
         }
 
         benchmarkPotentialEnergy();
+        benchmarkChunkDistance();
 
         if (blackHole == Long.MIN_VALUE) {
             throw new AssertionError("benchmark black hole was not consumed");
@@ -136,6 +139,91 @@ public final class BerylliumPerformanceBenchmark {
         long median = samples[samples.length / 2];
         System.out.printf(Locale.ROOT, "sample=%s median_ns=%d%n", name, median);
         return median;
+    }
+
+    private static void benchmarkChunkDistance() {
+        double radiusSquared = 128.0 * 128.0;
+        System.out.printf(
+            Locale.ROOT,
+            "benchmark=chunk-spawn-horizontal-distance radius=%.1f%n",
+            Math.sqrt(radiusSquared)
+        );
+
+        for (int playerCount : CHUNK_PLAYER_COUNTS) {
+            List<ChunkBenchmarkPlayer> players = createChunkPlayers(playerCount);
+            long vanillaMedian = measureChunk("vanilla_chunk_spawn", () -> vanillaChunkQuery(players, radiusSquared));
+            long berylliumMedian = measureChunk("beryllium_chunk_spawn", () -> berylliumChunkQuery(players, radiusSquared));
+            System.out.printf(
+                Locale.ROOT,
+                "chunk_result=players:%d vanilla_java_median_ns:%d beryllium_median_ns:%d speedup:%.2fx%n",
+                playerCount,
+                vanillaMedian,
+                berylliumMedian,
+                speedup(vanillaMedian, berylliumMedian)
+            );
+        }
+    }
+
+    private static long measureChunk(String name, Supplier<List<ChunkBenchmarkPlayer>> query) {
+        for (int iteration = 0; iteration < WARMUP_ITERATIONS; iteration++) {
+            consumeChunk(query.get());
+        }
+
+        long[] samples = new long[MEASUREMENT_ITERATIONS];
+        for (int iteration = 0; iteration < MEASUREMENT_ITERATIONS; iteration++) {
+            long start = System.nanoTime();
+            consumeChunk(query.get());
+            samples[iteration] = System.nanoTime() - start;
+        }
+
+        java.util.Arrays.sort(samples);
+        long median = samples[samples.length / 2];
+        System.out.printf(Locale.ROOT, "sample=%s median_ns=%d%n", name, median);
+        return median;
+    }
+
+    private static List<ChunkBenchmarkPlayer> vanillaChunkQuery(
+        List<ChunkBenchmarkPlayer> players,
+        double radiusSquared
+    ) {
+        List<ChunkBenchmarkPlayer> result = new ArrayList<>();
+        for (ChunkBenchmarkPlayer player : players) {
+            if (player.spectator) {
+                continue;
+            }
+
+            double dx = player.x;
+            double dz = player.z;
+            if (dx * dx + dz * dz < radiusSquared) {
+                result.add(player);
+            }
+        }
+        return result;
+    }
+
+    private static List<ChunkBenchmarkPlayer> berylliumChunkQuery(
+        List<ChunkBenchmarkPlayer> players,
+        double radiusSquared
+    ) {
+        return ChunkDistanceSearch.filterWithinExclusiveDistance(
+            players,
+            0.0,
+            0.0,
+            radiusSquared,
+            player -> !player.spectator,
+            player -> player.x,
+            player -> player.z
+        );
+    }
+
+    private static List<ChunkBenchmarkPlayer> createChunkPlayers(int count) {
+        List<ChunkBenchmarkPlayer> players = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            double x = ((index * 37) % 513) - 256.0;
+            double z = ((index * 97) % 513) - 256.0;
+            players.add(new ChunkBenchmarkPlayer(index, x, z, index % 5 == 0));
+        }
+        return players;
     }
 
     private static Optional<BenchmarkPoint> vanillaQuery(List<BenchmarkPoint> source) {
@@ -219,10 +307,20 @@ public final class BerylliumPerformanceBenchmark {
         blackHole = blackHole * 31 + Double.doubleToLongBits(result);
     }
 
+    private static void consumeChunk(List<ChunkBenchmarkPlayer> result) {
+        blackHole = blackHole * 31 + result.size();
+        for (ChunkBenchmarkPlayer player : result) {
+            blackHole = blackHole * 31 + player.id;
+        }
+    }
+
     private static double speedup(long baselineNanos, long candidateNanos) {
         return (double) baselineNanos / candidateNanos;
     }
 
     private record BenchmarkPoint(int id, double x, double y, double z, boolean wanted, boolean visible) {
+    }
+
+    private record ChunkBenchmarkPlayer(int id, double x, double z, boolean spectator) {
     }
 }

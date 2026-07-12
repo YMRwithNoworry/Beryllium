@@ -4,6 +4,7 @@ import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
 import alku.beryllium.compute.BlockDistanceSearchVerifier;
 import alku.beryllium.compute.BlockDistanceSortVerifier;
+import alku.beryllium.compute.ChunkDistanceSearchVerifier;
 import alku.beryllium.compute.EntityDistanceFilterVerifier;
 import alku.beryllium.compute.EntityDistancePredicateSearchVerifier;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
@@ -26,6 +27,9 @@ public final class BerylliumNativeRuntimeVerifier {
         NativeStatus status = NativeBridge.initialize();
         if (status != NativeStatus.OK) {
             throw new AssertionError("Expected bundled native backend to load, got " + status);
+        }
+        if (!NativeBridge.usesFfm()) {
+            throw new AssertionError("Expected FFM native backend");
         }
 
         verifyNativeDistance();
@@ -112,6 +116,12 @@ public final class BerylliumNativeRuntimeVerifier {
         TargetingConditionsBatchVerifier.verifyFindNearestAfterVariableDistanceUsesSeparateDistanceOrigin();
         TargetingConditionsBatchVerifier.verifyFindNearestAfterPrecomputedDistanceUsesSeparateDistanceOrigin();
         TargetingConditionsBatchVerifier.verifyFindNearestAfterPrecomputedDistanceAcceptsNaNRadius();
+        ChunkDistanceSearchVerifier.verifyExclusiveBoundaryAndEncounterOrder();
+        ChunkDistanceSearchVerifier.verifyEligibilityRunsBeforeCoordinateAccess();
+        ChunkDistanceSearchVerifier.verifyLargeBatchPreservesOrder();
+        ChunkDistanceSearchVerifier.verifyNativeBatchPreservesOrder();
+        ChunkDistanceSearchVerifier.verifyNegativeRadiusRejected();
+        ChunkDistanceSearchVerifier.verifyAnyShortCircuitsBeforeLaterCandidates();
         verifyNativeSort();
         verifyNativeBlockSort();
         verifyNativeDoubleSort();

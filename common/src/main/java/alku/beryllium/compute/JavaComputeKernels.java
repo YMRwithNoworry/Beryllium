@@ -240,6 +240,49 @@ public final class JavaComputeKernels {
         return count;
     }
 
+    public static int[] filterWithinExclusiveChunkDistance(
+        double originX,
+        double originZ,
+        double radiusSquared,
+        double[] positions
+    ) {
+        validateXzPositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+
+        int[] result = new int[positions.length / 2];
+        int count = filterWithinExclusiveChunkDistance(originX, originZ, radiusSquared, positions, result);
+        return Arrays.copyOf(result, count);
+    }
+
+    public static int filterWithinExclusiveChunkDistance(
+        double originX,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        validateXzPositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+        validateOutputCapacity(positions.length / 2, output);
+
+        int count = 0;
+        for (int index = 0; index < positions.length / 2; index++) {
+            int offset = index * 2;
+            double dx = positions[offset] - originX;
+            double dz = positions[offset + 1] - originZ;
+            if (dx * dx + dz * dz < radiusSquared) {
+                output[count] = index;
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     public static int[] sortWithinRadiusExclusive(double originX, double originY, double originZ, double radiusSquared, double[] positions) {
         validatePositions(positions);
         if (radiusSquared < 0.0) {
@@ -579,6 +622,12 @@ public final class JavaComputeKernels {
     public static void validatePositions(double[] positions) {
         if (positions == null || positions.length % 3 != 0) {
             throw new IllegalArgumentException("positions must contain x/y/z triples");
+        }
+    }
+
+    public static void validateXzPositions(double[] positions) {
+        if (positions == null || positions.length % 2 != 0) {
+            throw new IllegalArgumentException("positions must contain x/z pairs");
         }
     }
 

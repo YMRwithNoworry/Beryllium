@@ -10,8 +10,8 @@ public enum NativeStatus {
     INVALID_INPUT(1),
     /** Native output buffer validation failed. */
     OUTPUT_LENGTH_MISMATCH(2),
-    /** JNI failed while copying data. */
-    JNI_ERROR(3),
+    /** FFM symbol lookup or downcall failed. */
+    FFM_ERROR(3),
     /** Native library is not available. */
     UNAVAILABLE(4);
 
@@ -34,7 +34,7 @@ public enum NativeStatus {
             case 0 -> OK;
             case 1 -> INVALID_INPUT;
             case 2 -> OUTPUT_LENGTH_MISMATCH;
-            case 3 -> JNI_ERROR;
+            case 3 -> FFM_ERROR;
             default -> UNAVAILABLE;
         };
     }

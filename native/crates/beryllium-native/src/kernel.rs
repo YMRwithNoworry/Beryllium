@@ -505,6 +505,56 @@ pub fn filter_within_radius_f64_exclusive(
     Ok(count)
 }
 
+/// Filters packed f64 x/z pairs by an exclusive horizontal squared radius.
+pub fn filter_within_exclusive_chunk_distance(
+    origin_x: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    if radius_squared < 0.0 || positions.len() % 2 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 2;
+    if output.len() < position_count {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    if position_count >= PARALLEL_THRESHOLD {
+        let matches: Vec<i32> = positions
+            .par_chunks_exact(2)
+            .enumerate()
+            .filter_map(|(index, position)| {
+                let dx = position[0] - origin_x;
+                let dz = position[1] - origin_z;
+                if dx * dx + dz * dz < radius_squared {
+                    Some(index as i32)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        output[..matches.len()].copy_from_slice(&matches);
+        return Ok(matches.len());
+    }
+
+    let mut count = 0;
+    for index in 0..position_count {
+        let offset = index * 2;
+        let dx = positions[offset] - origin_x;
+        let dz = positions[offset + 1] - origin_z;
+        if dx * dx + dz * dz < radius_squared {
+            output[count] = index as i32;
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
 /// Filters packed f64 x/y/z triples by exclusive squared radius, then sorts matches by squared distance.
 pub fn sort_within_radius_f64_exclusive(
     origin_x: f64,
@@ -1788,6 +1838,56 @@ mod tests {
         let count = filter_within_radius(0, 64, 0, 40, &positions, &mut output).unwrap();
         assert_eq!(count, 2);
         assert_eq!(&output[..count], &[0, 2]);
+    }
+
+    #[test]
+    fn filter_within_exclusive_chunk_distance_should_keep_order_and_boundary() {
+        let positions = [100.0, 0.0, 128.0, 0.0, 127.5, 0.0, 0.0, 127.5, -127.5, 0.0];
+        let mut output = [77; 5];
+        let count = filter_within_exclusive_chunk_distance(
+            0.0,
+            0.0,
+            128.0 * 128.0,
+            &positions,
+            &mut output,
+        )
+        .unwrap();
+
+        assert_eq!(count, 4);
+        assert_eq!(&output[..count], &[0, 2, 3, 4]);
+        assert_eq!(output[count], 77);
+    }
+
+    #[test]
+    fn filter_within_exclusive_chunk_distance_should_match_parallel_order() {
+        let positions: Vec<f64> = (0..5000)
+            .flat_map(|index| {
+                let x = (index % 2) as f64;
+                [x, index as f64]
+            })
+            .collect();
+        let mut output = vec![0; 5000];
+
+        let count =
+            filter_within_exclusive_chunk_distance(0.0, 0.0, 64.0 * 64.0, &positions, &mut output)
+                .unwrap();
+
+        let expected: Vec<i32> = (0..64).collect();
+        assert_eq!(count, expected.len());
+        assert_eq!(&output[..count], expected.as_slice());
+    }
+
+    #[test]
+    fn filter_within_exclusive_chunk_distance_should_reject_invalid_input() {
+        let mut output = [0; 1];
+        assert_eq!(
+            filter_within_exclusive_chunk_distance(0.0, 0.0, -1.0, &[0.0, 0.0], &mut output),
+            Err(NativeError::InvalidInput)
+        );
+        assert_eq!(
+            filter_within_exclusive_chunk_distance(0.0, 0.0, 1.0, &[0.0], &mut output),
+            Err(NativeError::InvalidInput)
+        );
     }
 
     #[test]

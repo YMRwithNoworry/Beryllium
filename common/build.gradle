@@ -54,22 +54,25 @@ tasks.register('javaParityTest', JavaExec) {
     dependsOn tasks.named('testClasses')
     mainClass = 'alku.beryllium.verify.BerylliumParityVerifier'
     classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 tasks.register('nativeRuntimeTest', JavaExec) {
-    description = 'Requires the bundled native backend to load and executes every JNI entry point.'
+    description = 'Requires the bundled native backend to load and executes every FFM entry point.'
     group = 'verification'
     dependsOn tasks.named('testClasses')
     mainClass = 'alku.beryllium.verify.BerylliumNativeRuntimeVerifier'
     classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 tasks.register('performanceBenchmark', JavaExec) {
-    description = 'Measures vanilla Java, legacy native, and fused native nearest-item query paths.'
+    description = 'Measures vanilla Java, legacy FFM, and fused FFM nearest-item query paths.'
     group = 'verification'
     dependsOn tasks.named('testClasses')
     mainClass = 'alku.beryllium.verify.BerylliumPerformanceBenchmark'
     classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 check.dependsOn tasks.named('javaParityTest')

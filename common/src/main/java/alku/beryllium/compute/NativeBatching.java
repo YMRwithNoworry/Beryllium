@@ -3,7 +3,7 @@ package alku.beryllium.compute;
 import alku.beryllium.bridge.NativeBridge;
 
 /**
- * Shared policy for deciding when a Java-side batch is large enough to cross the JNI boundary.
+ * Shared policy for deciding when a Java-side batch is large enough to cross the FFM boundary.
  */
 public final class NativeBatching {
     private static final int DEFAULT_ENTITY_BATCH_THRESHOLD = 32;

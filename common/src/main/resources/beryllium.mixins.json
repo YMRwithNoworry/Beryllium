@@ -7,6 +7,8 @@
   ],
   "mixins": [
     "BreezeAttackEntitySensorMixin",
+    "ChunkMapAccessor",
+    "ChunkMapMixin",
     "CollisionGetterMixin",
     "EntityGetterMixin",
     "EntitySectionAccessor",

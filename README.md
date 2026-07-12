@@ -22,13 +22,14 @@ Beryllium 是一个基于 Architectury 的 Minecraft 多加载器性能模组，
 - Native AABB filter：附近玩家查询会把玩家坐标批量传入 Rust 执行 AABB contains 过滤，空源和有源 TargetingConditions 路径共用批量 AABB helper，并保持原版 `min <= value < max` 边界语义。
 - Native entity-section intersection：底层 `EntitySection` 的实体包围盒相交查询会在候选数足够大时批量传入 Rust 过滤，再按原顺序调用原版 consumer，保留 abort 行为和 `AABB.intersects` 边界语义。
 - PotentialCalculator 批处理：点电荷贡献在 Rust 中按索引并行计算，再沿原版顺序累加，避免并行归约改变浮点结果；小批量继续使用 Java 参考路径。
+- ChunkMap 刷怪距离：保留 `DistanceManager.hasPlayersNearby`、spectator 资格判断、严格水平半径和玩家迭代顺序；默认直接在 JVM 内短路扫描，避免这个小型标量热点承担 FFM 编组开销。
 
 ## 目录结构
 
 - `common`：共享初始化、命令注册、Java fallback、native bridge 和共享 mixin 配置
 - `fabric`：Fabric 的 mod 入口与客户端入口
 - `neoforge`：NeoForge 的 mod 入口与打包配置
-- `native`：Rust 原生库工作区，包含 JNI 导出和批量计算 kernel
+- `native`：Rust 原生库工作区，包含稳定 C ABI 导出和批量计算 kernel
 
 ## 运行与构建
 
@@ -60,9 +61,9 @@ gradle :neoforge:runClient
 gradle :common:test :fabric:test :neoforge:test
 ```
 
-当前 `:common:check` 会运行两个 JavaExec 验证器：`javaParityTest` 覆盖 Java fallback/native 语义一致性，`nativeRuntimeTest` 要求打包进 classpath 的 native 后端真实加载并执行所有 JNI 入口。
+当前 `:common:check` 会运行两个 JavaExec 验证器：`javaParityTest` 覆盖 Java fallback/native 语义一致性，`nativeRuntimeTest` 要求打包进 classpath 的 native 后端真实加载并执行所有 FFM 入口。
 
-性能对比可运行 `gradle :common:performanceBenchmark`，测试说明和一次实测记录见 [`docs/performance-benchmark.md`](docs/performance-benchmark.md)。该结果只代表最近物品距离查询阶段，不能直接换算成整体 TPS 提升。
+性能对比可运行 `gradle :common:performanceBenchmark`，测试说明和一次实测记录见 [`docs/performance-benchmark.md`](docs/performance-benchmark.md)。结果分别覆盖最近物品距离、点电荷和 ChunkMap 水平距离阶段，不能直接换算成整体 TPS 提升。
 
 ### 运行单个测试
 
@@ -87,7 +88,7 @@ cargo build --manifest-path native/Cargo.toml --release
 - `common/src/main/java/alku/beryllium/bridge/NativeBridge.java` 是 native 后端的 Java 薄壳入口。
 - `common/src/main/java/alku/beryllium/bridge/NativeLibraryLoader.java` 负责 native 资源提取、显式路径加载和回退。
 - `native/crates/beryllium-native/src/kernel.rs` 实现 Rust 批量计算 kernel。
-- `native/crates/beryllium-native/src/ffi.rs` 暴露 JNI 入口。
+- `native/crates/beryllium-native/src/ffi.rs` 暴露稳定 C ABI 入口，Java 侧通过 FFM downcall 调用。
 - `fabric/src/main/java/alku/beryllium/fabric/BerylliumFabric.java` 是 Fabric 主入口。
 - `fabric/src/main/java/alku/beryllium/fabric/client/BerylliumFabricClient.java` 是 Fabric 客户端入口。
 - `neoforge/src/main/java/alku/beryllium/neoforge/BerylliumNeoForge.java` 是 NeoForge 主入口。
@@ -104,5 +105,5 @@ cargo build --manifest-path native/Cargo.toml --release
 
 ## Native 调优参数
 
-- `-Dberyllium.native.entityBatchThreshold=<正整数>`：控制实体批处理跨 JNI 的最小候选数，默认 `32`。数值越低越激进，数值越高越保守。`/beryllium native` 会显示当前阈值。
-- Rust Rayon 并行内核默认从 `4096` 个坐标/包围盒/charge 开始使用；该阈值固定在 native kernel 内，用于抵消并行调度与 JNI 编组开销。
+- `-Dberyllium.native.entityBatchThreshold=<正整数>`：控制实体批处理跨 FFM 的最小候选数，默认 `32`。数值越低越激进，数值越高越保守。`/beryllium native` 会显示当前阈值。
+- Rust Rayon 并行内核默认从 `4096` 个坐标/包围盒/charge 开始使用；该阈值固定在 native kernel 内，用于抵消并行调度与 FFM 编组开销。
