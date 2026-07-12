@@ -61,6 +61,8 @@ gradle :common:test :fabric:test :neoforge:test
 
 当前 `:common:check` 会运行两个 JavaExec 验证器：`javaParityTest` 覆盖 Java fallback/native 语义一致性，`nativeRuntimeTest` 要求打包进 classpath 的 native 后端真实加载并执行所有 JNI 入口。
 
+性能对比可运行 `gradle :common:performanceBenchmark`，测试说明和一次实测记录见 [`docs/performance-benchmark.md`](docs/performance-benchmark.md)。该结果只代表最近物品距离查询阶段，不能直接换算成整体 TPS 提升。
+
 ### 运行单个测试
 
 ```bash
