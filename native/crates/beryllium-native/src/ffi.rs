@@ -1266,32 +1266,25 @@ fn sort_by_block_distance_jni(
 }
 
 fn sort_by_distance_double_jni(
-    env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     origin_x: jdouble,
     origin_y: jdouble,
     origin_z: jdouble,
     positions: JDoubleArray<'_>,
     output: JIntArray<'_>,
 ) -> NativeStatus {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return NativeStatus::Jni,
-    };
-
-    let mut positions_buffer = vec![0.0; positions_len];
-    if env
-        .get_double_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
+    let positions_buffer =
+        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
+            Ok(value) => value,
+            Err(_) => return NativeStatus::Jni,
+        };
+    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
     {
-        return NativeStatus::Jni;
-    }
+        Ok(value) => value,
+        Err(_) => return NativeStatus::Jni,
+    };
 
-    let mut output_buffer = vec![0; output_len];
-    if let Err(error) = sort_by_distance_f64(
+    if let Err(error) = sort_by_distance_double_buffers(
         origin_x,
         origin_y,
         origin_z,
@@ -1299,13 +1292,6 @@ fn sort_by_distance_double_jni(
         &mut output_buffer,
     ) {
         return error.into();
-    }
-
-    if env
-        .set_int_array_region(&output, 0, &output_buffer)
-        .is_err()
-    {
-        return NativeStatus::Jni;
     }
 
     NativeStatus::Ok
@@ -1365,7 +1351,7 @@ fn sort_by_distance_and_count_within_radius_exclusive_double_buffers(
 }
 
 fn sort_within_radius_exclusive_double_jni(
-    env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     origin_x: jdouble,
     origin_y: jdouble,
     origin_z: jdouble,
@@ -1373,25 +1359,17 @@ fn sort_within_radius_exclusive_double_jni(
     positions: JDoubleArray<'_>,
     output: JIntArray<'_>,
 ) -> jint {
-    let positions_len = match env.get_array_length(&positions) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-    let output_len = match env.get_array_length(&output) {
-        Ok(value) => value as usize,
-        Err(_) => return native_count_error_code(NativeStatus::Jni),
-    };
-
-    let mut positions_buffer = vec![0.0; positions_len];
-    if env
-        .get_double_array_region(&positions, 0, &mut positions_buffer)
-        .is_err()
+    let positions_buffer =
+        match unsafe { env.get_array_elements(&positions, ReleaseMode::NoCopyBack) } {
+            Ok(value) => value,
+            Err(_) => return native_count_error_code(NativeStatus::Jni),
+        };
+    let mut output_buffer = match unsafe { env.get_array_elements(&output, ReleaseMode::CopyBack) }
     {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
-    let mut output_buffer = vec![0; output_len];
-    let count = match sort_within_radius_f64_exclusive(
+        Ok(value) => value,
+        Err(_) => return native_count_error_code(NativeStatus::Jni),
+    };
+    let count = match sort_within_radius_exclusive_double_buffers(
         origin_x,
         origin_y,
         origin_z,
@@ -1403,14 +1381,35 @@ fn sort_within_radius_exclusive_double_jni(
         Err(error) => return native_count_error_code(error.into()),
     };
 
-    if env
-        .set_int_array_region(&output, 0, &output_buffer[..count])
-        .is_err()
-    {
-        return native_count_error_code(NativeStatus::Jni);
-    }
-
     count as jint
+}
+
+fn sort_by_distance_double_buffers(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<(), NativeError> {
+    sort_by_distance_f64(origin_x, origin_y, origin_z, positions, output)
+}
+
+fn sort_within_radius_exclusive_double_buffers(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    sort_within_radius_f64_exclusive(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        positions,
+        output,
+    )
 }
 
 fn cast_i64_to_jlong(values: &[i64]) -> &[jlong] {
@@ -1437,7 +1436,41 @@ impl NativeStatus {
 
 #[cfg(test)]
 mod tests {
-    use super::sort_by_distance_and_count_within_radius_exclusive_double_buffers;
+    use super::{
+        sort_by_distance_and_count_within_radius_exclusive_double_buffers,
+        sort_by_distance_double_buffers, sort_within_radius_exclusive_double_buffers,
+    };
+
+    #[test]
+    fn double_sort_buffer_helper_writes_stable_order() {
+        let positions = [0.0, 64.0, 0.0, 3.0, 68.0, 4.0, -1.0, 63.0, -2.0];
+        let mut output = [0; 3];
+
+        sort_by_distance_double_buffers(0.0, 64.0, 0.0, &positions, &mut output)
+            .expect("valid double sort buffers");
+
+        assert_eq!(output, [0, 2, 1]);
+    }
+
+    #[test]
+    fn exclusive_double_sort_buffer_helper_preserves_prefix_and_tail() {
+        let positions = [2.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 4.0, 0.0, 0.0];
+        let mut output = [77; 4];
+
+        let count = sort_within_radius_exclusive_double_buffers(
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            &positions,
+            &mut output,
+        )
+        .expect("valid exclusive sort buffers");
+
+        assert_eq!(count, 2);
+        assert_eq!(&output[..count], &[1, 2]);
+        assert_eq!(&output[count..], &[77, 77]);
+    }
 
     #[test]
     fn fused_double_buffer_helper_writes_full_order_and_strict_prefix() {
