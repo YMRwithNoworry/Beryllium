@@ -37,6 +37,7 @@ public final class BerylliumParityVerifier {
         verifyJavaBlockSort();
         verifyJavaDoubleSort();
         verifyJavaDoubleFilter();
+        verifyJavaDoubleFusedSortAndRadiusPrefix();
         verifyJavaAabbFilter();
         verifyJavaAabbIntersectionFilter();
         PotentialEnergyBatchVerifier.verifyPotentialEnergyChangeMatchesVanillaPointChargeMath();
@@ -372,6 +373,78 @@ public final class BerylliumParityVerifier {
         double[] positions = {0.0, 64.0, 0.0, 3.0, 68.0, 4.0, -1.0, 63.0, -2.0};
         int[] sorted = JavaComputeKernels.sortByDistance(0.0, 64.0, 0.0, positions);
         assertArrayEquals(new int[] {0, 2, 1}, sorted, "Java double distance sort");
+    }
+
+    private static void verifyJavaDoubleFusedSortAndRadiusPrefix() {
+        double[] positions = {
+            2.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0,
+            4.0, 0.0, 0.0
+        };
+        int[] output = {-1, -1, -1, -1, 77};
+        int count = JavaComputeKernels.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            positions,
+            output
+        );
+
+        assertEquals(2, count, "Java fused distance sort radius prefix count");
+        assertArrayEquals(new int[] {1, 2, 0, 3}, Arrays.copyOf(output, 4), "Java fused distance sort full order");
+        assertEquals(77, output[4], "Java fused distance sort extra output capacity");
+
+        int[] boundaryOutput = new int[4];
+        int boundaryCount = JavaComputeKernels.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            positions,
+            boundaryOutput
+        );
+        assertEquals(0, boundaryCount, "Java fused distance sort exact boundary prefix");
+
+        int[] nanOutput = new int[4];
+        int nanCount = JavaComputeKernels.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            Double.NaN,
+            positions,
+            nanOutput
+        );
+        assertEquals(0, nanCount, "Java fused distance sort NaN radius prefix");
+
+        int[] infinityOutput = new int[4];
+        int infinityCount = JavaComputeKernels.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            Double.POSITIVE_INFINITY,
+            positions,
+            infinityOutput
+        );
+        assertEquals(4, infinityCount, "Java fused distance sort infinite radius prefix");
+
+        double[] tiedPositions = {
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0,
+            0.0, 2.0, 0.0
+        };
+        int[] tiedOutput = new int[3];
+        int tiedCount = JavaComputeKernels.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            tiedPositions,
+            tiedOutput
+        );
+        assertEquals(2, tiedCount, "Java fused distance sort tie prefix");
+        assertArrayEquals(new int[] {0, 1, 2}, tiedOutput, "Java fused distance sort tie order");
     }
 
     private static void verifyJavaBlockSort() {

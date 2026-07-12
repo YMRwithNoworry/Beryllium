@@ -287,6 +287,46 @@ public final class JavaComputeKernels {
         return count;
     }
 
+    public static int sortByDistanceAndCountWithinRadiusExclusive(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        validatePositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+        int positionCount = positions.length / 3;
+        validateOutputCapacity(positionCount, output);
+
+        DistanceIndex[] distances = new DistanceIndex[positionCount];
+        for (int index = 0; index < positionCount; index++) {
+            distances[index] = new DistanceIndex(
+                index,
+                squaredDistanceAt(originX, originY, originZ, positions, index)
+            );
+        }
+        Arrays.sort(distances, (left, right) -> {
+            int distanceComparison = Double.compare(left.distance(), right.distance());
+            return distanceComparison != 0
+                ? distanceComparison
+                : Integer.compare(left.index(), right.index());
+        });
+
+        int prefixCount = 0;
+        for (int outputIndex = 0; outputIndex < positionCount; outputIndex++) {
+            DistanceIndex distance = distances[outputIndex];
+            output[outputIndex] = distance.index();
+            if (distance.distance() < radiusSquared) {
+                prefixCount++;
+            }
+        }
+        return prefixCount;
+    }
+
     public static int[] filterWithinRadii(double originX, double originY, double originZ, double[] positions, double[] radiiSquared) {
         validatePositions(positions);
         validateRadii(positions, radiiSquared);
@@ -589,6 +629,9 @@ public final class JavaComputeKernels {
         double dy = positions[offset + 1] - originY;
         double dz = positions[offset + 2] - originZ;
         return dx * dx + dy * dy + dz * dz;
+    }
+
+    private record DistanceIndex(int index, double distance) {
     }
 
     private static double blockCenterDistanceAt(double originX, double originY, double originZ, int[] positions, int index) {
