@@ -62,7 +62,7 @@ gradle :neoforge:runClient
 gradle :common:test :fabric:test :neoforge:test
 ```
 
-当前 `:common:check` 会运行两个 JavaExec 验证器：`javaParityTest` 覆盖 Java fallback/native 语义一致性，`nativeRuntimeTest` 要求打包进 classpath 的 native 后端真实加载并执行所有 FFM 入口。
+当前 `:common:check` 会运行三个 JavaExec 验证器：`javaParityTest` 覆盖 Java fallback/native 语义一致性，`nativeRuntimeTest` 要求打包进 classpath 的 native 后端真实加载并执行所有 FFM 入口，`ffmReuseTest` 验证线程本地 FFM buffer 复用和并发隔离。
 
 性能对比可运行 `gradle :common:performanceBenchmark`，测试说明和一次实测记录见 [`docs/performance-benchmark.md`](docs/performance-benchmark.md)。结果分别覆盖最近物品距离、点电荷和 ChunkMap 水平距离阶段，不能直接换算成整体 TPS 提升。
 
