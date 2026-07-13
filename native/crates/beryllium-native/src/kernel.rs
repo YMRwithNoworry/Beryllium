@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use crate::NativeError;
 
 const PARALLEL_THRESHOLD: usize = 4096;
+const CHUNK_SELECTION_PARALLEL_THRESHOLD: usize = 32768;
 
 /// Computes squared Euclidean distances from one origin to packed x/y/z triples.
 pub fn compute_squared_distances(
@@ -35,6 +36,70 @@ pub fn compute_squared_distances(
     }
 
     Ok(())
+}
+
+/// Selects the nearest packed chunk positions with vanilla's signed wrapping distance math.
+pub fn select_nearest_chunk_indices(
+    origin_x: i32,
+    origin_z: i32,
+    packed_chunk_positions: &[i64],
+    limit: usize,
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    if packed_chunk_positions.len() > i32::MAX as usize {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let selected_count = limit.min(packed_chunk_positions.len());
+    if output.len() < selected_count {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+    if selected_count == 0 {
+        return Ok(0);
+    }
+
+    let distances: Vec<i32> = if packed_chunk_positions.len() >= CHUNK_SELECTION_PARALLEL_THRESHOLD
+    {
+        packed_chunk_positions
+            .par_iter()
+            .map(|packed_position| chunk_distance_squared(origin_x, origin_z, *packed_position))
+            .collect()
+    } else {
+        packed_chunk_positions
+            .iter()
+            .map(|packed_position| chunk_distance_squared(origin_x, origin_z, *packed_position))
+            .collect()
+    };
+
+    let buffer_capacity = if selected_count == packed_chunk_positions.len() {
+        selected_count
+    } else {
+        selected_count * 2
+    };
+    let mut buffer = Vec::with_capacity(buffer_capacity);
+    let mut threshold_distance = 0;
+
+    for (index, distance) in distances.iter().copied().enumerate() {
+        if buffer.is_empty() {
+            buffer.push(index);
+            threshold_distance = distance;
+        } else if buffer.len() < selected_count {
+            buffer.push(index);
+            threshold_distance = threshold_distance.max(distance);
+        } else if distance < threshold_distance {
+            buffer.push(index);
+            if buffer.len() == selected_count * 2 {
+                threshold_distance = trim_chunk_selection(&mut buffer, selected_count, &distances);
+                buffer.truncate(selected_count);
+            }
+        }
+    }
+
+    stable_sort_chunk_selection(&mut buffer, &distances);
+    for (output_index, candidate_index) in buffer.iter().take(selected_count).enumerate() {
+        output[output_index] = *candidate_index as i32;
+    }
+    Ok(selected_count)
 }
 
 /// Computes squared Euclidean distances from one origin to packed x/y/z triples.
@@ -1149,6 +1214,82 @@ fn squared_distance_at(
     squared_distance_components(dx, dy, dz)
 }
 
+fn chunk_distance_squared(origin_x: i32, origin_z: i32, packed_chunk_position: i64) -> i32 {
+    let x = packed_chunk_position as i32;
+    let z = ((packed_chunk_position as u64) >> 32) as i32;
+    let dx = x.wrapping_sub(origin_x);
+    let dz = z.wrapping_sub(origin_z);
+    dx.wrapping_mul(dx).wrapping_add(dz.wrapping_mul(dz))
+}
+
+fn trim_chunk_selection(buffer: &mut [usize], selected_count: usize, distances: &[i32]) -> i32 {
+    let mut left = 0;
+    let mut right = selected_count * 2 - 1;
+    let mut min_threshold_position = 0;
+    let mut iterations = 0;
+    let max_iterations = ceiling_log2(right - left) * 3;
+
+    while left < right {
+        let pivot_index = (left + right + 1) >> 1;
+        let pivot_new_index =
+            partition_chunk_selection(buffer, left, right, pivot_index, distances);
+        if pivot_new_index > selected_count {
+            right = pivot_new_index - 1;
+        } else if pivot_new_index < selected_count {
+            left = pivot_new_index.max(left + 1);
+            min_threshold_position = pivot_new_index;
+        } else {
+            break;
+        }
+
+        iterations += 1;
+        if iterations >= max_iterations {
+            stable_sort_chunk_selection(&mut buffer[left..=right], distances);
+            break;
+        }
+    }
+
+    buffer[min_threshold_position + 1..selected_count]
+        .iter()
+        .fold(
+            distances[buffer[min_threshold_position]],
+            |threshold, index| threshold.max(distances[*index]),
+        )
+}
+
+fn partition_chunk_selection(
+    buffer: &mut [usize],
+    left: usize,
+    right: usize,
+    pivot_index: usize,
+    distances: &[i32],
+) -> usize {
+    let pivot_value = buffer[pivot_index];
+    buffer[pivot_index] = buffer[right];
+    let mut pivot_new_index = left;
+    for index in left..right {
+        if distances[buffer[index]] < distances[pivot_value] {
+            buffer.swap(pivot_new_index, index);
+            pivot_new_index += 1;
+        }
+    }
+    buffer[right] = buffer[pivot_new_index];
+    buffer[pivot_new_index] = pivot_value;
+    pivot_new_index
+}
+
+fn stable_sort_chunk_selection(buffer: &mut [usize], distances: &[i32]) {
+    buffer.sort_by(|left, right| distances[*left].cmp(&distances[*right]));
+}
+
+fn ceiling_log2(value: usize) -> usize {
+    if value <= 1 {
+        0
+    } else {
+        usize::BITS as usize - (value - 1).leading_zeros() as usize
+    }
+}
+
 fn squared_distance_at_slice(origin_x: i32, origin_y: i32, origin_z: i32, position: &[i32]) -> i64 {
     let dx = i64::from(position[0]) - i64::from(origin_x);
     let dy = i64::from(position[1]) - i64::from(origin_y);
@@ -1387,6 +1528,34 @@ mod tests {
         let mut output = [0; 3];
         compute_squared_distances(0, 64, 0, &positions, &mut output).unwrap();
         assert_eq!(output, [0, 41, 6]);
+    }
+
+    #[test]
+    fn select_nearest_chunk_indices_should_return_distance_ordered_top_k() {
+        let positions = [pack_chunk(3, 0), pack_chunk(1, 0), pack_chunk(2, 0)];
+        let mut output = [-1; 2];
+        let count = select_nearest_chunk_indices(0, 0, &positions, 2, &mut output).unwrap();
+        assert_eq!((count, output), (2, [1, 2]));
+    }
+
+    #[test]
+    fn select_nearest_chunk_indices_should_preserve_output_tail() {
+        let positions = [pack_chunk(8, 8), pack_chunk(1, 0), pack_chunk(0, 2)];
+        let mut output = [73; 5];
+        select_nearest_chunk_indices(0, 0, &positions, 2, &mut output).unwrap();
+        assert_eq!(output, [1, 2, 73, 73, 73]);
+    }
+
+    #[test]
+    fn select_nearest_chunk_indices_should_accept_oversized_limit() {
+        let positions = [pack_chunk(3, 0), pack_chunk(1, 0), pack_chunk(2, 0)];
+        let mut output = [-1; 3];
+        let count = select_nearest_chunk_indices(0, 0, &positions, 7, &mut output).unwrap();
+        assert_eq!((count, output), (3, [1, 2, 0]));
+    }
+
+    fn pack_chunk(x: i32, z: i32) -> i64 {
+        i64::from(x as u32) | (i64::from(z as u32) << 32)
     }
 
     #[test]

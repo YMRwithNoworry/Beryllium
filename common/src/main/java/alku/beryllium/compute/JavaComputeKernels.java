@@ -613,6 +613,75 @@ public final class JavaComputeKernels {
         return result;
     }
 
+    /**
+     * Selects packed chunk positions with the same distance-only Top-K algorithm used by Guava.
+     */
+    public static int selectNearestChunkIndices(
+        int originX,
+        int originZ,
+        long[] packedChunkPositions,
+        int limit,
+        int[] output
+    ) {
+        int selectedCount = validateChunkSelection(packedChunkPositions, limit, output);
+        if (selectedCount == 0) {
+            return 0;
+        }
+
+        int[] distances = new int[packedChunkPositions.length];
+        for (int index = 0; index < packedChunkPositions.length; index++) {
+            distances[index] = chunkDistanceSquared(originX, originZ, packedChunkPositions[index]);
+        }
+
+        int bufferCapacity = selectedCount == packedChunkPositions.length
+            ? selectedCount
+            : Math.multiplyExact(selectedCount, 2);
+        int[] buffer = new int[bufferCapacity];
+        int bufferSize = 0;
+        int thresholdDistance = 0;
+
+        for (int index = 0; index < packedChunkPositions.length; index++) {
+            int distance = distances[index];
+            if (bufferSize == 0) {
+                buffer[0] = index;
+                thresholdDistance = distance;
+                bufferSize = 1;
+            } else if (bufferSize < selectedCount) {
+                buffer[bufferSize] = index;
+                bufferSize++;
+                if (distance > thresholdDistance) {
+                    thresholdDistance = distance;
+                }
+            } else if (distance < thresholdDistance) {
+                buffer[bufferSize] = index;
+                bufferSize++;
+                if (bufferSize == selectedCount * 2) {
+                    thresholdDistance = trimChunkSelection(buffer, selectedCount, distances);
+                    bufferSize = selectedCount;
+                }
+            }
+        }
+
+        stableSortChunkSelection(buffer, 0, bufferSize, distances);
+        System.arraycopy(buffer, 0, output, 0, selectedCount);
+        return selectedCount;
+    }
+
+    public static int validateChunkSelection(long[] packedChunkPositions, int limit, int[] output) {
+        if (packedChunkPositions == null) {
+            throw new IllegalArgumentException("packedChunkPositions must not be null");
+        }
+        if (limit < 0) {
+            throw new IllegalArgumentException("limit must be non-negative");
+        }
+
+        int selectedCount = Math.min(limit, packedChunkPositions.length);
+        if (output == null || output.length < selectedCount) {
+            throw new IllegalArgumentException("output must contain at least one slot per selected chunk");
+        }
+        return selectedCount;
+    }
+
     public static void validatePositions(int[] positions) {
         if (positions == null || positions.length % 3 != 0) {
             throw new IllegalArgumentException("positions must contain x/y/z triples");
@@ -678,6 +747,83 @@ public final class JavaComputeKernels {
         double dy = positions[offset + 1] - originY;
         double dz = positions[offset + 2] - originZ;
         return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static int chunkDistanceSquared(int originX, int originZ, long packedChunkPosition) {
+        int dx = (int) packedChunkPosition - originX;
+        int dz = (int) (packedChunkPosition >>> 32) - originZ;
+        return dx * dx + dz * dz;
+    }
+
+    private static int trimChunkSelection(int[] buffer, int selectedCount, int[] distances) {
+        int left = 0;
+        int right = selectedCount * 2 - 1;
+        int minThresholdPosition = 0;
+        int iterations = 0;
+        int maxIterations = ceilingLog2(right - left) * 3;
+
+        while (left < right) {
+            int pivotIndex = (left + right + 1) >>> 1;
+            int pivotNewIndex = partitionChunkSelection(buffer, left, right, pivotIndex, distances);
+            if (pivotNewIndex > selectedCount) {
+                right = pivotNewIndex - 1;
+            } else if (pivotNewIndex < selectedCount) {
+                left = Math.max(pivotNewIndex, left + 1);
+                minThresholdPosition = pivotNewIndex;
+            } else {
+                break;
+            }
+
+            iterations++;
+            if (iterations >= maxIterations) {
+                stableSortChunkSelection(buffer, left, right + 1, distances);
+                break;
+            }
+        }
+
+        int thresholdDistance = distances[buffer[minThresholdPosition]];
+        for (int index = minThresholdPosition + 1; index < selectedCount; index++) {
+            thresholdDistance = Math.max(thresholdDistance, distances[buffer[index]]);
+        }
+        return thresholdDistance;
+    }
+
+    private static int partitionChunkSelection(
+        int[] buffer,
+        int left,
+        int right,
+        int pivotIndex,
+        int[] distances
+    ) {
+        int pivotValue = buffer[pivotIndex];
+        buffer[pivotIndex] = buffer[right];
+        int pivotNewIndex = left;
+        for (int index = left; index < right; index++) {
+            if (Integer.compare(distances[buffer[index]], distances[pivotValue]) < 0) {
+                int previous = buffer[pivotNewIndex];
+                buffer[pivotNewIndex] = buffer[index];
+                buffer[index] = previous;
+                pivotNewIndex++;
+            }
+        }
+        buffer[right] = buffer[pivotNewIndex];
+        buffer[pivotNewIndex] = pivotValue;
+        return pivotNewIndex;
+    }
+
+    private static void stableSortChunkSelection(int[] buffer, int from, int to, int[] distances) {
+        Integer[] boxed = new Integer[to - from];
+        for (int index = from; index < to; index++) {
+            boxed[index - from] = buffer[index];
+        }
+        Arrays.sort(boxed, (left, right) -> Integer.compare(distances[left], distances[right]));
+        for (int index = from; index < to; index++) {
+            buffer[index] = boxed[index - from];
+        }
+    }
+
+    private static int ceilingLog2(int value) {
+        return value <= 1 ? 0 : Integer.SIZE - Integer.numberOfLeadingZeros(value - 1);
     }
 
     private record DistanceIndex(int index, double distance) {

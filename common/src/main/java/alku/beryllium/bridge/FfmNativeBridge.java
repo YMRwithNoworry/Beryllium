@@ -69,6 +69,32 @@ final class FfmNativeBridge {
         });
     }
 
+    static int selectNearestChunkIndices(
+        int originX,
+        int originZ,
+        long[] packedChunkPositions,
+        int limit,
+        int[] output
+    ) {
+        return withSession(session -> {
+            Buffer positionsBuffer = session.input(packedChunkPositions, Kind.LONG);
+            Buffer outputBuffer = session.output(output, Kind.INT);
+            int result = session.invoke(
+                Function.SELECT_NEAREST_CHUNK_INDICES,
+                originX,
+                originZ,
+                positionsBuffer,
+                limit,
+                outputBuffer
+            );
+            int expectedCount = Math.min(limit, packedChunkPositions.length);
+            if (result == expectedCount) {
+                session.copyOutputs();
+            }
+            return result;
+        });
+    }
+
     static int computeSquaredDistances(
         double originX,
         double originY,
@@ -614,6 +640,7 @@ final class FfmNativeBridge {
 
     private enum Function {
         COMPUTE_SQUARED_DISTANCES("beryllium_compute_squared_distances", Kind.INT, Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
+        SELECT_NEAREST_CHUNK_INDICES("beryllium_select_nearest_chunk_indices", Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG),
         COMPUTE_SQUARED_DISTANCES_DOUBLE("beryllium_compute_squared_distances_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         COMPUTE_POTENTIAL_ENERGY_CHANGE("beryllium_compute_potential_energy_change", Kind.INT, Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG),
         FILTER_WITHIN_RADIUS("beryllium_filter_within_radius", Kind.INT, Kind.INT, Kind.INT, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),

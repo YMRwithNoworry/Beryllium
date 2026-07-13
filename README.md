@@ -4,6 +4,8 @@ Beryllium 是一个基于 Architectury 的 Minecraft 多加载器性能模组，
 
 当前功能是提供一个 Rust 加速的批量坐标、包围盒和点电荷计算后端，并把 Minecraft 的实体查询、最近玩家/最近实体查询和 PotentialCalculator 接到批处理计算上，通过游戏内命令暴露验证入口。
 
+Java 与 Rust 之间使用 Java 21 FFM downcall，不依赖 JNI、`jni` 或 `jni-sys`。
+
 - Minecraft：`1.21.1`
 - Java：`21`
 - 构建系统：Gradle + Cargo
@@ -24,6 +26,7 @@ Beryllium 是一个基于 Architectury 的 Minecraft 多加载器性能模组，
 - FFM scratch session：每个 Java 线程复用 native buffer 和 arena slot，降低重复 FFM 调用的分配成本；buffer 扩容或类型切换时释放旧 arena，避免长期累积 native 内存。
 - PotentialCalculator 批处理：点电荷贡献在 Rust 中按索引并行计算，再沿原版顺序累加，避免并行归约改变浮点结果；小批量继续使用 Java 参考路径。
 - ChunkMap 刷怪距离：保留 `DistanceManager.hasPlayersNearby`、spectator 资格判断、严格水平半径和玩家迭代顺序；默认直接在 JVM 内短路扫描，避免这个小型标量热点承担 FFM 编组开销。
+- PlayerChunkSender 区块批次：远程连接的大型待发送集合会把 packed chunk long 通过 FFM 交给 Rust 选择最近 Top-K；保留原版 Guava 的 signed-int 回绕距离、Quickselect tie 行为、FastUtil stream 顺序、空区块过滤和移除副作用。低于实测阈值或 native 不可用时执行原版分支。
 
 ## 目录结构
 
@@ -64,7 +67,7 @@ gradle :common:test :fabric:test :neoforge:test
 
 当前 `:common:check` 会运行三个 JavaExec 验证器：`javaParityTest` 覆盖 Java fallback/native 语义一致性，`nativeRuntimeTest` 要求打包进 classpath 的 native 后端真实加载并执行所有 FFM 入口，`ffmReuseTest` 验证线程本地 FFM buffer 复用和并发隔离。
 
-性能对比可运行 `gradle :common:performanceBenchmark`，测试说明和一次实测记录见 [`docs/performance-benchmark.md`](docs/performance-benchmark.md)。结果分别覆盖最近物品距离、点电荷和 ChunkMap 水平距离阶段，不能直接换算成整体 TPS 提升。
+性能对比可运行 `gradle :common:performanceBenchmark`，测试说明和实测记录见 [`docs/performance-benchmark.md`](docs/performance-benchmark.md)。结果覆盖最近物品距离、点电荷、ChunkMap 水平距离和 PlayerChunkSender Top-K 阶段，不能直接换算成整体 TPS 提升。
 
 ### 运行单个测试
 
@@ -108,4 +111,5 @@ cargo build --manifest-path native/Cargo.toml --release
 
 - `-Dberyllium.native.entityBatchThreshold=<正整数>`：控制实体批处理跨 FFM 的最小候选数，默认 `32`。数值越低越激进，数值越高越保守。`/beryllium native` 会显示当前阈值。
 - `-Dberyllium.native.potentialBatchThreshold=<正整数>`：控制 PotentialCalculator 点电荷计算跨 FFM 的最小点电荷数，默认 `32`。低于阈值时直接按原版顺序在 Java 中计算，避免小批量数组编组开销；`/beryllium native` 会显示当前阈值。
-- Rust Rayon 并行内核默认从 `4096` 个坐标/包围盒/charge 开始使用；该阈值固定在 native kernel 内，用于抵消并行调度与 FFM 编组开销。
+- `-Dberyllium.native.chunkSendSelectionThreshold=<正整数>`：控制 PlayerChunkSender 最近 Top-K 跨 FFM 的最小待发送区块数，默认 `4096`。低于阈值或 native 不可用时保留原版 Guava 路径；`/beryllium native` 会显示当前阈值。
+- Rust Rayon 并行内核通常从 `4096` 个坐标/包围盒/charge 开始使用；PlayerChunkSender 的轻量 signed-int 距离预计算从 `32768` 个候选开始并行，避免调度开销抵消收益。

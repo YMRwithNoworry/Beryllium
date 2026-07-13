@@ -1,6 +1,6 @@
 # 性能基准
 
-该基准测最近物品传感器的距离阶段、PotentialCalculator 点电荷阶段，以及 ChunkMap 刷怪水平距离阶段，不等同于整机 TPS 或帧率测试。
+该基准测最近物品传感器的距离阶段、PotentialCalculator 点电荷阶段、ChunkMap 刷怪水平距离阶段，以及 PlayerChunkSender 最近 Top-K 阶段，不等同于整机 TPS 或帧率测试。
 
 ## 运行
 
@@ -10,7 +10,7 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 & 'C:\tmp\gradle-8121\gradle-8.12.1\bin\gradle.bat' --no-daemon :common:performanceBenchmark
 ```
 
-默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`，严格半径为 `32`；ChunkMap 玩家数量为 `32`、`128`、`512`、`2048`、`4096`、`8192`，水平半径为 `128`。
+默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`，严格半径为 `32`；ChunkMap 玩家数量为 `32`、`128`、`512`、`2048`、`4096`、`8192`，水平半径为 `128`；PlayerChunkSender 候选数量为 `128`、`512`、`2048`、`4096`、`8192`，批次配额为 `9` 和 `64`。
 
 每组使用相同的确定性坐标和 wanted/visible 谓词，输出中位耗时：
 
@@ -18,6 +18,8 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 - `legacy_native`：上一版 Beryllium 的 FFM 完整排序，再由 Java 重算距离和筛选半径。
 - `fused_native`：当前 Beryllium 的一次 FFM 融合排序，返回完整索引顺序和严格半径前缀长度，再由 Java 执行谓词；FFM session 和 native buffer 在每个 Java 线程内复用。
 - `beryllium_chunk_spawn`：当前 ChunkMap 路径的资格谓词、严格水平距离过滤和结果构建。
+- `vanilla_chunk_send`：原版 `LongOpenHashSet.stream()`、`Long` 装箱和 Guava `Comparators.least` Top-K。
+- `native_chunk_send`：primitive stream 候选快照、输出数组分配、完整 FFM downcall 和 Rust Top-K；FFM session/native buffer 继续按线程复用。
 
 `speedup` 是中位耗时的比值，例如 `fused_speedup:2.00x` 表示当前路径耗时约为原版的一半。FFM、数组打包、排序和结果扫描均包含在测量区间内；世界实体查询、区块加载、其他 AI 传感器和 tick 调度不包含在内。
 
@@ -109,3 +111,16 @@ ChunkMap 默认路径刻意保留在 JVM 内执行：玩家对象需要先经过
 | 8,192 | 1,608,700 ns | 550,700 ns | 2.92x | 65.8% |
 
 `8,192` 个点电荷的三轮耗时中位数为 Java `136,600 ns`、FFM `134,300 ns`，即 `1.02x`。该差异很小，仍不足以证明 PotentialCalculator 获得稳定加速。ChunkMap 各规模结果跨轮波动明显，且部分规模慢于原版，也不作为加速结论。当前可重复的收益仅限于上表所测的大批量最近物品距离热点，不能据此推导整体 TPS 或 FPS 提升。
+
+## 2026-07-13 PlayerChunkSender Top-K
+
+本节使用最终真实分支形态：两条路径都从同一个 FastUtil `LongOpenHashSet` 开始。原版测量包含 boxed `stream` 和 Guava Top-K；Beryllium 测量包含与原版同顺序的 primitive stream 快照、输出数组、完整 FFM 调用和 Rust 选择。共同的 `ChunkMap.getChunkToSend`、null 过滤、发包和集合移除不在测量区间内。
+
+在 Windows x86_64、JDK 21、Rust native `OK` 上运行三个独立 Gradle/JVM 进程，每组预热 `100` 次、测量 `300` 次。`4096` 候选是最终默认阈值：
+
+| 候选数 | 配额 | 原版三轮中位数 | FFM 三轮中位数 | 相对原版 | 耗时降低 | 三轮 speedup 范围 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4,096 | 9 | 113,300 ns | 42,500 ns | 2.67x | 62.5% | 2.26x-4.11x |
+| 4,096 | 64 | 105,000 ns | 34,500 ns | 3.04x | 67.1% | 1.50x-3.17x |
+
+`2048` 候选、配额 `9` 的独立轮次曾出现 `0.93x`，所以默认阈值不设为 `2048`。低于 `4096` 或 native 不可用时 Mixin 执行原版 Guava 分支；该策略只声明大型待发送集合的局部选择阶段加速，不推导整体 TPS、区块发送吞吐或网络延迟提升。

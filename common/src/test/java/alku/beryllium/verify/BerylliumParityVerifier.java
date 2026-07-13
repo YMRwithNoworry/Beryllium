@@ -5,6 +5,7 @@ import alku.beryllium.bridge.NativeStatus;
 import alku.beryllium.compute.BlockDistanceSearchVerifier;
 import alku.beryllium.compute.BlockDistanceSortVerifier;
 import alku.beryllium.compute.ChunkDistanceSearchVerifier;
+import alku.beryllium.compute.ChunkSendBatchSelectorVerifier;
 import alku.beryllium.compute.EntityDistanceFilterVerifier;
 import alku.beryllium.compute.EntityDistancePredicateSearchVerifier;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
@@ -25,6 +26,16 @@ public final class BerylliumParityVerifier {
     }
 
     public static void main(String[] args) {
+        ChunkSendBatchSelectorVerifier.verifyJavaKernelMatchesGuavaTopK();
+        ChunkSendBatchSelectorVerifier.verifyJavaKernelLimitBoundaries();
+        ChunkSendBatchSelectorVerifier.verifyJavaKernelPreservesWrappingIntDistance();
+        ChunkSendBatchSelectorVerifier.verifyJavaKernelMatchesGuavaTieBehavior();
+        ChunkSendBatchSelectorVerifier.verifyJavaKernelLeavesOutputTailUntouched();
+        ChunkSendBatchSelectorVerifier.verifyJavaKernelLargeBatchMatchesGuava();
+        ChunkSendBatchSelectorVerifier.verifyBridgeMatchesGuavaTopK();
+        ChunkSendBatchSelectorVerifier.verifyBridgeLeavesOutputTailUntouched();
+        ChunkSendBatchSelectorVerifier.verifySelectorFacadeMatchesGuavaTopK();
+        ChunkSendBatchSelectorVerifier.verifyFastutilPrimitiveStreamPreservesBoxedStreamOrder();
         verifyJavaKernel();
         verifyJavaKernelDouble();
         verifyJavaNearestIndex();

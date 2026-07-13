@@ -7,7 +7,8 @@ use crate::{
     kernel::find_nearest_block_center_index, kernel::find_nearest_block_corner_index,
     kernel::find_nearest_block_corner_index_within_radius, kernel::find_nearest_index_f64,
     kernel::find_nearest_index_f64_exclusive, kernel::has_any_within_radius_f64_exclusive,
-    kernel::potential_energy_change, kernel::sort_by_block_distance, kernel::sort_by_distance,
+    kernel::potential_energy_change, kernel::select_nearest_chunk_indices,
+    kernel::sort_by_block_distance, kernel::sort_by_distance,
     kernel::sort_by_distance_and_count_within_radius_f64_exclusive, kernel::sort_by_distance_f64,
     kernel::sort_within_radius_f64_exclusive, NativeError,
 };
@@ -110,6 +111,41 @@ pub unsafe extern "C" fn beryllium_compute_squared_distances(
 
     status_result(compute_squared_distances(
         origin_x, origin_y, origin_z, positions, output,
+    ))
+}
+
+#[no_mangle]
+/// Selects packed chunk indices through the stable C ABI.
+///
+/// # Safety
+/// Non-empty pointers must reference readable or writable buffers of their declared lengths.
+pub unsafe extern "C" fn beryllium_select_nearest_chunk_indices(
+    origin_x: i32,
+    origin_z: i32,
+    packed_chunk_positions: *const i64,
+    positions_length: usize,
+    limit: i32,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    if limit < 0 {
+        return -1 - NativeStatus::InvalidInput.code();
+    }
+    let packed_chunk_positions =
+        match unsafe { read_slice(packed_chunk_positions, positions_length) } {
+            Ok(value) => value,
+            Err(error) => return -1 - error.code(),
+        };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(select_nearest_chunk_indices(
+        origin_x,
+        origin_z,
+        packed_chunk_positions,
+        limit as usize,
+        output,
     ))
 }
 

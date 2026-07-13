@@ -6,14 +6,19 @@ import alku.beryllium.compute.JavaComputeKernels;
 import alku.beryllium.compute.EntityDistanceSort;
 import alku.beryllium.compute.EntityPacking;
 import alku.beryllium.compute.ChunkDistanceSearch;
+import com.google.common.collect.Comparators;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.function.DoubleSupplier;
+import java.util.function.LongSupplier;
 
 /**
  * Small repeatable benchmark for the nearest-item query's distance stage.
@@ -23,6 +28,8 @@ import java.util.function.DoubleSupplier;
 public final class BerylliumPerformanceBenchmark {
     private static final int[] CANDIDATE_COUNTS = {256, 1024, 4096, 8192};
     private static final int[] CHUNK_PLAYER_COUNTS = {32, 128, 512, 2048, 4096, 8192};
+    private static final int[] CHUNK_SEND_CANDIDATE_COUNTS = {128, 512, 2048, 4096, 8192};
+    private static final int[] CHUNK_SEND_LIMITS = {9, 64};
     private static final int WARMUP_ITERATIONS = 100;
     private static final int MEASUREMENT_ITERATIONS = 300;
     private static final int POTENTIAL_CHARGE_COUNT = 8192;
@@ -69,6 +76,7 @@ public final class BerylliumPerformanceBenchmark {
 
         benchmarkPotentialEnergy();
         benchmarkChunkDistance();
+        benchmarkChunkSendSelection();
 
         if (blackHole == Long.MIN_VALUE) {
             throw new AssertionError("benchmark black hole was not consumed");
@@ -162,6 +170,111 @@ public final class BerylliumPerformanceBenchmark {
                 speedup(vanillaMedian, berylliumMedian)
             );
         }
+    }
+
+    private static void benchmarkChunkSendSelection() {
+        System.out.println("benchmark=chunk-send-top-k");
+        for (int candidateCount : CHUNK_SEND_CANDIDATE_COUNTS) {
+            LongSet pendingChunks = new LongOpenHashSet(createChunkSendPositions(candidateCount));
+            for (int limit : CHUNK_SEND_LIMITS) {
+                long vanillaMedian = measureLong(
+                    "vanilla_chunk_send",
+                    () -> vanillaChunkSendSelection(pendingChunks, limit)
+                );
+                long javaMedian = measureLong(
+                    "java_chunk_send",
+                    () -> javaChunkSendSelection(pendingChunks, limit)
+                );
+                long nativeMedian = measureLong(
+                    "native_chunk_send",
+                    () -> nativeChunkSendSelection(pendingChunks, limit)
+                );
+                System.out.printf(
+                    Locale.ROOT,
+                    "chunk_send_result=candidates:%d limit:%d vanilla_java_median_ns:%d "
+                        + "primitive_java_median_ns:%d native_ffm_median_ns:%d "
+                        + "java_speedup:%.2fx native_speedup:%.2fx native_vs_java:%.2fx%n",
+                    candidateCount,
+                    limit,
+                    vanillaMedian,
+                    javaMedian,
+                    nativeMedian,
+                    speedup(vanillaMedian, javaMedian),
+                    speedup(vanillaMedian, nativeMedian),
+                    speedup(javaMedian, nativeMedian)
+                );
+            }
+        }
+    }
+
+    private static long vanillaChunkSendSelection(LongSet pendingChunks, int limit) {
+        List<Long> selected = pendingChunks
+            .stream()
+            .collect(Comparators.least(
+                limit,
+                Comparator.comparingInt(position -> chunkDistanceSquared(0, 0, position))
+            ));
+        long result = selected.size();
+        for (long position : selected) {
+            result = result * 31 + position;
+        }
+        return result;
+    }
+
+    private static long javaChunkSendSelection(LongSet pendingChunks, int limit) {
+        long[] positions = pendingChunks.longStream().toArray();
+        int[] output = new int[Math.min(limit, positions.length)];
+        int count = JavaComputeKernels.selectNearestChunkIndices(0, 0, positions, limit, output);
+        return consumeChunkSelection(positions, output, count);
+    }
+
+    private static long nativeChunkSendSelection(LongSet pendingChunks, int limit) {
+        long[] positions = pendingChunks.longStream().toArray();
+        int[] output = new int[Math.min(limit, positions.length)];
+        int count = NativeBridge.selectNearestChunkIndices(0, 0, positions, limit, output);
+        return consumeChunkSelection(positions, output, count);
+    }
+
+    private static long consumeChunkSelection(long[] positions, int[] selectedIndices, int count) {
+        long result = count;
+        for (int outputIndex = 0; outputIndex < count; outputIndex++) {
+            result = result * 31 + positions[selectedIndices[outputIndex]];
+        }
+        return result;
+    }
+
+    private static long[] createChunkSendPositions(int count) {
+        long[] positions = new long[count];
+        for (int index = 0; index < count; index++) {
+            int x = index * 1103515245 + 12345;
+            int z = Integer.rotateLeft(index * 0x9E3779B9, index & 31);
+            positions[index] = (long) x & 0xFFFFFFFFL | ((long) z & 0xFFFFFFFFL) << 32;
+        }
+        return positions;
+    }
+
+    private static int chunkDistanceSquared(int originX, int originZ, long packedPosition) {
+        int dx = (int) packedPosition - originX;
+        int dz = (int) (packedPosition >>> 32) - originZ;
+        return dx * dx + dz * dz;
+    }
+
+    private static long measureLong(String name, LongSupplier calculation) {
+        for (int iteration = 0; iteration < WARMUP_ITERATIONS; iteration++) {
+            consume(calculation.getAsLong());
+        }
+
+        long[] samples = new long[MEASUREMENT_ITERATIONS];
+        for (int iteration = 0; iteration < MEASUREMENT_ITERATIONS; iteration++) {
+            long start = System.nanoTime();
+            consume(calculation.getAsLong());
+            samples[iteration] = System.nanoTime() - start;
+        }
+
+        Arrays.sort(samples);
+        long median = samples[samples.length / 2];
+        System.out.printf(Locale.ROOT, "sample=%s median_ns=%d%n", name, median);
+        return median;
     }
 
     private static long measureChunk(String name, Supplier<List<ChunkBenchmarkPlayer>> query) {
@@ -305,6 +418,10 @@ public final class BerylliumPerformanceBenchmark {
 
     private static void consume(double result) {
         blackHole = blackHole * 31 + Double.doubleToLongBits(result);
+    }
+
+    private static void consume(long result) {
+        blackHole = blackHole * 31 + result;
     }
 
     private static void consumeChunk(List<ChunkBenchmarkPlayer> result) {

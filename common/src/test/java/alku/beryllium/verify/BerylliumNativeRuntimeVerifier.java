@@ -5,6 +5,7 @@ import alku.beryllium.bridge.NativeStatus;
 import alku.beryllium.compute.BlockDistanceSearchVerifier;
 import alku.beryllium.compute.BlockDistanceSortVerifier;
 import alku.beryllium.compute.ChunkDistanceSearchVerifier;
+import alku.beryllium.compute.ChunkSendBatchSelectorVerifier;
 import alku.beryllium.compute.EntityDistanceFilterVerifier;
 import alku.beryllium.compute.EntityDistancePredicateSearchVerifier;
 import alku.beryllium.compute.EntitySectionBatchVerifier;
@@ -32,6 +33,10 @@ public final class BerylliumNativeRuntimeVerifier {
             throw new AssertionError("Expected FFM native backend");
         }
 
+        ChunkSendBatchSelectorVerifier.verifyBridgeMatchesGuavaTopK();
+        ChunkSendBatchSelectorVerifier.verifyBridgeLeavesOutputTailUntouched();
+        ChunkSendBatchSelectorVerifier.verifyBridgeRandomizedMatchesGuava();
+        ChunkSendBatchSelectorVerifier.verifySelectorFacadeMatchesGuavaTopK();
         verifyNativeDistance();
         verifyNativeDoubleDistance();
         verifyNativeNearestIndex();

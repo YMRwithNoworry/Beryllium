@@ -722,6 +722,43 @@ public final class NativeBridge {
         return output;
     }
 
+    public static int selectNearestChunkIndices(
+        int originX,
+        int originZ,
+        long[] packedChunkPositions,
+        int limit,
+        int[] output
+    ) {
+        int selectedCount = JavaComputeKernels.validateChunkSelection(packedChunkPositions, limit, output);
+        if (!isLoaded()) {
+            return JavaComputeKernels.selectNearestChunkIndices(
+                originX,
+                originZ,
+                packedChunkPositions,
+                limit,
+                output
+            );
+        }
+
+        int nativeCount = selectNearestChunkIndicesNative(
+            originX,
+            originZ,
+            packedChunkPositions,
+            limit,
+            output
+        );
+        if (nativeCount != selectedCount) {
+            return JavaComputeKernels.selectNearestChunkIndices(
+                originX,
+                originZ,
+                packedChunkPositions,
+                limit,
+                output
+            );
+        }
+        return nativeCount;
+    }
+
     public static int[] sortByBlockDistance(int originX, int originY, int originZ, int[] positions) {
         JavaComputeKernels.validatePositions(positions);
 
@@ -822,6 +859,22 @@ public final class NativeBridge {
         long[] output
     ) {
         return FfmNativeBridge.computeSquaredDistances(originX, originY, originZ, positions, output);
+    }
+
+    private static int selectNearestChunkIndicesNative(
+        int originX,
+        int originZ,
+        long[] packedChunkPositions,
+        int limit,
+        int[] output
+    ) {
+        return FfmNativeBridge.selectNearestChunkIndices(
+            originX,
+            originZ,
+            packedChunkPositions,
+            limit,
+            output
+        );
     }
 
     private static int computeSquaredDistancesDoubleNative(
