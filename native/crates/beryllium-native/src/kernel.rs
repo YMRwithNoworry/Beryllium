@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use crate::NativeError;
 use crate::simd;
 use crate::simd::has_avx2;
+use crate::simd::batch_4_distances;
 
 const PARALLEL_THRESHOLD: usize = 2048;
 const CHUNK_SELECTION_PARALLEL_THRESHOLD: usize = 32768;
@@ -289,15 +290,18 @@ fn potential_energy_terms_parallel(
     charges
         .par_iter()
         .enumerate()
-        .map(|(index, charge)| {
-            let distance = block_corner_distance_at(origin_x, origin_y, origin_z, positions, index);
-            if distance == 0.0 {
-                f64::INFINITY
-            } else {
-                *charge / distance.sqrt()
-            }
+        .fold(
+            Vec::new,
+            |mut acc, (index, charge)| {
+                let distance = block_corner_distance_at(origin_x, origin_y, origin_z, positions, index);
+                acc.push(if distance == 0.0 { f64::INFINITY } else { *charge / distance.sqrt() });
+                acc
+            },
+        )
+        .reduce(Vec::new, |mut a, mut b| {
+            a.append(&mut b);
+            a
         })
-        .collect()
 }
 
 /// Finds the nearest packed f64 x/y/z triple within an optional squared radius.
@@ -361,6 +365,29 @@ pub fn has_any_within_radius_f64_exclusive(
             squared_distance_at_f64_slice(origin_x, origin_y, origin_z, position)
                 < max_distance_squared
         }));
+    }
+
+    if has_avx2() && position_count >= 4 {
+        let simd_chunks = position_count / 4;
+        let mut buf = [0.0_f64; 4];
+        for chunk in 0..simd_chunks {
+            unsafe {
+                batch_4_distances(origin_x, origin_y, origin_z, positions, chunk * 12, &mut buf);
+            }
+            for d in buf {
+                if d < max_distance_squared {
+                    return Ok(true);
+                }
+            }
+        }
+        for index in (simd_chunks * 4)..position_count {
+            if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index)
+                < max_distance_squared
+            {
+                return Ok(true);
+            }
+        }
+        return Ok(false);
     }
 
     Ok((0..position_count).any(|index| {
@@ -1187,38 +1214,9 @@ pub fn sort_by_distance_f64(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    let mut indexed_distances: Vec<(i32, f64)> = if position_count >= PARALLEL_THRESHOLD {
-        (0..position_count as i32)
-            .into_par_iter()
-            .map(|index| {
-                (
-                    index,
-                    squared_distance_at_f64(
-                        origin_x,
-                        origin_y,
-                        origin_z,
-                        positions,
-                        index as usize,
-                    ),
-                )
-            })
-            .collect()
-    } else {
-        (0..position_count as i32)
-            .map(|index| {
-                (
-                    index,
-                    squared_distance_at_f64(
-                        origin_x,
-                        origin_y,
-                        origin_z,
-                        positions,
-                        index as usize,
-                    ),
-                )
-            })
-            .collect()
-    };
+    let mut indexed_distances: Vec<(i32, f64)> = build_simd_pairs(
+        origin_x, origin_y, origin_z, positions,
+    );
 
     if indexed_distances.len() >= PARALLEL_THRESHOLD {
         indexed_distances.par_sort_unstable_by(|left, right| {
@@ -1237,6 +1235,45 @@ pub fn sort_by_distance_f64(
 }
 
 /// Sorts packed f64 x/y/z triples by squared distance and returns the strict radius prefix length.
+
+/// SIMD-batched distance pair builder — computes 4 distances at a time via AVX2
+/// when available, falling back to scalar otherwise. Returns (index, distance) pairs.
+fn build_simd_pairs(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    positions: &[f64],
+) -> Vec<(i32, f64)> {
+    let position_count = positions.len() / 3;
+    let has_simd = has_avx2();
+    let mut pairs = Vec::with_capacity(position_count);
+    let mut buf = [0.0_f64; 4];
+    let simd_chunks = position_count / 4;
+
+    for chunk in 0..simd_chunks {
+        let base = chunk * 4;
+        if has_simd {
+            unsafe {
+                batch_4_distances(origin_x, origin_y, origin_z, positions, chunk * 12, &mut buf);
+            }
+        } else {
+            for i in 0..4 {
+                buf[i] = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, base + i);
+            }
+        }
+        for i in 0..4 {
+            pairs.push(((base + i) as i32, buf[i]));
+        }
+    }
+    for index in (simd_chunks * 4)..position_count {
+        pairs.push((
+            index as i32,
+            squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index),
+        ));
+    }
+    pairs
+}
+
 pub fn sort_by_distance_and_count_within_radius_f64_exclusive(
     origin_x: f64,
     origin_y: f64,
@@ -1254,38 +1291,9 @@ pub fn sort_by_distance_and_count_within_radius_f64_exclusive(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    let mut indexed_distances: Vec<(i32, f64)> = if position_count >= PARALLEL_THRESHOLD {
-        (0..position_count as i32)
-            .into_par_iter()
-            .map(|index| {
-                (
-                    index,
-                    squared_distance_at_f64(
-                        origin_x,
-                        origin_y,
-                        origin_z,
-                        positions,
-                        index as usize,
-                    ),
-                )
-            })
-            .collect()
-    } else {
-        (0..position_count as i32)
-            .map(|index| {
-                (
-                    index,
-                    squared_distance_at_f64(
-                        origin_x,
-                        origin_y,
-                        origin_z,
-                        positions,
-                        index as usize,
-                    ),
-                )
-            })
-            .collect()
-    };
+    let mut indexed_distances: Vec<(i32, f64)> = build_simd_pairs(
+        origin_x, origin_y, origin_z, positions,
+    );
 
     if indexed_distances.len() >= PARALLEL_THRESHOLD {
         indexed_distances.par_sort_unstable_by(|left, right| {
