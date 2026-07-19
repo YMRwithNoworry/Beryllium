@@ -370,6 +370,51 @@ public final class JavaComputeKernels {
         return prefixCount;
     }
 
+    /**
+     * Selects the first distance-ordered positions inside a strict radius without sorting the full input.
+     */
+    public static int selectNearestIndicesWithinRadiusExclusive(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int limit,
+        int[] output
+    ) {
+        validatePositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+        int selectedCapacity = validateNearestSelection(positions, limit, output);
+        if (selectedCapacity == 0) {
+            return 0;
+        }
+
+        DistanceIndex[] matches = new DistanceIndex[positions.length / 3];
+        int matchCount = 0;
+        for (int index = 0; index < matches.length; index++) {
+            double distance = squaredDistanceAt(originX, originY, originZ, positions, index);
+            if (distance < radiusSquared) {
+                matches[matchCount] = new DistanceIndex(index, distance);
+                matchCount++;
+            }
+        }
+
+        Arrays.sort(matches, 0, matchCount, (left, right) -> {
+            int distanceComparison = Double.compare(left.distance(), right.distance());
+            return distanceComparison != 0
+                ? distanceComparison
+                : Integer.compare(left.index(), right.index());
+        });
+
+        int selectedCount = Math.min(limit, matchCount);
+        for (int index = 0; index < selectedCount; index++) {
+            output[index] = matches[index].index();
+        }
+        return selectedCount;
+    }
+
     public static int[] filterWithinRadii(double originX, double originY, double originZ, double[] positions, double[] radiiSquared) {
         validatePositions(positions);
         validateRadii(positions, radiiSquared);
@@ -680,6 +725,19 @@ public final class JavaComputeKernels {
             throw new IllegalArgumentException("output must contain at least one slot per selected chunk");
         }
         return selectedCount;
+    }
+
+    public static int validateNearestSelection(double[] positions, int limit, int[] output) {
+        validatePositions(positions);
+        if (limit < 0) {
+            throw new IllegalArgumentException("limit must be non-negative");
+        }
+
+        int selectedCapacity = Math.min(limit, positions.length / 3);
+        if (output == null || output.length < selectedCapacity) {
+            throw new IllegalArgumentException("output must contain at least one slot per selected position");
+        }
+        return selectedCapacity;
     }
 
     public static void validatePositions(int[] positions) {

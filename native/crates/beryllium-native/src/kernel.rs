@@ -1,10 +1,13 @@
 use rayon::prelude::*;
 use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 
 use crate::NativeError;
 
 const PARALLEL_THRESHOLD: usize = 4096;
 const CHUNK_SELECTION_PARALLEL_THRESHOLD: usize = 32768;
+const NEAREST_SELECTION_PARALLEL_THRESHOLD: usize = 1_048_576;
+const NEAREST_SELECTION_INITIAL_CAPACITY: usize = 64;
 
 /// Computes squared Euclidean distances from one origin to packed x/y/z triples.
 pub fn compute_squared_distances(
@@ -1200,6 +1203,102 @@ pub fn sort_by_distance_and_count_within_radius_f64_exclusive(
     Ok(prefix_count)
 }
 
+/// Selects the first distance-ordered points inside a strict squared radius.
+///
+/// This keeps the Java distance comparator's tie behavior while avoiding a full
+/// ordering when a caller only needs a small nearest prefix.
+pub fn select_nearest_indices_within_radius_f64_exclusive(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    limit: usize,
+    output: &mut [i32],
+) -> Result<usize, NativeError> {
+    if radius_squared < 0.0 || positions.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let position_count = positions.len() / 3;
+    let selected_capacity = limit.min(position_count);
+    if output.len() < selected_capacity {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+    if selected_capacity == 0 {
+        return Ok(0);
+    }
+
+    let nearest = if position_count >= NEAREST_SELECTION_PARALLEL_THRESHOLD {
+        positions
+            .par_chunks_exact(3)
+            .enumerate()
+            .fold(
+                || nearest_selection_heap(selected_capacity),
+                |mut nearest, (index, position)| {
+                    let distance =
+                        squared_distance_at_f64_slice(origin_x, origin_y, origin_z, position);
+                    if distance < radius_squared {
+                        retain_nearest_distance_index(
+                            &mut nearest,
+                            selected_capacity,
+                            DistanceIndex::new(index as i32, distance),
+                        );
+                    }
+                    nearest
+                },
+            )
+            .reduce(
+                || nearest_selection_heap(selected_capacity),
+                |mut nearest, other| {
+                    for candidate in other {
+                        retain_nearest_distance_index(&mut nearest, selected_capacity, candidate);
+                    }
+                    nearest
+                },
+            )
+    } else {
+        let mut nearest = nearest_selection_heap(selected_capacity);
+        for index in 0..position_count {
+            let distance = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
+            if distance < radius_squared {
+                retain_nearest_distance_index(
+                    &mut nearest,
+                    selected_capacity,
+                    DistanceIndex::new(index as i32, distance),
+                );
+            }
+        }
+        nearest
+    };
+
+    let mut nearest = nearest.into_vec();
+    nearest.sort_unstable();
+
+    for (output_index, candidate) in nearest.iter().enumerate() {
+        output[output_index] = candidate.index;
+    }
+    Ok(nearest.len())
+}
+
+fn nearest_selection_heap(capacity: usize) -> BinaryHeap<DistanceIndex> {
+    BinaryHeap::with_capacity(capacity.min(NEAREST_SELECTION_INITIAL_CAPACITY))
+}
+
+fn retain_nearest_distance_index(
+    nearest: &mut BinaryHeap<DistanceIndex>,
+    capacity: usize,
+    candidate: DistanceIndex,
+) {
+    debug_assert!(capacity > 0);
+    if nearest.len() < capacity {
+        nearest.push(candidate);
+    } else if candidate < *nearest.peek().expect("non-empty heap at capacity") {
+        nearest.pop();
+        nearest.push(candidate);
+    }
+}
+
 fn squared_distance_at(
     origin_x: i32,
     origin_y: i32,
@@ -1498,6 +1597,38 @@ fn compare_distance_order_f64(
         left_index.cmp(&right_index)
     } else {
         distance_order
+    }
+}
+
+#[derive(Clone, Copy)]
+struct DistanceIndex {
+    index: i32,
+    distance: f64,
+}
+
+impl DistanceIndex {
+    fn new(index: i32, distance: f64) -> Self {
+        Self { index, distance }
+    }
+}
+
+impl PartialEq for DistanceIndex {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for DistanceIndex {}
+
+impl PartialOrd for DistanceIndex {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DistanceIndex {
+    fn cmp(&self, other: &Self) -> Ordering {
+        compare_distance_order_f64(self.index, self.distance, other.index, other.distance)
     }
 }
 
@@ -2236,6 +2367,98 @@ mod tests {
             &(4968..5000).rev().collect::<Vec<_>>()[..]
         );
         assert_eq!(&output[count..], &(0..4968).rev().collect::<Vec<_>>()[..]);
+    }
+
+    #[test]
+    fn select_nearest_indices_within_radius_f64_exclusive_should_preserve_ties_and_output_tail() {
+        let positions = [
+            4.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 3.0, 0.0, 0.0,
+        ];
+        let mut output = [77, 88, 99];
+
+        let count = select_nearest_indices_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            16.0,
+            &positions,
+            2,
+            &mut output,
+        )
+        .unwrap();
+
+        assert_eq!(count, 2);
+        assert_eq!(output, [1, 2, 99]);
+    }
+
+    #[test]
+    fn select_nearest_indices_within_radius_f64_exclusive_should_reject_boundaries_and_nan() {
+        let positions = [2.0, 0.0, 0.0, f64::NAN, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let mut output = [77, 88, 99];
+
+        let count = select_nearest_indices_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            &positions,
+            3,
+            &mut output,
+        )
+        .unwrap();
+
+        assert_eq!(count, 1);
+        assert_eq!(output, [2, 88, 99]);
+
+        let nan_radius_count = select_nearest_indices_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            f64::NAN,
+            &positions,
+            3,
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(nan_radius_count, 0);
+        assert_eq!(output, [2, 88, 99]);
+    }
+
+    #[test]
+    fn select_nearest_indices_within_radius_f64_exclusive_should_match_full_sort_for_parallel_input(
+    ) {
+        const POSITION_COUNT: usize = NEAREST_SELECTION_PARALLEL_THRESHOLD;
+        let positions: Vec<f64> = (0..POSITION_COUNT)
+            .flat_map(|index| {
+                let distance = (POSITION_COUNT - 1 - index) % 31;
+                [distance as f64, 0.0, 0.0]
+            })
+            .collect();
+        let mut selected = [-1; 16];
+        let mut full_order = vec![-1; POSITION_COUNT];
+
+        let selected_count = select_nearest_indices_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            f64::INFINITY,
+            &positions,
+            selected.len(),
+            &mut selected,
+        )
+        .unwrap();
+        sort_by_distance_and_count_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            f64::INFINITY,
+            &positions,
+            &mut full_order,
+        )
+        .unwrap();
+
+        assert_eq!(selected_count, selected.len());
+        assert_eq!(selected.as_slice(), &full_order[..selected_count]);
     }
 
     #[test]

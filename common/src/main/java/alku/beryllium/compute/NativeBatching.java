@@ -9,9 +9,11 @@ public final class NativeBatching {
     private static final int DEFAULT_ENTITY_BATCH_THRESHOLD = 32;
     private static final int DEFAULT_POTENTIAL_BATCH_THRESHOLD = 32;
     private static final int DEFAULT_CHUNK_SEND_SELECTION_THRESHOLD = 4096;
+    private static final int DEFAULT_NEAREST_ITEM_TOP_K_THRESHOLD = 1024;
     private static final String ENTITY_BATCH_THRESHOLD_PROPERTY = "beryllium.native.entityBatchThreshold";
     private static final String POTENTIAL_BATCH_THRESHOLD_PROPERTY = "beryllium.native.potentialBatchThreshold";
     private static final String CHUNK_SEND_SELECTION_THRESHOLD_PROPERTY = "beryllium.native.chunkSendSelectionThreshold";
+    private static final String NEAREST_ITEM_TOP_K_THRESHOLD_PROPERTY = "beryllium.native.nearestItemTopKThreshold";
 
     private static final int ENTITY_BATCH_THRESHOLD = readPositiveIntProperty(
         ENTITY_BATCH_THRESHOLD_PROPERTY,
@@ -24,6 +26,10 @@ public final class NativeBatching {
     private static final int CHUNK_SEND_SELECTION_THRESHOLD = readPositiveIntProperty(
         CHUNK_SEND_SELECTION_THRESHOLD_PROPERTY,
         DEFAULT_CHUNK_SEND_SELECTION_THRESHOLD
+    );
+    private static final int NEAREST_ITEM_TOP_K_THRESHOLD = readPositiveIntProperty(
+        NEAREST_ITEM_TOP_K_THRESHOLD_PROPERTY,
+        DEFAULT_NEAREST_ITEM_TOP_K_THRESHOLD
     );
 
     private NativeBatching() {
@@ -41,6 +47,10 @@ public final class NativeBatching {
         return candidateCount >= CHUNK_SEND_SELECTION_THRESHOLD && NativeBridge.isLoaded();
     }
 
+    public static boolean shouldUseNativeNearestItemTopK(int candidateCount) {
+        return candidateCount >= NEAREST_ITEM_TOP_K_THRESHOLD && NativeBridge.isLoaded();
+    }
+
     public static int entityBatchThreshold() {
         return ENTITY_BATCH_THRESHOLD;
     }
@@ -51,6 +61,10 @@ public final class NativeBatching {
 
     public static int chunkSendSelectionThreshold() {
         return CHUNK_SEND_SELECTION_THRESHOLD;
+    }
+
+    public static int nearestItemTopKThreshold() {
+        return NEAREST_ITEM_TOP_K_THRESHOLD;
     }
 
     private static int readPositiveIntProperty(String property, int fallback) {

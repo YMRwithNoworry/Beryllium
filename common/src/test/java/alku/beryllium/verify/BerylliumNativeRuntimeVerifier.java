@@ -93,6 +93,8 @@ public final class BerylliumNativeRuntimeVerifier {
         EntityDistanceSortVerifier.verifyFindFirstSortedByDistancePreservesTieOrder();
         EntityDistanceSortVerifier.verifyFindFirstSortedWithinExclusiveDistanceEvaluatesPredicateBeforeRadius();
         EntityDistanceSortVerifier.verifyFindFirstSortedWithinExclusiveDistanceShortCircuitsAfterRadius();
+        EntityDistanceSortVerifier.verifyNearestItemTopKHitPreservesPredicateOrder();
+        EntityDistanceSortVerifier.verifyNearestItemTopKFallbackPreservesPredicateOrder();
         EntityDistanceSortVerifier.verifyFindFirstBySortedOrderWithinPrefixPreservesPredicateOrderAndShortCircuits();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
@@ -132,6 +134,7 @@ public final class BerylliumNativeRuntimeVerifier {
         verifyNativeBlockSort();
         verifyNativeDoubleSort();
         verifyNativeDoubleFusedSortAndRadiusPrefix();
+        verifyNativeNearestSelection();
     }
 
     private static void verifyNativeDistance() {
@@ -405,6 +408,41 @@ public final class BerylliumNativeRuntimeVerifier {
         );
         assertEquals(2, tiedCount, "native fused distance sort tie prefix");
         assertArrayEquals(new int[] {0, 1, 2}, tiedOutput, "native fused distance sort tie order");
+    }
+
+    private static void verifyNativeNearestSelection() {
+        double[] positions = {
+            4.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0,
+            2.0, 0.0, 0.0,
+            3.0, 0.0, 0.0
+        };
+        int[] output = {77, 88, 99};
+        int count = NativeBridge.selectNearestIndicesWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            16.0,
+            positions,
+            2,
+            output
+        );
+
+        assertEquals(2, count, "native nearest selection count");
+        assertArrayEquals(new int[] {1, 2, 99}, output, "native nearest selection output");
+
+        int nanCount = NativeBridge.selectNearestIndicesWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            Double.NaN,
+            positions,
+            2,
+            output
+        );
+        assertEquals(0, nanCount, "native nearest selection NaN radius count");
+        assertArrayEquals(new int[] {1, 2, 99}, output, "native nearest selection NaN radius tail");
     }
 
     private static void verifyNativeBlockSort() {

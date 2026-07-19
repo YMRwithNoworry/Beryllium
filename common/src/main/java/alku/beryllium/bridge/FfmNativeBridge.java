@@ -557,6 +557,35 @@ final class FfmNativeBridge {
         });
     }
 
+    static int selectNearestIndicesWithinRadiusExclusive(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int limit,
+        int[] output
+    ) {
+        return withSession(session -> {
+            Buffer positionsBuffer = session.input(positions, Kind.DOUBLE);
+            Buffer outputBuffer = session.output(output, Kind.INT);
+            int result = session.invoke(
+                Function.SELECT_NEAREST_INDICES_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                positionsBuffer,
+                limit,
+                outputBuffer
+            );
+            if (isValidCount(result, output.length)) {
+                session.copyOutputs();
+            }
+            return result;
+        });
+    }
+
     static int sortWithinRadiusExclusive(
         double originX,
         double originY,
@@ -662,6 +691,7 @@ final class FfmNativeBridge {
         SORT_BY_BLOCK_DISTANCE("beryllium_sort_by_block_distance", Kind.INT, Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         SORT_BY_DISTANCE_DOUBLE("beryllium_sort_by_distance_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         SORT_BY_DISTANCE_AND_COUNT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE("beryllium_sort_by_distance_and_count_within_radius_exclusive_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
+        SELECT_NEAREST_INDICES_WITHIN_RADIUS_EXCLUSIVE_DOUBLE("beryllium_select_nearest_indices_within_radius_exclusive_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG),
         SORT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE("beryllium_sort_within_radius_exclusive_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG);
 
         private final String symbol;

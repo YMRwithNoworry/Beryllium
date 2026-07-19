@@ -36,6 +36,8 @@ public final class BerylliumCommands {
                 + NativeBatching.potentialBatchThreshold()
                 + ", chunk send selection threshold: "
                 + NativeBatching.chunkSendSelectionThreshold()
+                + ", nearest-item Top-K threshold: "
+                + NativeBatching.nearestItemTopKThreshold()
         ), false);
         return NativeBridge.isLoaded() ? 1 : 0;
     }

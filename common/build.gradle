@@ -76,12 +76,12 @@ tasks.register('ffmReuseTest', JavaExec) {
 }
 
 tasks.register('performanceBenchmark', JavaExec) {
-    description = 'Measures vanilla Java, legacy FFM, and fused FFM nearest-item query paths.'
+    description = 'Measures vanilla Java, legacy FFM, fused FFM, and Top-K nearest-item query paths.'
     group = 'verification'
     dependsOn tasks.named('testClasses')
     mainClass = 'alku.beryllium.verify.BerylliumPerformanceBenchmark'
     classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
-    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    jvmArgs '--enable-native-access=ALL-UNNAMED', '-Dberyllium.native.nearestItemTopKThreshold=1'
 }
 
 check.dependsOn tasks.named('javaParityTest')

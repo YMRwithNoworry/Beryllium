@@ -8,9 +8,9 @@ use crate::{
     kernel::find_nearest_block_corner_index_within_radius, kernel::find_nearest_index_f64,
     kernel::find_nearest_index_f64_exclusive, kernel::has_any_within_radius_f64_exclusive,
     kernel::potential_energy_change, kernel::select_nearest_chunk_indices,
-    kernel::sort_by_block_distance, kernel::sort_by_distance,
-    kernel::sort_by_distance_and_count_within_radius_f64_exclusive, kernel::sort_by_distance_f64,
-    kernel::sort_within_radius_f64_exclusive, NativeError,
+    kernel::select_nearest_indices_within_radius_f64_exclusive, kernel::sort_by_block_distance,
+    kernel::sort_by_distance, kernel::sort_by_distance_and_count_within_radius_f64_exclusive,
+    kernel::sort_by_distance_f64, kernel::sort_within_radius_f64_exclusive, NativeError,
 };
 
 /// Result code returned by the stable C ABI.
@@ -694,6 +694,40 @@ pub unsafe extern "C" fn beryllium_sort_by_distance_and_count_within_radius_excl
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn beryllium_select_nearest_indices_within_radius_exclusive_double(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: *const f64,
+    positions_length: usize,
+    limit: i32,
+    output: *mut i32,
+    output_length: usize,
+) -> i32 {
+    if limit < 0 {
+        return -1 - NativeStatus::InvalidInput.code();
+    }
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    count_result(select_nearest_indices_within_radius_f64_exclusive(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        positions,
+        limit as usize,
+        output,
+    ))
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn beryllium_sort_within_radius_exclusive_double(
     origin_x: f64,
     origin_y: f64,
@@ -727,6 +761,7 @@ mod tests {
     use super::{
         beryllium_compute_squared_distances, beryllium_count_within_radius,
         beryllium_filter_within_radius_double,
+        beryllium_select_nearest_indices_within_radius_exclusive_double,
     };
 
     #[test]
@@ -774,5 +809,27 @@ mod tests {
 
         assert_eq!(count, 1);
         assert_eq!(output, [0, 88]);
+    }
+
+    #[test]
+    fn c_abi_nearest_selection_writes_distance_ordered_prefix() {
+        let positions = [4.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 2.0, 0.0, 0.0];
+        let mut output = [77, 88, 99];
+        let count = unsafe {
+            beryllium_select_nearest_indices_within_radius_exclusive_double(
+                0.0,
+                0.0,
+                0.0,
+                16.0,
+                positions.as_ptr(),
+                positions.len(),
+                2,
+                output.as_mut_ptr(),
+                output.len(),
+            )
+        };
+
+        assert_eq!(count, 2);
+        assert_eq!(output, [1, 2, 99]);
     }
 }

@@ -10,13 +10,14 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 & 'C:\tmp\gradle-8121\gradle-8.12.1\bin\gradle.bat' --no-daemon :common:performanceBenchmark
 ```
 
-默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`，严格半径为 `32`；ChunkMap 玩家数量为 `32`、`128`、`512`、`2048`、`4096`、`8192`，水平半径为 `128`；PlayerChunkSender 候选数量为 `128`、`512`、`2048`、`4096`、`8192`，批次配额为 `9` 和 `64`。
+默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`，严格半径为 `32`；ChunkMap 玩家数量为 `32`、`128`、`512`、`2048`、`4096`、`8192`，水平半径为 `128`；PlayerChunkSender 候选数量为 `128`、`512`、`2048`、`4096`、`8192`，批次配额为 `9` 和 `64`。该任务额外传入 `-Dberyllium.native.nearestItemTopKThreshold=1`，以便单独比较 Top-K 算法；正常运行仍使用默认阈值 `1024`。
 
 每组使用相同的确定性坐标和 wanted/visible 谓词，输出中位耗时：
 
 - `vanilla_java`：原版风格的 Java `List.sort` 加 Java 半径/谓词扫描。
 - `legacy_native`：上一版 Beryllium 的 FFM 完整排序，再由 Java 重算距离和筛选半径。
-- `fused_native`：当前 Beryllium 的一次 FFM 融合排序，返回完整索引顺序和严格半径前缀长度，再由 Java 执行谓词；FFM session 和 native buffer 在每个 Java 线程内复用。
+- `fused_native`：一次 FFM 融合排序，返回完整索引顺序和严格半径前缀长度，再由 Java 执行谓词；FFM session 和 native buffer 在每个 Java 线程内复用。
+- `top_k_native`：当前最近物品快路径。Rust 先在线性扫描中选择严格半径内最近 `16` 项，再由 Java 按完整排序会采用的顺序执行谓词；未命中才回退到 `fused_native` 的完整排序。
 - `beryllium_chunk_spawn`：当前 ChunkMap 路径的资格谓词、严格水平距离过滤和结果构建。
 - `vanilla_chunk_send`：原版 `LongOpenHashSet.stream()`、`Long` 装箱和 Guava `Comparators.least` Top-K。
 - `native_chunk_send`：primitive stream 候选快照、输出数组分配、完整 FFM downcall 和 Rust Top-K；FFM session/native buffer 继续按线程复用。
@@ -24,6 +25,22 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 `speedup` 是中位耗时的比值，例如 `fused_speedup:2.00x` 表示当前路径耗时约为原版的一半。FFM、数组打包、排序和结果扫描均包含在测量区间内；世界实体查询、区块加载、其他 AI 传感器和 tick 调度不包含在内。
 
 因此结果用于比较本次距离查询热点的算法开销，不能直接换算成“整体 TPS 提升百分比”。实际收益取决于候选数量、谓词命中率、CPU、JVM、实体密度和 Native 是否成功加载。
+
+## 2026-07-19 最近物品 Top-K 内核实测
+
+环境为 Windows x86_64、JDK 21.0.11、Rust release 动态库和 Java 21 FFM。每组预热 `200` 次、测量 `500` 次，坐标数组预先生成；FFM 数组传输和 native 输出复制包含在内。该表只比较 Rust Top-K 选择与完整 native 距离排序，不包含实体打包、Java 谓词或 Top-K 未命中后的回退。
+
+| 候选数 | Top-K FFM 中位数 | 完整排序 FFM 中位数 | 完整排序/Top-K |
+| ---: | ---: | ---: | ---: |
+| 256 | 28,100 ns | 14,400 ns | 0.51x |
+| 1,024 | 16,400 ns | 36,200 ns | 2.21x |
+| 4,096 | 15,600 ns | 279,500 ns | 17.92x |
+| 8,192 | 39,300 ns | 347,100 ns | 8.83x |
+| 32,768 | 87,600 ns | 971,100 ns | 11.09x |
+| 65,536 | 182,200 ns | 2,087,300 ns | 11.46x |
+| 262,144 | 1,209,600 ns | 9,605,300 ns | 7.94x |
+
+`256` 项的 Top-K 仍受 FFM 与有界堆开销影响而较慢，因此生产默认阈值设为 `1024`。Top-K 命中时避免完整 `O(n log n)` 排序；未命中时必须回退完整排序，以保持原版的谓词与结果语义。
 
 ## 2026-07-12 实测
 

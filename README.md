@@ -19,6 +19,7 @@ Java 与 Rust 之间使用 Java 21 FFM downcall，不依赖 JNI、`jni` 或 `jni
 - 近邻查询优化：`EntityGetter` 的最近玩家/最近实体默认逻辑会在候选集足够大时走 Rust batch 距离计算，并保留原版判定条件。
 - `EntityGetter.getPlayerByUUID`：服务端会优先走 `PlayerList` 的 UUID map，再回退到原版列表扫描。
 - Native filter/sort kernel：半径过滤和按距离排序在大批量输入下使用 Rayon 并行路径，并通过 Java fallback/parity verifier 覆盖原版语义。
+- Native nearest-item Top-K：最近物品传感器在大候选集上先由 Rust 选择严格半径内稳定排序的最近小前缀；命中时避免完整排序，未命中时复用已打包坐标回退到完整排序，保持原版的距离、等距和谓词执行顺序。
 - Native nearest-index kernel：最近玩家、存活玩家检测、无源 TargetingConditions 查询，以及不需要逐实体可见度距离修正的 TargetingConditions 最近实体查询可直接在 Rust 中返回最近候选索引，减少 Java 侧整批距离数组扫描。
 - TargetingConditions 批量过滤：不需要隐身可见度修正的固定范围查询会直接走 native double 半径过滤，保留需要逐实体可见度计算的原逻辑。
 - Native AABB filter：附近玩家查询会把玩家坐标批量传入 Rust 执行 AABB contains 过滤，空源和有源 TargetingConditions 路径共用批量 AABB helper，并保持原版 `min <= value < max` 边界语义。
@@ -112,4 +113,5 @@ cargo build --manifest-path native/Cargo.toml --release
 - `-Dberyllium.native.entityBatchThreshold=<正整数>`：控制实体批处理跨 FFM 的最小候选数，默认 `32`。数值越低越激进，数值越高越保守。`/beryllium native` 会显示当前阈值。
 - `-Dberyllium.native.potentialBatchThreshold=<正整数>`：控制 PotentialCalculator 点电荷计算跨 FFM 的最小点电荷数，默认 `32`。低于阈值时直接按原版顺序在 Java 中计算，避免小批量数组编组开销；`/beryllium native` 会显示当前阈值。
 - `-Dberyllium.native.chunkSendSelectionThreshold=<正整数>`：控制 PlayerChunkSender 最近 Top-K 跨 FFM 的最小待发送区块数，默认 `4096`。低于阈值或 native 不可用时保留原版 Guava 路径；`/beryllium native` 会显示当前阈值。
-- Rust Rayon 并行内核通常从 `4096` 个坐标/包围盒/charge 开始使用；PlayerChunkSender 的轻量 signed-int 距离预计算从 `32768` 个候选开始并行，避免调度开销抵消收益。
+- `-Dberyllium.native.nearestItemTopKThreshold=<正整数>`：控制最近物品传感器先走 Rust Top-K 快路径的最小候选数，默认 `1024`。快路径仅检查按原版距离/等距规则排列的最近 `16` 个严格半径内候选；未命中时继续完整排序，避免改变谓词与结果语义。
+- Rust Rayon 并行内核通常从 `4096` 个坐标/包围盒/charge 开始使用；最近物品 Top-K 从 `1048576` 个候选开始并行，PlayerChunkSender 的轻量距离预计算从 `32768` 个候选开始并行，避免调度开销抵消收益。

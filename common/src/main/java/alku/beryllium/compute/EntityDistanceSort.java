@@ -13,6 +13,8 @@ import java.util.function.Predicate;
  * Sorts entity-like lists by squared distance while preserving vanilla stable tie order.
  */
 public final class EntityDistanceSort {
+    private static final int NEAREST_ITEM_TOP_K_LIMIT = 16;
+
     private EntityDistanceSort() {
     }
 
@@ -274,6 +276,48 @@ public final class EntityDistanceSort {
         }
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
+        if (NativeBatching.shouldUseNativeNearestItemTopK(values.size())) {
+            int[] nearestOrder = new int[Math.min(NEAREST_ITEM_TOP_K_LIMIT, values.size())];
+            int nearestCount = NativeBridge.selectNearestIndicesWithinRadiusExclusive(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                positions,
+                NEAREST_ITEM_TOP_K_LIMIT,
+                nearestOrder
+            );
+            for (int orderIndex = 0; orderIndex < nearestCount; orderIndex++) {
+                T value = values.get(nearestOrder[orderIndex]);
+                if (beforeDistancePredicate.test(value) && afterDistancePredicate.test(value)) {
+                    return Optional.of(value);
+                }
+            }
+
+            boolean[] alreadyEvaluated = new boolean[values.size()];
+            for (int orderIndex = 0; orderIndex < nearestCount; orderIndex++) {
+                alreadyEvaluated[nearestOrder[orderIndex]] = true;
+            }
+
+            int[] order = new int[values.size()];
+            int orderCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                positions,
+                order
+            );
+            return findFirstBySortedOrderWithinPrefixSkippingEvaluated(
+                values,
+                order,
+                orderCount,
+                beforeDistancePredicate,
+                afterDistancePredicate,
+                alreadyEvaluated
+            );
+        }
+
         int[] order = new int[values.size()];
         int orderCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
             originX,
@@ -305,6 +349,34 @@ public final class EntityDistanceSort {
 
         for (int orderIndex = 0; orderIndex < order.length; orderIndex++) {
             T value = values.get(order[orderIndex]);
+            if (beforeDistancePredicate.test(value)
+                && orderIndex < prefixCount
+                && afterDistancePredicate.test(value)) {
+                return Optional.of(value);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static <T> Optional<T> findFirstBySortedOrderWithinPrefixSkippingEvaluated(
+        List<? extends T> values,
+        int[] order,
+        int prefixCount,
+        Predicate<? super T> beforeDistancePredicate,
+        Predicate<? super T> afterDistancePredicate,
+        boolean[] alreadyEvaluated
+    ) {
+        if (alreadyEvaluated.length != values.size()) {
+            throw new IllegalArgumentException("alreadyEvaluated must contain one entry per value");
+        }
+
+        for (int orderIndex = 0; orderIndex < order.length; orderIndex++) {
+            int valueIndex = order[orderIndex];
+            if (alreadyEvaluated[valueIndex]) {
+                continue;
+            }
+
+            T value = values.get(valueIndex);
             if (beforeDistancePredicate.test(value)
                 && orderIndex < prefixCount
                 && afterDistancePredicate.test(value)) {

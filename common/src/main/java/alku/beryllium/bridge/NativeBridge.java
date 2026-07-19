@@ -851,6 +851,57 @@ public final class NativeBridge {
         return nativeCount;
     }
 
+    public static int selectNearestIndicesWithinRadiusExclusive(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int limit,
+        int[] output
+    ) {
+        JavaComputeKernels.validatePositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+        int selectedCapacity = JavaComputeKernels.validateNearestSelection(positions, limit, output);
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.selectNearestIndicesWithinRadiusExclusive(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                positions,
+                limit,
+                output
+            );
+        }
+
+        int nativeCount = selectNearestIndicesWithinRadiusExclusiveDoubleNative(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            limit,
+            output
+        );
+        if (nativeCount < 0 || nativeCount > selectedCapacity) {
+            return JavaComputeKernels.selectNearestIndicesWithinRadiusExclusive(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                positions,
+                limit,
+                output
+            );
+        }
+
+        return nativeCount;
+    }
+
     private static int computeSquaredDistancesNative(
         int originX,
         int originY,
@@ -1127,6 +1178,26 @@ public final class NativeBridge {
             originZ,
             radiusSquared,
             positions,
+            output
+        );
+    }
+
+    private static int selectNearestIndicesWithinRadiusExclusiveDoubleNative(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int limit,
+        int[] output
+    ) {
+        return FfmNativeBridge.selectNearestIndicesWithinRadiusExclusive(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            limit,
             output
         );
     }

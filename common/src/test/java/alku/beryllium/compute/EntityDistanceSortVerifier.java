@@ -298,6 +298,70 @@ public final class EntityDistanceSortVerifier {
         assertListEquals(List.of(39, 38), afterDistance, "sorted-radius entity distance after-radius short-circuit order");
     }
 
+    public static void verifyNearestItemTopKHitPreservesPredicateOrder() {
+        List<SimplePoint> points = descendingAxisPoints(1024);
+        List<Integer> beforeDistance = new ArrayList<>();
+        List<Integer> afterDistance = new ArrayList<>();
+
+        SimplePoint match = EntityDistanceSort.findFirstSortedByDistanceWithinExclusiveDistanceAfterPredicate(
+                points,
+                0.0,
+                0.0,
+                0.0,
+                2048.0,
+                point -> {
+                    beforeDistance.add(point.id);
+                    return true;
+                },
+                point -> {
+                    afterDistance.add(point.id);
+                    return point.id == 1021;
+                },
+                point -> point.x,
+                point -> point.y,
+                point -> point.z
+            )
+            .orElseThrow(() -> new AssertionError("expected a Top-K match"));
+
+        if (match.id != 1021) {
+            throw new AssertionError("Top-K match mismatch, expected 1021 but got " + match.id);
+        }
+        assertListEquals(descendingRange(1023, 1021), beforeDistance, "Top-K hit before-distance predicate order");
+        assertListEquals(descendingRange(1023, 1021), afterDistance, "Top-K hit after-distance predicate order");
+    }
+
+    public static void verifyNearestItemTopKFallbackPreservesPredicateOrder() {
+        List<SimplePoint> points = descendingAxisPoints(1024);
+        List<Integer> beforeDistance = new ArrayList<>();
+        List<Integer> afterDistance = new ArrayList<>();
+
+        SimplePoint match = EntityDistanceSort.findFirstSortedByDistanceWithinExclusiveDistanceAfterPredicate(
+                points,
+                0.0,
+                0.0,
+                0.0,
+                2048.0,
+                point -> {
+                    beforeDistance.add(point.id);
+                    return true;
+                },
+                point -> {
+                    afterDistance.add(point.id);
+                    return point.id == 998;
+                },
+                point -> point.x,
+                point -> point.y,
+                point -> point.z
+            )
+            .orElseThrow(() -> new AssertionError("expected a Top-K fallback match"));
+
+        if (match.id != 998) {
+            throw new AssertionError("Top-K fallback match mismatch, expected 998 but got " + match.id);
+        }
+        assertListEquals(descendingRange(1023, 998), beforeDistance, "Top-K fallback before-distance predicate order");
+        assertListEquals(descendingRange(1023, 998), afterDistance, "Top-K fallback after-distance predicate order");
+    }
+
     public static void verifyFindFirstBySortedOrderWithinPrefixPreservesPredicateOrderAndShortCircuits() {
         List<SimplePoint> points = List.of(
             new SimplePoint(0, 1.0, 0.0, 0.0),

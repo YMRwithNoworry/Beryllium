@@ -50,6 +50,7 @@ public final class BerylliumParityVerifier {
         verifyJavaDoubleSort();
         verifyJavaDoubleFilter();
         verifyJavaDoubleFusedSortAndRadiusPrefix();
+        verifyJavaNearestSelection();
         verifyJavaAabbFilter();
         verifyJavaAabbIntersectionFilter();
         PotentialEnergyBatchVerifier.verifyPotentialEnergyChangeMatchesVanillaPointChargeMath();
@@ -71,6 +72,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeBlockSort();
         verifyNativeBridgeDoubleSort();
         verifyNativeBridgeDoubleFusedSortAndRadiusPrefix();
+        verifyNativeBridgeNearestSelection();
         verifyNativeBridgeDoubleFilter();
         verifyNativeBridgeVariableRadiusFilter();
         verifyNativeBridgeAabbFilter();
@@ -118,6 +120,8 @@ public final class BerylliumParityVerifier {
         EntityDistanceSortVerifier.verifyFindFirstSortedByDistancePreservesTieOrder();
         EntityDistanceSortVerifier.verifyFindFirstSortedWithinExclusiveDistanceEvaluatesPredicateBeforeRadius();
         EntityDistanceSortVerifier.verifyFindFirstSortedWithinExclusiveDistanceShortCircuitsAfterRadius();
+        EntityDistanceSortVerifier.verifyNearestItemTopKHitPreservesPredicateOrder();
+        EntityDistanceSortVerifier.verifyNearestItemTopKFallbackPreservesPredicateOrder();
         EntityDistanceSortVerifier.verifyFindFirstBySortedOrderWithinPrefixPreservesPredicateOrderAndShortCircuits();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
@@ -326,6 +330,41 @@ public final class BerylliumParityVerifier {
         assertArrayEquals(new int[] {1, 2, 0, 3}, infinityOutput, "Native bridge fused distance sort infinite radius order");
     }
 
+    private static void verifyNativeBridgeNearestSelection() {
+        double[] positions = {
+            4.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0,
+            2.0, 0.0, 0.0,
+            3.0, 0.0, 0.0
+        };
+        int[] output = {77, 88, 99};
+        int count = NativeBridge.selectNearestIndicesWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            16.0,
+            positions,
+            2,
+            output
+        );
+
+        assertEquals(2, count, "Native bridge nearest selection count");
+        assertArrayEquals(new int[] {1, 2, 99}, output, "Native bridge nearest selection output");
+
+        int nanCount = NativeBridge.selectNearestIndicesWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            Double.NaN,
+            positions,
+            2,
+            output
+        );
+        assertEquals(0, nanCount, "Native bridge nearest selection NaN radius count");
+        assertArrayEquals(new int[] {1, 2, 99}, output, "Native bridge nearest selection NaN radius tail");
+    }
+
     private static void verifyNativeBridgeBlockSort() {
         int[] positions = {0, 64, 0, 3, 68, 4, -1, 63, -2};
         int[] sorted = NativeBridge.sortByBlockDistance(0, 64, 0, positions);
@@ -524,6 +563,41 @@ public final class BerylliumParityVerifier {
         );
         assertEquals(2, tiedCount, "Java fused distance sort tie prefix");
         assertArrayEquals(new int[] {0, 1, 2}, tiedOutput, "Java fused distance sort tie order");
+    }
+
+    private static void verifyJavaNearestSelection() {
+        double[] positions = {
+            4.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0,
+            2.0, 0.0, 0.0,
+            3.0, 0.0, 0.0
+        };
+        int[] output = {77, 88, 99};
+        int count = JavaComputeKernels.selectNearestIndicesWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            16.0,
+            positions,
+            2,
+            output
+        );
+
+        assertEquals(2, count, "Java nearest selection count");
+        assertArrayEquals(new int[] {1, 2, 99}, output, "Java nearest selection output");
+
+        int nanCount = JavaComputeKernels.selectNearestIndicesWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            Double.NaN,
+            positions,
+            2,
+            output
+        );
+        assertEquals(0, nanCount, "Java nearest selection NaN radius count");
+        assertArrayEquals(new int[] {1, 2, 99}, output, "Java nearest selection NaN radius tail");
     }
 
     private static void verifyJavaBlockSort() {

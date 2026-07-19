@@ -59,18 +59,22 @@ public final class BerylliumPerformanceBenchmark {
             long vanillaMedian = measure("vanilla_java", () -> vanillaQuery(points));
             long legacyMedian = measure("legacy_native", () -> legacyNativeQuery(points));
             long fusedMedian = measure("fused_native", () -> fusedNativeQuery(points));
+            long topKMedian = measure("top_k_native", () -> topKNativeQuery(points));
 
             System.out.printf(
                 Locale.ROOT,
                 "result=candidates:%d vanilla_java_median_ns:%d legacy_native_median_ns:%d fused_native_median_ns:%d "
-                    + "legacy_speedup:%.2fx fused_speedup:%.2fx fused_vs_legacy:%.2fx%n",
+                    + "top_k_native_median_ns:%d legacy_speedup:%.2fx fused_speedup:%.2fx top_k_speedup:%.2fx "
+                    + "top_k_vs_fused:%.2fx%n",
                 candidateCount,
                 vanillaMedian,
                 legacyMedian,
                 fusedMedian,
+                topKMedian,
                 speedup(vanillaMedian, legacyMedian),
                 speedup(vanillaMedian, fusedMedian),
-                speedup(legacyMedian, fusedMedian)
+                speedup(vanillaMedian, topKMedian),
+                speedup(fusedMedian, topKMedian)
             );
         }
 
@@ -370,6 +374,31 @@ public final class BerylliumPerformanceBenchmark {
     }
 
     private static Optional<BenchmarkPoint> fusedNativeQuery(List<BenchmarkPoint> source) {
+        double[] positions = EntityPacking.packPositions(
+            source,
+            BenchmarkPoint::x,
+            BenchmarkPoint::y,
+            BenchmarkPoint::z
+        );
+        int[] order = new int[source.size()];
+        int withinRadiusCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            RADIUS * RADIUS,
+            positions,
+            order
+        );
+        for (int orderIndex = 0; orderIndex < order.length; orderIndex++) {
+            BenchmarkPoint point = source.get(order[orderIndex]);
+            if (point.wanted && orderIndex < withinRadiusCount && point.visible) {
+                return Optional.of(point);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<BenchmarkPoint> topKNativeQuery(List<BenchmarkPoint> source) {
         return EntityDistanceSort.findFirstSortedByDistanceWithinExclusiveDistanceAfterPredicate(
             source,
             0.0,
