@@ -3,8 +3,10 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 use crate::NativeError;
+use crate::simd;
+use crate::simd::has_avx2;
 
-const PARALLEL_THRESHOLD: usize = 4096;
+const PARALLEL_THRESHOLD: usize = 2048;
 const CHUNK_SELECTION_PARALLEL_THRESHOLD: usize = 32768;
 const NEAREST_SELECTION_PARALLEL_THRESHOLD: usize = 1_048_576;
 const NEAREST_SELECTION_INITIAL_CAPACITY: usize = 64;
@@ -113,7 +115,7 @@ pub fn compute_squared_distances_f64(
     positions: &[f64],
     output: &mut [f64],
 ) -> Result<(), NativeError> {
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -121,13 +123,22 @@ pub fn compute_squared_distances_f64(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    if output.len() >= PARALLEL_THRESHOLD {
+    let count = output.len();
+
+    if count >= PARALLEL_THRESHOLD {
         output
             .par_iter_mut()
             .enumerate()
             .for_each(|(index, value)| {
                 *value = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
             });
+    } else if has_avx2() && count >= 4 {
+        let simd_count = unsafe {
+            simd::squared_distances_f64_avx2(origin_x, origin_y, origin_z, positions, output)
+        };
+        for index in simd_count..count {
+            output[index] = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
+        }
     } else {
         for (index, value) in output.iter_mut().enumerate() {
             *value = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
@@ -158,12 +169,20 @@ pub fn potential_energy_change(
         return Err(NativeError::InvalidInput);
     }
 
-    if charges.len() >= PARALLEL_THRESHOLD {
+    let charge_count = charges.len();
+
+    if charge_count >= PARALLEL_THRESHOLD {
         let energy =
             potential_energy_terms_parallel(origin_x, origin_y, origin_z, positions, charges)
                 .into_iter()
                 .fold(0.0, |sum, contribution| sum + contribution);
         return Ok(energy * charge_multiplier);
+    }
+
+    if has_avx2() && charge_count >= 4 {
+        return potential_energy_change_simd(
+            origin_x, origin_y, origin_z, positions, charges, charge_multiplier,
+        );
     }
 
     let mut energy = 0.0;
@@ -173,6 +192,39 @@ pub fn potential_energy_change(
             f64::INFINITY
         } else {
             *charge / distance.sqrt()
+        };
+    }
+
+    Ok(energy * charge_multiplier)
+}
+
+fn potential_energy_change_simd(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    positions: &[i32],
+    charges: &[f64],
+    charge_multiplier: f64,
+) -> Result<f64, NativeError> {
+    let count = charges.len();
+    let mut partial = vec![0.0_f64; count];
+
+    let simd_count = unsafe {
+        simd::potential_energy_partial_f64_avx2(
+            origin_x, origin_y, origin_z, positions, charges, &mut partial,
+        )
+    };
+
+    let mut energy = 0.0;
+    for index in 0..simd_count {
+        energy += partial[index];
+    }
+    for index in simd_count..count {
+        let distance = block_corner_distance_at(origin_x, origin_y, origin_z, positions, index);
+        energy += if distance == 0.0 {
+            f64::INFINITY
+        } else {
+            charges[index] / distance.sqrt()
         };
     }
 
@@ -671,11 +723,13 @@ pub fn sort_within_radius_f64_exclusive(
     };
 
     if matches.len() >= PARALLEL_THRESHOLD {
-        matches.par_sort_by(|left, right| {
+        matches.par_sort_unstable_by(|left, right| {
             compare_distance_order_f64(left.0, left.1, right.0, right.1)
         });
     } else {
-        matches.sort_by(|left, right| compare_distance_order_f64(left.0, left.1, right.0, right.1));
+        matches.sort_unstable_by(|left, right| {
+            compare_distance_order_f64(left.0, left.1, right.0, right.1)
+        });
     }
 
     for (output_index, (index, _distance)) in matches.iter().enumerate() {
@@ -1053,12 +1107,13 @@ pub fn sort_by_block_distance(
     };
 
     if indexed_distances.len() >= PARALLEL_THRESHOLD {
-        indexed_distances.par_sort_by(|left, right| {
+        indexed_distances.par_sort_unstable_by(|left, right| {
             compare_distance_order_f64(left.0, left.1, right.0, right.1)
         });
     } else {
-        indexed_distances
-            .sort_by(|left, right| compare_distance_order_f64(left.0, left.1, right.0, right.1));
+        indexed_distances.sort_unstable_by(|left, right| {
+            compare_distance_order_f64(left.0, left.1, right.0, right.1)
+        });
     }
 
     for (output_index, (index, _distance)) in indexed_distances.iter().enumerate() {
@@ -1118,12 +1173,13 @@ pub fn sort_by_distance_f64(
     };
 
     if indexed_distances.len() >= PARALLEL_THRESHOLD {
-        indexed_distances.par_sort_by(|left, right| {
+        indexed_distances.par_sort_unstable_by(|left, right| {
             compare_distance_order_f64(left.0, left.1, right.0, right.1)
         });
     } else {
-        indexed_distances
-            .sort_by(|left, right| compare_distance_order_f64(left.0, left.1, right.0, right.1));
+        indexed_distances.sort_unstable_by(|left, right| {
+            compare_distance_order_f64(left.0, left.1, right.0, right.1)
+        });
     }
 
     for (output_index, (index, _distance)) in indexed_distances.iter().enumerate() {
@@ -1184,12 +1240,13 @@ pub fn sort_by_distance_and_count_within_radius_f64_exclusive(
     };
 
     if indexed_distances.len() >= PARALLEL_THRESHOLD {
-        indexed_distances.par_sort_by(|left, right| {
+        indexed_distances.par_sort_unstable_by(|left, right| {
             compare_distance_order_f64(left.0, left.1, right.0, right.1)
         });
     } else {
-        indexed_distances
-            .sort_by(|left, right| compare_distance_order_f64(left.0, left.1, right.0, right.1));
+        indexed_distances.sort_unstable_by(|left, right| {
+            compare_distance_order_f64(left.0, left.1, right.0, right.1)
+        });
     }
 
     let mut prefix_count = 0;
@@ -1378,7 +1435,7 @@ fn partition_chunk_selection(
 }
 
 fn stable_sort_chunk_selection(buffer: &mut [usize], distances: &[i32]) {
-    buffer.sort_by(|left, right| distances[*left].cmp(&distances[*right]));
+    buffer.sort_unstable_by(|left, right| distances[*left].cmp(&distances[*right]));
 }
 
 fn ceiling_log2(value: usize) -> usize {

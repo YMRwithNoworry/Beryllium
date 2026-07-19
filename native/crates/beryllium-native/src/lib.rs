@@ -1,6 +1,7 @@
 mod error;
 mod ffi;
 mod kernel;
+mod simd;
 
 pub use error::NativeError;
 pub use ffi::{
