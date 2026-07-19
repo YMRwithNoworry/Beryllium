@@ -11,6 +11,7 @@ import java.util.function.ToDoubleFunction;
  * Batches PotentialCalculator point-charge math while keeping vanilla summation order.
  */
 public final class PotentialEnergyBatch {
+    private static volatile Object cachedChargesList;
     private PotentialEnergyBatch() {
     }
 

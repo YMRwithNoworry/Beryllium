@@ -126,6 +126,30 @@ public final class NativeBridge {
         return output[0];
     }
 
+    public static void setPotentialCharges(int[] positions, double[] charges) {
+        if (!isLoaded()) {
+            throw new IllegalStateException("Native bridge not loaded");
+        }
+        NativeStatus status = NativeStatus.fromCode(FfmNativeBridge.setPotentialCharges(positions, charges));
+        if (status != NativeStatus.OK) {
+            throw new IllegalStateException("Failed to cache potential charges: " + status);
+        }
+    }
+
+    public static double computePotentialEnergyChangeCached(int originX, int originY, int originZ, double chargeMultiplier) {
+        if (!isLoaded()) {
+            throw new IllegalStateException("Native bridge not loaded");
+        }
+        double[] output = new double[1];
+        NativeStatus status = NativeStatus.fromCode(
+            FfmNativeBridge.computePotentialEnergyChangeCached(originX, originY, originZ, chargeMultiplier, output)
+        );
+        if (status != NativeStatus.OK) {
+            throw new IllegalStateException("Cached potential energy computation failed: " + status);
+        }
+        return output[0];
+    }
+
     public static int findNearestIndex(double originX, double originY, double originZ, double maxDistanceSquared, double[] positions) {
         JavaComputeKernels.validatePositions(positions);
 

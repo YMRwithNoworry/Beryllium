@@ -150,6 +150,31 @@ final class FfmNativeBridge {
         });
     }
 
+    static int setPotentialCharges(int[] positions, double[] charges) {
+        return withStatusSession(session -> {
+            Buffer posBuf = session.input(positions, Kind.INT);
+            Buffer chgBuf = session.input(charges, Kind.DOUBLE);
+            return session.invoke(Function.POTENTIAL_SET_CHARGES, posBuf, chgBuf);
+        });
+    }
+
+    static int computePotentialEnergyChangeCached(
+        int originX, int originY, int originZ, double chargeMultiplier, double[] output
+    ) {
+        return withStatusSession(session -> {
+            Buffer outputBuffer = session.output(output, Kind.DOUBLE);
+            int result = session.invoke(
+                Function.POTENTIAL_COMPUTE_CACHED,
+                originX, originY, originZ, chargeMultiplier, outputBuffer
+            );
+            if (result == NativeStatus.OK.code()) {
+                session.copyOutputs();
+            }
+            return result;
+        });
+    }
+
+
     static int filterWithinRadius(
         int originX,
         int originY,
@@ -671,6 +696,8 @@ final class FfmNativeBridge {
         COMPUTE_SQUARED_DISTANCES("beryllium_compute_squared_distances", Kind.INT, Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         SELECT_NEAREST_CHUNK_INDICES("beryllium_select_nearest_chunk_indices", Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG),
         COMPUTE_SQUARED_DISTANCES_DOUBLE("beryllium_compute_squared_distances_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
+        POTENTIAL_SET_CHARGES("beryllium_potential_set_charges", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
+        POTENTIAL_COMPUTE_CACHED("beryllium_potential_compute_cached", Kind.INT, Kind.INT, Kind.INT, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG),
         COMPUTE_POTENTIAL_ENERGY_CHANGE("beryllium_compute_potential_energy_change", Kind.INT, Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG),
         FILTER_WITHIN_RADIUS("beryllium_filter_within_radius", Kind.INT, Kind.INT, Kind.INT, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         COUNT_WITHIN_RADIUS("beryllium_count_within_radius", Kind.INT, Kind.INT, Kind.INT, Kind.LONG, Kind.ADDRESS, Kind.LONG),

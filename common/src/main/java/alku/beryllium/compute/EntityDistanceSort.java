@@ -169,41 +169,27 @@ public final class EntityDistanceSort {
         }
 
         double radiusSquared = radius * radius;
-        if (!NativeBatching.shouldUseNativeEntityBatch(beforeDistanceMatches.size())) {
-            List<T> matches = new ArrayList<>();
-            for (T value : beforeDistanceMatches) {
-                if (squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared
-                    && afterDistancePredicate.test(value)) {
-                    matches.add(value);
-                }
-            }
-            sortByDistance(matches, originX, originY, originZ, xGetter, yGetter, zGetter);
-            return matches.isEmpty() ? Optional.empty() : Optional.of(matches.get(0));
+        if (NativeBatching.shouldUseNativeEntityBatch(beforeDistanceMatches.size())) {
+            double[] positions = EntityPacking.packPositions(beforeDistanceMatches, xGetter, yGetter, zGetter);
+            return findNearestWithinExclusivePackedDistance(
+                beforeDistanceMatches,
+                positions,
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                afterDistancePredicate
+            );
         }
 
-        double[] positions = EntityPacking.packPositions(beforeDistanceMatches, xGetter, yGetter, zGetter);
-        int[] order = new int[beforeDistanceMatches.size()];
-        int orderCount = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, order);
-        boolean[] withinRadius = new boolean[beforeDistanceMatches.size()];
-        for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
-            int index = order[orderIndex];
-            withinRadius[index] = true;
-        }
-
-        boolean[] accepted = new boolean[beforeDistanceMatches.size()];
-        for (int index = 0; index < beforeDistanceMatches.size(); index++) {
-            if (withinRadius[index] && afterDistancePredicate.test(beforeDistanceMatches.get(index))) {
-                accepted[index] = true;
+        List<T> matches = new ArrayList<>();
+        for (T value : beforeDistanceMatches) {
+            if (squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared
+                && afterDistancePredicate.test(value)) {
+                matches.add(value);
             }
         }
-
-        for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
-            int index = order[orderIndex];
-            if (accepted[index]) {
-                return Optional.of(beforeDistanceMatches.get(index));
-            }
-        }
-        return Optional.empty();
+        return findNearestByCurrentDistance(matches, originX, originY, originZ, xGetter, yGetter, zGetter);
     }
 
     public static <T> Optional<T> findFirstSortedByDistance(
@@ -386,6 +372,56 @@ public final class EntityDistanceSort {
         return Optional.empty();
     }
 
+    private static <T> Optional<T> findNearestByCurrentDistance(
+        List<? extends T> values,
+        double originX,
+        double originY,
+        double originZ,
+        EntityPacking.CoordinateGetter<? super T> xGetter,
+        EntityPacking.CoordinateGetter<? super T> yGetter,
+        EntityPacking.CoordinateGetter<? super T> zGetter
+    ) {
+        T nearest = null;
+        double nearestDistance = 0.0;
+        for (T value : values) {
+            double distance = squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value);
+            if (nearest == null || Double.compare(distance, nearestDistance) < 0) {
+                nearest = value;
+                nearestDistance = distance;
+            }
+        }
+        return Optional.ofNullable(nearest);
+    }
+
+    private static <T> Optional<T> findNearestWithinExclusivePackedDistance(
+        List<? extends T> values,
+        double[] positions,
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        Predicate<? super T> afterDistancePredicate
+    ) {
+        T nearest = null;
+        double nearestDistance = 0.0;
+        for (int index = 0; index < values.size(); index++) {
+            double distance = squaredDistanceAt(originX, originY, originZ, positions, index);
+            if (!(distance < radiusSquared)) {
+                continue;
+            }
+
+            T value = values.get(index);
+            if (!afterDistancePredicate.test(value)) {
+                continue;
+            }
+            if (nearest == null || Double.compare(distance, nearestDistance) < 0) {
+                nearest = value;
+                nearestDistance = distance;
+            }
+        }
+        return Optional.ofNullable(nearest);
+    }
+
     public static <T> List<T> filterWithinExclusiveDistanceSortedByDistance(
         List<? extends T> values,
         double originX,
@@ -462,6 +498,20 @@ public final class EntityDistanceSort {
         double dx = xGetter.get(value) - originX;
         double dy = yGetter.get(value) - originY;
         double dz = zGetter.get(value) - originZ;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static double squaredDistanceAt(
+        double originX,
+        double originY,
+        double originZ,
+        double[] positions,
+        int index
+    ) {
+        int offset = index * 3;
+        double dx = positions[offset] - originX;
+        double dy = positions[offset + 1] - originY;
+        double dz = positions[offset + 2] - originZ;
         return dx * dx + dy * dy + dz * dz;
     }
 

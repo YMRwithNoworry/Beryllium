@@ -32,7 +32,7 @@ public class TemptingSensorMixin {
     private Predicate<ItemStack> temptations;
 
     /**
-     * @reason Batch tempting-player distance ordering through the shared native sort path.
+     * @reason Preserve vanilla predicate order while selecting the nearest tempting player without a full sort.
      * @author YMRwithNoworry
      */
     @Overwrite

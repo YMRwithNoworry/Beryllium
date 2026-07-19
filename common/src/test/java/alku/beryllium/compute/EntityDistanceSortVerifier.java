@@ -175,6 +175,38 @@ public final class EntityDistanceSortVerifier {
         }
     }
 
+    public static void verifyFindFirstWithinExclusiveDistanceAfterPredicatesSelectsNearestWithoutShortCircuiting() {
+        List<SimplePoint> points = descendingAxisPoints(1024);
+        List<Integer> beforeDistance = new ArrayList<>();
+        List<Integer> afterDistance = new ArrayList<>();
+
+        SimplePoint match = EntityDistanceSort.findFirstWithinExclusiveDistanceAfterPredicatesSortedByDistance(
+                points,
+                0.0,
+                0.0,
+                0.0,
+                2048.0,
+                point -> {
+                    beforeDistance.add(point.id);
+                    return true;
+                },
+                point -> {
+                    afterDistance.add(point.id);
+                    return point.id != 1023;
+                },
+                point -> point.x,
+                point -> point.y,
+                point -> point.z
+            )
+            .orElseThrow(() -> new AssertionError("expected a nearest predicate-gated match"));
+
+        if (match.id != 1022) {
+            throw new AssertionError("linear nearest selection mismatch, expected 1022 but got " + match.id);
+        }
+        assertListEquals(range(0, 1024), beforeDistance, "linear nearest before-distance predicate order");
+        assertListEquals(range(0, 1024), afterDistance, "linear nearest after-distance predicate order");
+    }
+
     public static void verifyFindFirstSortedByDistanceShortCircuitsAfterSort() {
         List<SimplePoint> points = descendingAxisPoints(40);
         List<Integer> postFiltered = new ArrayList<>();

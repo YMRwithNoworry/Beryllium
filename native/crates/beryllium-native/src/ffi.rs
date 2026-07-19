@@ -756,6 +756,67 @@ pub unsafe extern "C" fn beryllium_sort_within_radius_exclusive_double(
     ))
 }
 
+
+// ---------------------------------------------------------------------------
+// Potential energy cache FFM exports
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_potential_set_charges(
+    positions: *const i32,
+    positions_length: usize,
+    charges: *const f64,
+    charges_length: usize,
+) -> i32 {
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let charges = match unsafe { read_slice(charges, charges_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    status_result(crate::kernel::set_cached_potential_charges(
+        positions.to_vec(),
+        charges.to_vec(),
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_potential_compute_cached(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    charge_multiplier: f64,
+    output: *mut f64,
+    output_length: usize,
+) -> i32 {
+    if output_length != 1 {
+        return NativeStatus::OutputLengthMismatch.code();
+    }
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    match crate::kernel::compute_cached_potential_energy_change(
+        origin_x,
+        origin_y,
+        origin_z,
+        charge_multiplier,
+    ) {
+        Ok(value) => {
+            output[0] = value;
+            NativeStatus::Ok.code()
+        }
+        Err(error) => NativeStatus::from(error).code(),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_potential_clear_cache() {
+    crate::kernel::clear_cached_potential_charges();
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

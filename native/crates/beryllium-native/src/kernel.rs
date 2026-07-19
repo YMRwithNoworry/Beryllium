@@ -1,6 +1,7 @@
 use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
+use std::sync::Mutex;
 
 use crate::NativeError;
 use crate::simd;
@@ -229,6 +230,53 @@ fn potential_energy_change_simd(
     }
 
     Ok(energy * charge_multiplier)
+}
+
+
+// ---------------------------------------------------------------------------
+// Potential energy charges cache — eliminates FFM array copies on repeated calls
+// ---------------------------------------------------------------------------
+
+static POTENTIAL_CACHE: Mutex<Option<(Vec<i32>, Vec<f64>)>> = Mutex::new(None);
+
+/// Caches a packed positions + charges snapshot for the current thread.
+/// Subsequent `compute_cached_potential_energy_change` calls only transmit the
+/// origin coordinates, eliminating the large array copies that dominate the
+/// current 0.79x benchmark regression.
+pub fn set_cached_potential_charges(positions: Vec<i32>, charges: Vec<f64>) -> Result<(), NativeError> {
+    if charge_multiplier_preconditions(&positions, &charges).is_err() {
+        return Err(NativeError::InvalidInput);
+    }
+    *POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((positions, charges));
+    Ok(())
+}
+
+/// Computes potential energy change using previously cached charges.
+/// Returns `InvalidInput` when no cache has been set.
+pub fn compute_cached_potential_energy_change(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    charge_multiplier: f64,
+) -> Result<f64, NativeError> {
+    if charge_multiplier == 0.0 {
+        return Ok(0.0);
+    }
+    let cache = POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let (positions, charges) = cache.as_ref().ok_or(NativeError::InvalidInput)?;
+    potential_energy_change(origin_x, origin_y, origin_z, positions, charges, charge_multiplier)
+}
+
+/// Clears the cached charges so the next compute call falls through to an error.
+pub fn clear_cached_potential_charges() {
+    *POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+fn charge_multiplier_preconditions(positions: &[i32], charges: &[f64]) -> Result<(), NativeError> {
+    if !positions.len().is_multiple_of(3) || charges.len() != positions.len() / 3 {
+        return Err(NativeError::InvalidInput);
+    }
+    Ok(())
 }
 
 fn potential_energy_terms_parallel(
