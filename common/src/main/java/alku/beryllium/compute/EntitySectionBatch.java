@@ -23,7 +23,7 @@ public final class EntitySectionBatch {
     ) {
         double[] boxes = EntityBoxPacking.packBoxes(entities);
         int[] matches = new int[entities.size()];
-        int matchCount = NativeBridge.filterIntersectingAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, boxes, matches);
+        int matchCount = filterIntersecting(box, boxes, matches);
         for (int matchIndex = 0; matchIndex < matchCount; matchIndex++) {
             int index = matches[matchIndex];
             if (consumer.accept(entities.get(index)).shouldAbort()) {
@@ -54,7 +54,7 @@ public final class EntitySectionBatch {
 
         double[] boxes = EntityBoxPacking.packBoxes(entities);
         int[] matches = new int[entities.size()];
-        int matchCount = NativeBridge.filterIntersectingAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, boxes, matches);
+        int matchCount = filterIntersecting(box, boxes, matches);
         for (int matchIndex = 0; matchIndex < matchCount; matchIndex++) {
             int index = matches[matchIndex];
             if (consumer.accept(entities.get(index)).shouldAbort()) {
@@ -67,6 +67,14 @@ public final class EntitySectionBatch {
 
     public static <T extends EntityAccess> int[] intersectingEntityIndices(AABB box, List<? extends T> entities) {
         double[] boxes = EntityBoxPacking.packBoxes(entities);
-        return NativeBridge.filterIntersectingAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, boxes);
+        int[] matches = new int[entities.size()];
+        int matchCount = filterIntersecting(box, boxes, matches);
+        return java.util.Arrays.copyOf(matches, matchCount);
+    }
+
+    private static int filterIntersecting(AABB box, double[] boxes, int[] output) {
+        return NativeBatching.shouldUseNativeAabbBatch(boxes.length / 6)
+            ? NativeBridge.filterIntersectingAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, boxes, output)
+            : JavaComputeKernels.filterIntersectingAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, boxes, output);
     }
 }

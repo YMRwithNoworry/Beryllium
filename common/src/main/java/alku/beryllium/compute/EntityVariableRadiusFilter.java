@@ -46,7 +46,7 @@ public final class EntityVariableRadiusFilter {
             return List.of();
         }
 
-        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+        if (!NativeBatching.shouldUseNativeVariableRadiusBatch(values.size())) {
             List<T> matches = new ArrayList<>();
             for (T value : values) {
                 double radiusSquared = radiusSquaredGetter.get(value);
@@ -86,7 +86,7 @@ public final class EntityVariableRadiusFilter {
             return Optional.empty();
         }
 
-        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+        if (!NativeBatching.shouldUseNativeVariableRadiusBatch(values.size())) {
             for (T value : values) {
                 double radiusSquared = radiusSquaredGetter.get(value);
                 if (radiusSquared < 0.0) {

@@ -6,9 +6,10 @@ use std::sync::Mutex;
 use crate::NativeError;
 use crate::simd;
 use crate::simd::has_avx2;
-use crate::simd::batch_4_distances;
+use crate::simd::{batch_4_aabb_intersections, batch_4_distances};
 
 const PARALLEL_THRESHOLD: usize = 2048;
+const FILTER_PARALLEL_THRESHOLD: usize = 16_384;
 const CHUNK_SELECTION_PARALLEL_THRESHOLD: usize = 32768;
 const NEAREST_SELECTION_PARALLEL_THRESHOLD: usize = 1_048_576;
 const NEAREST_SELECTION_INITIAL_CAPACITY: usize = 64;
@@ -616,7 +617,7 @@ pub fn filter_within_radius_f64(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    if position_count >= PARALLEL_THRESHOLD {
+    if position_count >= FILTER_PARALLEL_THRESHOLD {
         let matches: Vec<i32> = positions
             .par_chunks_exact(3)
             .enumerate()
@@ -695,7 +696,7 @@ pub fn filter_within_radius_f64_exclusive(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    if position_count >= PARALLEL_THRESHOLD {
+    if position_count >= FILTER_PARALLEL_THRESHOLD {
         let matches: Vec<i32> = positions
             .par_chunks_exact(3)
             .enumerate()
@@ -769,7 +770,7 @@ pub fn filter_within_exclusive_chunk_distance(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    if position_count >= PARALLEL_THRESHOLD {
+    if position_count >= FILTER_PARALLEL_THRESHOLD {
         let matches: Vec<i32> = positions
             .par_chunks_exact(2)
             .enumerate()
@@ -892,7 +893,7 @@ pub fn filter_within_radii_f64(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    if position_count >= PARALLEL_THRESHOLD {
+    if position_count >= FILTER_PARALLEL_THRESHOLD {
         let matches: Vec<i32> = positions
             .par_chunks_exact(3)
             .zip(radii_squared.par_iter())
@@ -983,7 +984,7 @@ pub fn filter_within_aabb_f64(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    if position_count >= PARALLEL_THRESHOLD {
+    if position_count >= FILTER_PARALLEL_THRESHOLD {
         let matches: Vec<i32> = positions
             .par_chunks_exact(3)
             .enumerate()
@@ -1042,7 +1043,7 @@ pub fn filter_intersecting_aabb_f64(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    if box_count >= PARALLEL_THRESHOLD {
+    if box_count >= FILTER_PARALLEL_THRESHOLD {
         let matches: Vec<i32> = boxes
             .par_chunks_exact(6)
             .enumerate()
@@ -1065,6 +1066,53 @@ pub fn filter_intersecting_aabb_f64(
 
         output[..matches.len()].copy_from_slice(&matches);
         return Ok(matches.len());
+    }
+
+    if has_avx2() && box_count >= 4 {
+        let simd_chunks = box_count / 4;
+        let mut count = 0;
+        for chunk in 0..simd_chunks {
+            let base = chunk * 4;
+            let mask = unsafe {
+                batch_4_aabb_intersections(
+                    query_min_x,
+                    query_min_y,
+                    query_min_z,
+                    query_max_x,
+                    query_max_y,
+                    query_max_z,
+                    boxes,
+                    chunk * 24,
+                )
+            };
+            for offset in 0..4 {
+                if mask & (1_u8 << offset) != 0 {
+                    output[count] = (base + offset) as i32;
+                    count += 1;
+                }
+            }
+        }
+        for index in (simd_chunks * 4)..box_count {
+            let offset = index * 6;
+            if intersects_aabb(
+                query_min_x,
+                query_min_y,
+                query_min_z,
+                query_max_x,
+                query_max_y,
+                query_max_z,
+                boxes[offset],
+                boxes[offset + 1],
+                boxes[offset + 2],
+                boxes[offset + 3],
+                boxes[offset + 4],
+                boxes[offset + 5],
+            ) {
+                output[count] = index as i32;
+                count += 1;
+            }
+        }
+        return Ok(count);
     }
 
     let mut count = 0;
@@ -2369,6 +2417,34 @@ mod tests {
             .unwrap();
         assert_eq!(count, 2);
         assert_eq!(&output[..count], &[0, 3]);
+    }
+
+    #[test]
+    fn filter_intersecting_aabb_f64_should_preserve_order_across_simd_tail() {
+        let boxes = [
+            0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+            0.5, 0.0, 0.0, 1.5, 1.0, 1.0,
+            1.0, 0.0, 0.0, 2.0, 1.0, 1.0,
+            0.0, 2.0, 0.0, 1.0, 3.0, 1.0,
+            -0.5, -0.5, -0.5, 0.5, 0.5, 0.5,
+        ];
+        let mut output = [-1; 5];
+
+        let count = filter_intersecting_aabb_f64(
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            1.0,
+            &boxes,
+            &mut output,
+        )
+        .unwrap();
+
+        assert_eq!(count, 3);
+        assert_eq!(&output[..count], &[0, 1, 4]);
+        assert_eq!(&output[count..], &[-1, -1]);
     }
 
     #[test]

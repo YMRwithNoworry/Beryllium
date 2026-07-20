@@ -51,7 +51,7 @@ public class EntitySectionMixin<T extends EntityAccess> {
     }
 
     private static boolean shouldUseNativeBatch(int candidateCount) {
-        return NativeBatching.shouldUseNativeEntityBatch(candidateCount);
+        return NativeBatching.shouldUseNativeAabbBatch(candidateCount);
     }
 
     private static <T extends EntityAccess> AbortableIterationConsumer.Continuation getEntitiesVanilla(

@@ -25,6 +25,24 @@ public final class NativeBatchingVerifier {
                 + NativeBatching.nearestItemTopKThreshold()
             );
         }
+        if (NativeBatching.variableRadiusBatchThreshold() != Integer.MAX_VALUE) {
+            throw new AssertionError(
+                "Native variable-radius threshold mismatch, expected disabled default but got "
+                    + NativeBatching.variableRadiusBatchThreshold()
+            );
+        }
+        if (NativeBatching.aabbBatchThreshold() != Integer.MAX_VALUE) {
+            throw new AssertionError(
+                "Native AABB threshold mismatch, expected disabled default but got "
+                    + NativeBatching.aabbBatchThreshold()
+            );
+        }
+        if (NativeBatching.shouldUseNativeVariableRadiusBatch(16_384)) {
+            throw new AssertionError("Native variable-radius batch should remain disabled by default");
+        }
+        if (NativeBatching.shouldUseNativeAabbBatch(16_384)) {
+            throw new AssertionError("Native AABB batch should remain disabled by default");
+        }
         if (NativeBatching.shouldUseNativePotentialBatch(31)) {
             throw new AssertionError("Native potential batch should not activate below its threshold");
         }

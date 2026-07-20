@@ -175,7 +175,7 @@ public final class TargetingConditionsBatch {
 
         double[] positions = EntityPacking.packPositions(candidates, xGetter, yGetter, zGetter);
         int[] boxMatches = new int[candidates.size()];
-        int boxMatchCount = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+        int boxMatchCount = NativeBatching.shouldUseNativeAabbBatch(positions.length / 3)
             ? NativeBridge.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions, boxMatches)
             : JavaComputeKernels.filterWithinAabb(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, positions, boxMatches);
 
@@ -225,7 +225,7 @@ public final class TargetingConditionsBatch {
         Predicate<? super T> posttest
     ) {
         int[] matches = new int[filteredCandidates.size()];
-        int matchCount = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+        int matchCount = NativeBatching.shouldUseNativeVariableRadiusBatch(positions.length / 3)
             ? NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared, matches)
             : JavaComputeKernels.filterWithinRadii(originX, originY, originZ, positions, radiiSquared, matches);
 
@@ -259,7 +259,7 @@ public final class TargetingConditionsBatch {
         double[] radiiSquared,
         int[] output
     ) {
-        return NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+        return NativeBatching.shouldUseNativeVariableRadiusBatch(positions.length / 3)
             ? NativeBridge.filterWithinRadii(originX, originY, originZ, positions, radiiSquared, output)
             : JavaComputeKernels.filterWithinRadii(originX, originY, originZ, positions, radiiSquared, output);
     }

@@ -49,6 +49,41 @@ mod avx2_kernels {
     }
 
     #[target_feature(enable = "avx2")]
+    pub unsafe fn intersecting_aabb_f64_x4(
+        query_min_x: f64,
+        query_min_y: f64,
+        query_min_z: f64,
+        query_max_x: f64,
+        query_max_y: f64,
+        query_max_z: f64,
+        boxes: *const f64,
+    ) -> u8 {
+        let gather_indices = _mm256_set_epi64x(18, 12, 6, 0);
+        let min_x = _mm256_i64gather_pd(boxes, gather_indices, 8);
+        let min_y = _mm256_i64gather_pd(boxes.add(1), gather_indices, 8);
+        let min_z = _mm256_i64gather_pd(boxes.add(2), gather_indices, 8);
+        let max_x = _mm256_i64gather_pd(boxes.add(3), gather_indices, 8);
+        let max_y = _mm256_i64gather_pd(boxes.add(4), gather_indices, 8);
+        let max_z = _mm256_i64gather_pd(boxes.add(5), gather_indices, 8);
+
+        let min_x_before_max = _mm256_cmp_pd(min_x, _mm256_set1_pd(query_max_x), _CMP_LT_OQ);
+        let min_y_before_max = _mm256_cmp_pd(min_y, _mm256_set1_pd(query_max_y), _CMP_LT_OQ);
+        let min_z_before_max = _mm256_cmp_pd(min_z, _mm256_set1_pd(query_max_z), _CMP_LT_OQ);
+        let max_x_after_min = _mm256_cmp_pd(max_x, _mm256_set1_pd(query_min_x), _CMP_GT_OQ);
+        let max_y_after_min = _mm256_cmp_pd(max_y, _mm256_set1_pd(query_min_y), _CMP_GT_OQ);
+        let max_z_after_min = _mm256_cmp_pd(max_z, _mm256_set1_pd(query_min_z), _CMP_GT_OQ);
+
+        let intersects = _mm256_and_pd(
+            _mm256_and_pd(min_x_before_max, min_y_before_max),
+            _mm256_and_pd(
+                _mm256_and_pd(min_z_before_max, max_x_after_min),
+                _mm256_and_pd(max_y_after_min, max_z_after_min),
+            ),
+        );
+        _mm256_movemask_pd(intersects) as u8
+    }
+
+    #[target_feature(enable = "avx2")]
     pub unsafe fn potential_energy_partial_x4(
         origin_x: i32,
         origin_y: i32,
@@ -154,6 +189,42 @@ pub fn batch_4_distances(
 ) {}
 
 #[cfg(target_arch = "x86_64")]
+pub unsafe fn batch_4_aabb_intersections(
+    query_min_x: f64,
+    query_min_y: f64,
+    query_min_z: f64,
+    query_max_x: f64,
+    query_max_y: f64,
+    query_max_z: f64,
+    boxes: &[f64],
+    offset: usize,
+) -> u8 {
+    avx2_kernels::intersecting_aabb_f64_x4(
+        query_min_x,
+        query_min_y,
+        query_min_z,
+        query_max_x,
+        query_max_y,
+        query_max_z,
+        boxes.as_ptr().add(offset),
+    )
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+pub fn batch_4_aabb_intersections(
+    _: f64,
+    _: f64,
+    _: f64,
+    _: f64,
+    _: f64,
+    _: f64,
+    _: &[f64],
+    _: usize,
+) -> u8 {
+    0
+}
+
+#[cfg(target_arch = "x86_64")]
 pub unsafe fn potential_energy_partial_f64_avx2(
     origin_x: i32,
     origin_y: i32,
@@ -216,6 +287,33 @@ mod tests {
         assert!((output[1] - 25.0).abs() < 1e-10);
         assert!((output[2] - 5.0).abs() < 1e-10);
         assert!((output[3] - 20000.0).abs() < 1e-10);
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn aabb_intersections_x4_should_exclude_touching_boundaries() {
+        if !has_avx2() { return; }
+
+        let boxes = [
+            0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+            0.5, 0.0, 0.0, 1.5, 1.0, 1.0,
+            1.0, 0.0, 0.0, 2.0, 1.0, 1.0,
+            0.0, 2.0, 0.0, 1.0, 3.0, 1.0,
+        ];
+
+        let mask = unsafe {
+            avx2_kernels::intersecting_aabb_f64_x4(
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                1.0,
+                1.0,
+                boxes.as_ptr(),
+            )
+        };
+
+        assert_eq!(mask, 0b0011);
     }
 
     #[cfg(target_arch = "x86_64")]

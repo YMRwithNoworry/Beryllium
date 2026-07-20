@@ -26,7 +26,7 @@ import java.util.function.LongSupplier;
  * bundled native library is loaded and the result is printed for inspection.
  */
 public final class BerylliumPerformanceBenchmark {
-    private static final int[] CANDIDATE_COUNTS = {256, 1024, 4096, 8192};
+    private static final int[] CANDIDATE_COUNTS = {256, 1024, 4096, 8192, 16384};
     private static final int[] CHUNK_PLAYER_COUNTS = {32, 128, 512, 2048, 4096, 8192};
     private static final int[] CHUNK_SEND_CANDIDATE_COUNTS = {128, 512, 2048, 4096, 8192};
     private static final int[] CHUNK_SEND_LIMITS = {9, 64};
@@ -81,6 +81,7 @@ public final class BerylliumPerformanceBenchmark {
         benchmarkPotentialEnergy();
         benchmarkChunkDistance();
         benchmarkChunkSendSelection();
+        benchmarkNativeFilters();
 
         if (blackHole == Long.MIN_VALUE) {
             throw new AssertionError("benchmark black hole was not consumed");
@@ -211,6 +212,144 @@ public final class BerylliumPerformanceBenchmark {
         }
     }
 
+    private static void benchmarkNativeFilters() {
+        System.out.println("benchmark=entity-native-filters");
+        for (int candidateCount : CANDIDATE_COUNTS) {
+            double[] positions = createFilterPositions(candidateCount);
+            double[] radiiSquared = createVariableRadiiSquared(candidateCount);
+            double[] boxes = createFilterBoxes(candidateCount);
+
+            int[] javaVariableRadiusOutput = new int[candidateCount];
+            int[] nativeVariableRadiusOutput = new int[candidateCount];
+            int javaVariableRadiusCount = JavaComputeKernels.filterWithinRadii(
+                0.0,
+                0.0,
+                0.0,
+                positions,
+                radiiSquared,
+                javaVariableRadiusOutput
+            );
+            int nativeVariableRadiusCount = NativeBridge.filterWithinRadii(
+                0.0,
+                0.0,
+                0.0,
+                positions,
+                radiiSquared,
+                nativeVariableRadiusOutput
+            );
+            assertFilterParity(
+                "variable-radius filter",
+                javaVariableRadiusOutput,
+                javaVariableRadiusCount,
+                nativeVariableRadiusOutput,
+                nativeVariableRadiusCount
+            );
+            long javaVariableRadiusMedian = measureLong(
+                "java_variable_radius_filter",
+                () -> consumeFilterResult(
+                    javaVariableRadiusOutput,
+                    JavaComputeKernels.filterWithinRadii(
+                        0.0,
+                        0.0,
+                        0.0,
+                        positions,
+                        radiiSquared,
+                        javaVariableRadiusOutput
+                    )
+                )
+            );
+            long nativeVariableRadiusMedian = measureLong(
+                "native_variable_radius_filter",
+                () -> consumeFilterResult(
+                    nativeVariableRadiusOutput,
+                    NativeBridge.filterWithinRadii(
+                        0.0,
+                        0.0,
+                        0.0,
+                        positions,
+                        radiiSquared,
+                        nativeVariableRadiusOutput
+                    )
+                )
+            );
+
+            int[] javaAabbOutput = new int[candidateCount];
+            int[] nativeAabbOutput = new int[candidateCount];
+            int javaAabbCount = JavaComputeKernels.filterIntersectingAabb(
+                -96.0,
+                -32.0,
+                -96.0,
+                96.0,
+                96.0,
+                96.0,
+                boxes,
+                javaAabbOutput
+            );
+            int nativeAabbCount = NativeBridge.filterIntersectingAabb(
+                -96.0,
+                -32.0,
+                -96.0,
+                96.0,
+                96.0,
+                96.0,
+                boxes,
+                nativeAabbOutput
+            );
+            assertFilterParity(
+                "AABB intersection filter",
+                javaAabbOutput,
+                javaAabbCount,
+                nativeAabbOutput,
+                nativeAabbCount
+            );
+            long javaAabbMedian = measureLong(
+                "java_aabb_intersection_filter",
+                () -> consumeFilterResult(
+                    javaAabbOutput,
+                    JavaComputeKernels.filterIntersectingAabb(
+                        -96.0,
+                        -32.0,
+                        -96.0,
+                        96.0,
+                        96.0,
+                        96.0,
+                        boxes,
+                        javaAabbOutput
+                    )
+                )
+            );
+            long nativeAabbMedian = measureLong(
+                "native_aabb_intersection_filter",
+                () -> consumeFilterResult(
+                    nativeAabbOutput,
+                    NativeBridge.filterIntersectingAabb(
+                        -96.0,
+                        -32.0,
+                        -96.0,
+                        96.0,
+                        96.0,
+                        96.0,
+                        boxes,
+                        nativeAabbOutput
+                    )
+                )
+            );
+
+            System.out.printf(
+                Locale.ROOT,
+                "entity_filter_result=candidates:%d variable_radius_java_median_ns:%d variable_radius_native_median_ns:%d "
+                    + "variable_radius_speedup:%.2fx aabb_java_median_ns:%d aabb_native_median_ns:%d aabb_speedup:%.2fx%n",
+                candidateCount,
+                javaVariableRadiusMedian,
+                nativeVariableRadiusMedian,
+                speedup(javaVariableRadiusMedian, nativeVariableRadiusMedian),
+                javaAabbMedian,
+                nativeAabbMedian,
+                speedup(javaAabbMedian, nativeAabbMedian)
+            );
+        }
+    }
+
     private static long vanillaChunkSendSelection(LongSet pendingChunks, int limit) {
         List<Long> selected = pendingChunks
             .stream()
@@ -245,6 +384,34 @@ public final class BerylliumPerformanceBenchmark {
             result = result * 31 + positions[selectedIndices[outputIndex]];
         }
         return result;
+    }
+
+    private static long consumeFilterResult(int[] indices, int count) {
+        long result = count;
+        if (count > 0) {
+            result = result * 31 + indices[0];
+            result = result * 31 + indices[count - 1];
+        }
+        return result;
+    }
+
+    private static void assertFilterParity(
+        String name,
+        int[] expected,
+        int expectedCount,
+        int[] actual,
+        int actualCount
+    ) {
+        if (expectedCount != actualCount) {
+            throw new AssertionError(name + " count mismatch: expected " + expectedCount + " but got " + actualCount);
+        }
+        for (int index = 0; index < expectedCount; index++) {
+            if (expected[index] != actual[index]) {
+                throw new AssertionError(
+                    name + " index mismatch at " + index + ": expected " + expected[index] + " but got " + actual[index]
+                );
+            }
+        }
     }
 
     private static long[] createChunkSendPositions(int count) {
@@ -341,6 +508,43 @@ public final class BerylliumPerformanceBenchmark {
             players.add(new ChunkBenchmarkPlayer(index, x, z, index % 5 == 0));
         }
         return players;
+    }
+
+    private static double[] createFilterPositions(int count) {
+        double[] positions = new double[count * 3];
+        for (int index = 0; index < count; index++) {
+            int offset = index * 3;
+            positions[offset] = (index * 37 % 1021) - 510.0;
+            positions[offset + 1] = (index * 53 % 257) - 128.0;
+            positions[offset + 2] = (index * 97 % 1021) - 510.0;
+        }
+        return positions;
+    }
+
+    private static double[] createVariableRadiiSquared(int count) {
+        double[] radiiSquared = new double[count];
+        for (int index = 0; index < count; index++) {
+            double radius = 96.0 + index % 5 * 48.0;
+            radiiSquared[index] = radius * radius;
+        }
+        return radiiSquared;
+    }
+
+    private static double[] createFilterBoxes(int count) {
+        double[] positions = createFilterPositions(count);
+        double[] boxes = new double[count * 6];
+        for (int index = 0; index < count; index++) {
+            int positionOffset = index * 3;
+            int boxOffset = index * 6;
+            double halfWidth = 0.25 + index % 4 * 0.25;
+            boxes[boxOffset] = positions[positionOffset] - halfWidth;
+            boxes[boxOffset + 1] = positions[positionOffset + 1] - halfWidth;
+            boxes[boxOffset + 2] = positions[positionOffset + 2] - halfWidth;
+            boxes[boxOffset + 3] = positions[positionOffset] + halfWidth;
+            boxes[boxOffset + 4] = positions[positionOffset + 1] + halfWidth;
+            boxes[boxOffset + 5] = positions[positionOffset + 2] + halfWidth;
+        }
+        return boxes;
     }
 
     private static Optional<BenchmarkPoint> vanillaQuery(List<BenchmarkPoint> source) {

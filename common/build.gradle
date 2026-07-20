@@ -76,7 +76,7 @@ tasks.register('ffmReuseTest', JavaExec) {
 }
 
 tasks.register('performanceBenchmark', JavaExec) {
-    description = 'Measures vanilla Java, legacy FFM, fused FFM, and Top-K nearest-item query paths.'
+    description = 'Measures nearest-item, chunk, potential, and native entity-filter paths.'
     group = 'verification'
     dependsOn tasks.named('testClasses')
     mainClass = 'alku.beryllium.verify.BerylliumPerformanceBenchmark'
