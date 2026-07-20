@@ -912,6 +912,44 @@ pub fn filter_within_radii_f64(
         return Ok(matches.len());
     }
 
+    if has_avx2() && position_count >= 4 {
+        let simd_chunks = position_count / 4;
+        let mut distances = [0.0_f64; 4];
+        let mut count = 0;
+        for chunk in 0..simd_chunks {
+            let base = chunk * 4;
+            unsafe {
+                batch_4_distances(
+                    origin_x,
+                    origin_y,
+                    origin_z,
+                    positions,
+                    chunk * 12,
+                    &mut distances,
+                );
+            }
+            for (offset, distance) in distances.iter().enumerate() {
+                if *distance <= radii_squared[base + offset] {
+                    output[count] = (base + offset) as i32;
+                    count += 1;
+                }
+            }
+        }
+        for (index, radius_squared) in radii_squared
+            .iter()
+            .enumerate()
+            .skip(simd_chunks * 4)
+        {
+            if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index)
+                <= *radius_squared
+            {
+                output[count] = index as i32;
+                count += 1;
+            }
+        }
+        return Ok(count);
+    }
+
     let mut count = 0;
     for (index, radius_squared) in radii_squared.iter().enumerate() {
         if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index)
@@ -2232,6 +2270,30 @@ mod tests {
 
         assert_eq!(count, 2);
         assert_eq!(&output[..count], &[0, 2]);
+    }
+
+    #[test]
+    fn filter_within_radii_f64_should_preserve_order_across_simd_tail() {
+        let positions = [
+            1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, -2.0,
+            0.0, 0.0,
+        ];
+        let radii_squared = [1.0, 4.0, 4.0, 0.0, 4.0];
+        let mut output = [-1; 5];
+
+        let count = filter_within_radii_f64(
+            0.0,
+            0.0,
+            0.0,
+            &positions,
+            &radii_squared,
+            &mut output,
+        )
+        .unwrap();
+
+        assert_eq!(count, 4);
+        assert_eq!(&output[..count], &[0, 1, 3, 4]);
+        assert_eq!(&output[count..], &[-1]);
     }
 
     #[test]
