@@ -635,6 +635,32 @@ pub fn filter_within_radius_f64(
         return Ok(matches.len());
     }
 
+    if has_avx2() && position_count >= 4 {
+        let simd_chunks = position_count / 4;
+        let mut buf = [0.0_f64; 4];
+        let mut count = 0;
+        for chunk in 0..simd_chunks {
+            let base = chunk * 4;
+            unsafe {
+                batch_4_distances(origin_x, origin_y, origin_z, positions, chunk * 12, &mut buf);
+            }
+            for (i, distance) in buf.iter().enumerate() {
+                if *distance <= radius_squared {
+                    output[count] = (base + i) as i32;
+                    count += 1;
+                }
+            }
+        }
+        for index in (simd_chunks * 4)..position_count {
+            if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index) <= radius_squared
+            {
+                output[count] = index as i32;
+                count += 1;
+            }
+        }
+        return Ok(count);
+    }
+
     let mut count = 0;
     for index in 0..position_count {
         if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index) <= radius_squared
@@ -686,6 +712,32 @@ pub fn filter_within_radius_f64_exclusive(
 
         output[..matches.len()].copy_from_slice(&matches);
         return Ok(matches.len());
+    }
+
+    if has_avx2() && position_count >= 4 {
+        let simd_chunks = position_count / 4;
+        let mut buf = [0.0_f64; 4];
+        let mut count = 0;
+        for chunk in 0..simd_chunks {
+            let base = chunk * 4;
+            unsafe {
+                batch_4_distances(origin_x, origin_y, origin_z, positions, chunk * 12, &mut buf);
+            }
+            for (i, distance) in buf.iter().enumerate() {
+                if *distance < radius_squared {
+                    output[count] = (base + i) as i32;
+                    count += 1;
+                }
+            }
+        }
+        for index in (simd_chunks * 4)..position_count {
+            if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index) < radius_squared
+            {
+                output[count] = index as i32;
+                count += 1;
+            }
+        }
+        return Ok(count);
     }
 
     let mut count = 0;
@@ -787,14 +839,11 @@ pub fn sort_within_radius_f64_exclusive(
             })
             .collect()
     } else {
-        let mut values = Vec::new();
-        for index in 0..position_count {
-            let distance = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
-            if distance < radius_squared {
-                values.push((index as i32, distance));
-            }
-        }
-        values
+        let all_pairs = build_simd_pairs(origin_x, origin_y, origin_z, positions);
+        all_pairs
+            .into_iter()
+            .filter(|(_, d)| *d < radius_squared)
+            .collect::<Vec<_>>()
     };
 
     if matches.len() >= PARALLEL_THRESHOLD {
@@ -2075,6 +2124,22 @@ mod tests {
     }
 
     #[test]
+    fn filter_within_radius_f64_should_preserve_order_across_simd_tail() {
+        let positions = [
+            1.0, 0.0, 0.0, 3.0, 0.0, 0.0, -2.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 1.0,
+            0.0,
+        ];
+        let mut output = [-1; 5];
+
+        let count = filter_within_radius_f64(0.0, 0.0, 0.0, 4.0, &positions, &mut output)
+            .unwrap();
+
+        assert_eq!(count, 3);
+        assert_eq!(&output[..count], &[0, 2, 4]);
+        assert_eq!(&output[count..], &[-1, -1]);
+    }
+
+    #[test]
     fn filter_within_radius_f64_should_match_parallel_reference_indices() {
         let positions: Vec<f64> = (0..5000)
             .flat_map(|index| [(4999 - index) as f64, 0.0, 0.0])
@@ -2095,6 +2160,23 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
         assert_eq!(&output[..count], &[1]);
+    }
+
+    #[test]
+    fn filter_within_radius_f64_exclusive_should_preserve_boundary_and_simd_tail() {
+        let positions = [
+            1.0, 0.0, 0.0, 2.0, 0.0, 0.0, -1.5, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 2.0,
+            0.0,
+        ];
+        let mut output = [-1; 5];
+
+        let count =
+            filter_within_radius_f64_exclusive(0.0, 0.0, 0.0, 4.0, &positions, &mut output)
+                .unwrap();
+
+        assert_eq!(count, 2);
+        assert_eq!(&output[..count], &[0, 2]);
+        assert_eq!(&output[count..], &[-1, -1, -1]);
     }
 
     #[test]
