@@ -10,8 +10,8 @@ public final class NativeBatchingVerifier {
         if (NativeBatching.entityBatchThreshold() != 32) {
             throw new AssertionError("Native entity batch threshold mismatch, expected 32 but got " + NativeBatching.entityBatchThreshold());
         }
-        if (NativeBatching.potentialBatchThreshold() != 32) {
-            throw new AssertionError("Native potential batch threshold mismatch, expected 32 but got " + NativeBatching.potentialBatchThreshold());
+        if (NativeBatching.potentialBatchThreshold() != 512) {
+            throw new AssertionError("Native potential batch threshold mismatch, expected 512 but got " + NativeBatching.potentialBatchThreshold());
         }
         if (NativeBatching.chunkSendSelectionThreshold() != 4096) {
             throw new AssertionError(
@@ -43,10 +43,10 @@ public final class NativeBatchingVerifier {
         if (NativeBatching.shouldUseNativeAabbBatch(16_384)) {
             throw new AssertionError("Native AABB batch should remain disabled by default");
         }
-        if (NativeBatching.shouldUseNativePotentialBatch(31)) {
+        if (NativeBatching.shouldUseNativePotentialBatch(511)) {
             throw new AssertionError("Native potential batch should not activate below its threshold");
         }
-        if (NativeBatching.shouldUseNativePotentialBatch(32) != NativeBridge.isLoaded()) {
+        if (NativeBatching.shouldUseNativePotentialBatch(512) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native potential batch activation should follow native availability at its threshold");
         }
         if (NativeBatching.shouldUseNativeChunkSendSelection(4095)) {

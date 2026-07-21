@@ -225,42 +225,44 @@ pub fn batch_4_aabb_intersections(
 }
 
 #[cfg(target_arch = "x86_64")]
-pub unsafe fn potential_energy_partial_f64_avx2(
+#[target_feature(enable = "avx2")]
+pub unsafe fn potential_energy_sum_f64_avx2(
     origin_x: i32,
     origin_y: i32,
     origin_z: i32,
     positions: &[i32],
     charges: &[f64],
-    partial: &mut [f64],
-) -> usize {
-    let count = partial.len();
-    let simd_count = (count / 4) * 4;
-    if simd_count == 0 {
-        return 0;
-    }
+) -> (f64, usize) {
+    let simd_count = (charges.len() / 4) * 4;
+    let mut energy = 0.0;
+    let mut partial = [0.0_f64; 4];
 
     let pos_ptr = positions.as_ptr();
     let chg_ptr = charges.as_ptr();
-    let part_ptr = partial.as_mut_ptr();
     for chunk in 0..(simd_count / 4) {
         let offset = chunk * 12;
         unsafe {
             avx2_kernels::potential_energy_partial_x4(
-                origin_x, origin_y, origin_z,
+                origin_x,
+                origin_y,
+                origin_z,
                 pos_ptr.add(offset),
                 chg_ptr.add(chunk * 4),
-                part_ptr.add(chunk * 4),
+                partial.as_mut_ptr(),
             );
         }
+        energy += partial[0];
+        energy += partial[1];
+        energy += partial[2];
+        energy += partial[3];
     }
-    simd_count
+    (energy, simd_count)
 }
 
 #[cfg(not(target_arch = "x86_64"))]
-pub fn potential_energy_partial_f64_avx2(
-    _: i32, _: i32, _: i32,
-    _: &[i32], _: &[f64], _: &mut [f64],
-) -> usize { 0 }
+pub fn potential_energy_sum_f64_avx2(_: i32, _: i32, _: i32, _: &[i32], _: &[f64]) -> (f64, usize) {
+    (0.0, 0)
+}
 
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,6 @@
 package alku.beryllium.compute;
 
+import alku.beryllium.bridge.NativeBridge;
 import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
@@ -117,6 +118,113 @@ public final class PotentialEnergyBatchVerifier {
         assertDoubleEquals(expected, actual, "small-batch Java potential energy change");
     }
 
+    public static void verifyCachedPotentialEnergyAvoidsRepeatedExtractionWhenNativeLoaded() {
+        if (!NativeBridge.isLoaded()) {
+            return;
+        }
+
+        List<SimpleCharge> charges = new ArrayList<>();
+        for (int index = 0; index < 512; index++) {
+            charges.add(new SimpleCharge(index, new BlockPos(index + 1, 0, 0), 1.0));
+        }
+
+        int[] positionReads = {0};
+        int[] chargeReads = {0};
+        Object cacheKey = new Object();
+        double first = PotentialEnergyBatch.getPotentialEnergyChangeCached(
+            cacheKey,
+            0,
+            charges,
+            BlockPos.ZERO,
+            1.0,
+            charge -> {
+                positionReads[0]++;
+                return charge.position;
+            },
+            charge -> {
+                chargeReads[0]++;
+                return charge.charge;
+            }
+        );
+        double second = PotentialEnergyBatch.getPotentialEnergyChangeCached(
+            cacheKey,
+            0,
+            charges,
+            BlockPos.ZERO,
+            1.0,
+            charge -> {
+                positionReads[0]++;
+                return charge.position;
+            },
+            charge -> {
+                chargeReads[0]++;
+                return charge.charge;
+            }
+        );
+
+        assertDoubleEquals(first, second, "cached potential energy change");
+        assertEquals(512, positionReads[0], "cached potential position reads");
+        assertEquals(512, chargeReads[0], "cached potential charge reads");
+    }
+
+    public static void verifyCachedPotentialEnergyRefreshesForNewVersionWhenNativeLoaded() {
+        if (!NativeBridge.isLoaded()) {
+            return;
+        }
+
+        List<SimpleCharge> charges = new ArrayList<>();
+        for (int index = 0; index < 512; index++) {
+            charges.add(new SimpleCharge(index, new BlockPos(index + 1, 0, 0), 1.0));
+        }
+
+        int[] positionReads = {0};
+        int[] chargeReads = {0};
+        Object cacheKey = new Object();
+        PotentialEnergyBatch.getPotentialEnergyChangeCached(
+            cacheKey,
+            0,
+            charges,
+            BlockPos.ZERO,
+            1.0,
+            charge -> {
+                positionReads[0]++;
+                return charge.position;
+            },
+            charge -> {
+                chargeReads[0]++;
+                return charge.charge;
+            }
+        );
+
+        charges.add(new SimpleCharge(512, new BlockPos(513, 0, 0), 2.0));
+        double refreshed = PotentialEnergyBatch.getPotentialEnergyChangeCached(
+            cacheKey,
+            1,
+            charges,
+            BlockPos.ZERO,
+            1.0,
+            charge -> {
+                positionReads[0]++;
+                return charge.position;
+            },
+            charge -> {
+                chargeReads[0]++;
+                return charge.charge;
+            }
+        );
+        double expected = PotentialEnergyBatch.getPotentialEnergyChangeJava(
+            charges,
+            BlockPos.ZERO,
+            1.0,
+            charge -> charge.position,
+            charge -> charge.charge
+        );
+
+        assertDoubleEquals(expected, refreshed, "refreshed cached potential energy change");
+        assertEquals(1025, positionReads[0], "refreshed cached potential position reads");
+        assertEquals(1025, chargeReads[0], "refreshed cached potential charge reads");
+    }
+
     private static void assertDoubleEquals(double expected, double actual, String label) {
         if (Double.compare(expected, actual) != 0) {
             throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
@@ -125,6 +233,12 @@ public final class PotentialEnergyBatchVerifier {
 
     private static void assertListEquals(List<Integer> expected, List<Integer> actual, String label) {
         if (!expected.equals(actual)) {
+            throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
+        }
+    }
+
+    private static void assertEquals(int expected, int actual, String label) {
+        if (expected != actual) {
             throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
         }
     }

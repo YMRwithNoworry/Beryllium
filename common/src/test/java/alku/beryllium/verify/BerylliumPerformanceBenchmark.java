@@ -32,7 +32,7 @@ public final class BerylliumPerformanceBenchmark {
     private static final int[] CHUNK_SEND_LIMITS = {9, 64};
     private static final int WARMUP_ITERATIONS = 100;
     private static final int MEASUREMENT_ITERATIONS = 300;
-    private static final int POTENTIAL_CHARGE_COUNT = 8192;
+    private static final int[] POTENTIAL_CHARGE_COUNTS = {32, 128, 512, 2048, 8192};
     private static final double RADIUS = 32.0;
     private static long blackHole;
 
@@ -107,9 +107,15 @@ public final class BerylliumPerformanceBenchmark {
     }
 
     private static void benchmarkPotentialEnergy() {
-        int[] positions = new int[POTENTIAL_CHARGE_COUNT * 3];
-        double[] charges = new double[POTENTIAL_CHARGE_COUNT];
-        for (int index = 0; index < POTENTIAL_CHARGE_COUNT; index++) {
+        for (int chargeCount : POTENTIAL_CHARGE_COUNTS) {
+            benchmarkPotentialEnergy(chargeCount);
+        }
+    }
+
+    private static void benchmarkPotentialEnergy(int chargeCount) {
+        int[] positions = new int[chargeCount * 3];
+        double[] charges = new double[chargeCount];
+        for (int index = 0; index < chargeCount; index++) {
             int offset = index * 3;
             positions[offset] = (index % 4096) - 2048;
             positions[offset + 1] = 65 + (index % 31);
@@ -126,13 +132,21 @@ public final class BerylliumPerformanceBenchmark {
             "native_potential_energy",
             () -> NativeBridge.computePotentialEnergyChange(0, 64, 0, positions, charges, multiplier)
         );
+        NativeBridge.setPotentialCharges(positions, charges);
+        long cachedNativeMedian = measureScalar(
+            "cached_native_potential_energy",
+            () -> NativeBridge.computePotentialEnergyChangeCached(0, 64, 0, multiplier)
+        );
         System.out.printf(
             Locale.ROOT,
-            "potential_result=charges:%d vanilla_java_median_ns:%d native_median_ns:%d speedup:%.2fx%n",
-            POTENTIAL_CHARGE_COUNT,
+            "potential_result=charges:%d vanilla_java_median_ns:%d native_median_ns:%d cached_native_median_ns:%d "
+                + "native_speedup:%.2fx cached_native_speedup:%.2fx%n",
+            chargeCount,
             vanillaMedian,
             nativeMedian,
-            speedup(vanillaMedian, nativeMedian)
+            cachedNativeMedian,
+            speedup(vanillaMedian, nativeMedian),
+            speedup(vanillaMedian, cachedNativeMedian)
         );
     }
 

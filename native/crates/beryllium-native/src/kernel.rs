@@ -174,14 +174,6 @@ pub fn potential_energy_change(
 
     let charge_count = charges.len();
 
-    if charge_count >= PARALLEL_THRESHOLD {
-        let energy =
-            potential_energy_terms_parallel(origin_x, origin_y, origin_z, positions, charges)
-                .into_iter()
-                .fold(0.0, |sum, contribution| sum + contribution);
-        return Ok(energy * charge_multiplier);
-    }
-
     if has_avx2() && charge_count >= 4 {
         return potential_energy_change_simd(
             origin_x, origin_y, origin_z, positions, charges, charge_multiplier,
@@ -210,18 +202,10 @@ fn potential_energy_change_simd(
     charge_multiplier: f64,
 ) -> Result<f64, NativeError> {
     let count = charges.len();
-    let mut partial = vec![0.0_f64; count];
-
-    let simd_count = unsafe {
-        simd::potential_energy_partial_f64_avx2(
-            origin_x, origin_y, origin_z, positions, charges, &mut partial,
-        )
+    let (mut energy, simd_count) = unsafe {
+        simd::potential_energy_sum_f64_avx2(origin_x, origin_y, origin_z, positions, charges)
     };
 
-    let mut energy = 0.0;
-    for index in 0..simd_count {
-        energy += partial[index];
-    }
     for index in simd_count..count {
         let distance = block_corner_distance_at(origin_x, origin_y, origin_z, positions, index);
         energy += if distance == 0.0 {
@@ -234,17 +218,15 @@ fn potential_energy_change_simd(
     Ok(energy * charge_multiplier)
 }
 
-
 // ---------------------------------------------------------------------------
-// Potential energy charges cache — eliminates FFM array copies on repeated calls
+// Potential energy charge cache for repeated FFM calls.
 // ---------------------------------------------------------------------------
 
 static POTENTIAL_CACHE: Mutex<Option<(Vec<i32>, Vec<f64>)>> = Mutex::new(None);
 
-/// Caches a packed positions + charges snapshot for the current thread.
+/// Caches one packed positions + charges snapshot.
 /// Subsequent `compute_cached_potential_energy_change` calls only transmit the
-/// origin coordinates, eliminating the large array copies that dominate the
-/// current 0.79x benchmark regression.
+/// origin coordinates.
 pub fn set_cached_potential_charges(positions: Vec<i32>, charges: Vec<f64>) -> Result<(), NativeError> {
     if charge_multiplier_preconditions(&positions, &charges).is_err() {
         return Err(NativeError::InvalidInput);
@@ -279,30 +261,6 @@ fn charge_multiplier_preconditions(positions: &[i32], charges: &[f64]) -> Result
         return Err(NativeError::InvalidInput);
     }
     Ok(())
-}
-
-fn potential_energy_terms_parallel(
-    origin_x: i32,
-    origin_y: i32,
-    origin_z: i32,
-    positions: &[i32],
-    charges: &[f64],
-) -> Vec<f64> {
-    charges
-        .par_iter()
-        .enumerate()
-        .fold(
-            Vec::new,
-            |mut acc, (index, charge)| {
-                let distance = block_corner_distance_at(origin_x, origin_y, origin_z, positions, index);
-                acc.push(if distance == 0.0 { f64::INFINITY } else { *charge / distance.sqrt() });
-                acc
-            },
-        )
-        .reduce(Vec::new, |mut a, mut b| {
-            a.append(&mut b);
-            a
-        })
 }
 
 /// Finds the nearest packed f64 x/y/z triple within an optional squared radius.
@@ -2808,29 +2766,22 @@ mod tests {
     }
 
     #[test]
-    fn potential_energy_change_should_preserve_sequential_sum_for_parallel_terms() {
+    fn potential_energy_change_should_preserve_sequential_sum_at_large_batch() {
         let positions: Vec<i32> = (0..5000)
             .flat_map(|index| [index as i32 - 2500, 64, (index % 17) as i32 - 8])
             .collect();
         let charges: Vec<f64> = (0..5000).map(|index| (index % 11) as f64 - 5.0).collect();
 
-        let terms = potential_energy_terms_parallel(0, 64, 0, &positions, &charges);
-        let mut expected_terms = Vec::with_capacity(charges.len());
+        let mut expected_energy = 0.0;
         for index in 0..charges.len() {
             let distance = block_corner_distance_at(0, 64, 0, &positions, index);
-            expected_terms.push(if distance == 0.0 {
+            expected_energy += if distance == 0.0 {
                 f64::INFINITY
             } else {
                 charges[index] / distance.sqrt()
-            });
+            };
         }
-
-        assert_eq!(terms, expected_terms);
-
-        let expected_energy = expected_terms
-            .iter()
-            .fold(0.0, |sum, contribution| sum + contribution)
-            * 0.75;
+        expected_energy *= 0.75;
         assert_eq!(
             potential_energy_change(0, 64, 0, &positions, &charges, 0.75).unwrap(),
             expected_energy
