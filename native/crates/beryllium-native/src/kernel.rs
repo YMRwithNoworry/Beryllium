@@ -15,6 +15,12 @@ const NEAREST_SELECTION_PARALLEL_THRESHOLD: usize = 1_048_576;
 const BLOCK_NEAREST_PARALLEL_THRESHOLD: usize = 65_536;
 const NEAREST_SELECTION_INITIAL_CAPACITY: usize = 64;
 
+#[derive(Default)]
+pub(crate) struct ChunkSelectionScratch {
+    distances: Vec<i32>,
+    buffer: Vec<usize>,
+}
+
 /// Computes squared Euclidean distances from one origin to packed x/y/z triples.
 pub fn compute_squared_distances(
     origin_x: i32,
@@ -55,57 +61,36 @@ pub fn select_nearest_chunk_indices(
     limit: usize,
     output: &mut [i32],
 ) -> Result<usize, NativeError> {
-    if packed_chunk_positions.len() > i32::MAX as usize {
-        return Err(NativeError::InvalidInput);
-    }
+    select_nearest_chunk_indices_with_scratch(
+        origin_x,
+        origin_z,
+        packed_chunk_positions,
+        limit,
+        output,
+        &mut ChunkSelectionScratch::default(),
+    )
+}
 
+pub(crate) fn select_nearest_chunk_indices_with_scratch(
+    origin_x: i32,
+    origin_z: i32,
+    packed_chunk_positions: &[i64],
+    limit: usize,
+    output: &mut [i32],
+    scratch: &mut ChunkSelectionScratch,
+) -> Result<usize, NativeError> {
     let selected_count = limit.min(packed_chunk_positions.len());
     if output.len() < selected_count {
         return Err(NativeError::OutputLengthMismatch);
     }
-    if selected_count == 0 {
-        return Ok(0);
-    }
-
-    let distances: Vec<i32> = if packed_chunk_positions.len() >= CHUNK_SELECTION_PARALLEL_THRESHOLD
-    {
-        packed_chunk_positions
-            .par_iter()
-            .map(|packed_position| chunk_distance_squared(origin_x, origin_z, *packed_position))
-            .collect()
-    } else {
-        packed_chunk_positions
-            .iter()
-            .map(|packed_position| chunk_distance_squared(origin_x, origin_z, *packed_position))
-            .collect()
-    };
-
-    let buffer_capacity = if selected_count == packed_chunk_positions.len() {
-        selected_count
-    } else {
-        selected_count * 2
-    };
-    let mut buffer = Vec::with_capacity(buffer_capacity);
-    let mut threshold_distance = 0;
-
-    for (index, distance) in distances.iter().copied().enumerate() {
-        if buffer.is_empty() {
-            buffer.push(index);
-            threshold_distance = distance;
-        } else if buffer.len() < selected_count {
-            buffer.push(index);
-            threshold_distance = threshold_distance.max(distance);
-        } else if distance < threshold_distance {
-            buffer.push(index);
-            if buffer.len() == selected_count * 2 {
-                threshold_distance = trim_chunk_selection(&mut buffer, selected_count, &distances);
-                buffer.truncate(selected_count);
-            }
-        }
-    }
-
-    stable_sort_chunk_selection(&mut buffer, &distances);
-    for (output_index, candidate_index) in buffer.iter().take(selected_count).enumerate() {
+    select_nearest_chunk_indices_internal(
+        origin_x,
+        origin_z,
+        packed_chunk_positions,
+        selected_count,
+        scratch,
+    )?;
+    for (output_index, candidate_index) in scratch.buffer.iter().enumerate() {
         output[output_index] = *candidate_index as i32;
     }
     Ok(selected_count)
@@ -1671,6 +1656,70 @@ fn chunk_distance_squared(origin_x: i32, origin_z: i32, packed_chunk_position: i
     dx.wrapping_mul(dx).wrapping_add(dz.wrapping_mul(dz))
 }
 
+fn select_nearest_chunk_indices_internal(
+    origin_x: i32,
+    origin_z: i32,
+    packed_chunk_positions: &[i64],
+    selected_count: usize,
+    scratch: &mut ChunkSelectionScratch,
+) -> Result<(), NativeError> {
+    if packed_chunk_positions.len() > i32::MAX as usize {
+        return Err(NativeError::InvalidInput);
+    }
+    scratch.buffer.clear();
+    if selected_count == 0 {
+        return Ok(());
+    }
+
+    scratch.distances.resize(packed_chunk_positions.len(), 0);
+    if packed_chunk_positions.len() >= CHUNK_SELECTION_PARALLEL_THRESHOLD {
+        scratch
+            .distances
+            .par_iter_mut()
+            .zip(packed_chunk_positions.par_iter())
+            .for_each(|(distance, packed_position)| {
+                *distance = chunk_distance_squared(origin_x, origin_z, *packed_position);
+            });
+    } else {
+        for (distance, packed_position) in scratch
+            .distances
+            .iter_mut()
+            .zip(packed_chunk_positions.iter())
+        {
+            *distance = chunk_distance_squared(origin_x, origin_z, *packed_position);
+        }
+    }
+
+    let buffer_capacity = if selected_count == packed_chunk_positions.len() {
+        selected_count
+    } else {
+        selected_count * 2
+    };
+    scratch.buffer.reserve(buffer_capacity);
+    let mut threshold_distance = 0;
+
+    for (index, distance) in scratch.distances.iter().copied().enumerate() {
+        if scratch.buffer.is_empty() {
+            scratch.buffer.push(index);
+            threshold_distance = distance;
+        } else if scratch.buffer.len() < selected_count {
+            scratch.buffer.push(index);
+            threshold_distance = threshold_distance.max(distance);
+        } else if distance < threshold_distance {
+            scratch.buffer.push(index);
+            if scratch.buffer.len() == selected_count * 2 {
+                threshold_distance =
+                    trim_chunk_selection(&mut scratch.buffer, selected_count, &scratch.distances);
+                scratch.buffer.truncate(selected_count);
+            }
+        }
+    }
+
+    stable_sort_chunk_selection(&mut scratch.buffer, &scratch.distances);
+    scratch.buffer.truncate(selected_count);
+    Ok(())
+}
+
 fn trim_chunk_selection(buffer: &mut [usize], selected_count: usize, distances: &[i32]) -> i32 {
     let mut left = 0;
     let mut right = selected_count * 2 - 1;
@@ -2073,6 +2122,25 @@ mod tests {
         let mut output = [-1; 3];
         let count = select_nearest_chunk_indices(0, 0, &positions, 7, &mut output).unwrap();
         assert_eq!((count, output), (3, [1, 2, 0]));
+    }
+
+    #[test]
+    fn select_nearest_chunk_indices_should_reuse_scratch_capacity() {
+        let positions = (0..8192)
+            .map(|index| pack_chunk(index * 31, index.rotate_left(7)))
+            .collect::<Vec<_>>();
+        let mut output = [0; 64];
+        let mut scratch = ChunkSelectionScratch::default();
+
+        select_nearest_chunk_indices_with_scratch(0, 0, &positions, 64, &mut output, &mut scratch)
+            .unwrap();
+        let distance_capacity = scratch.distances.capacity();
+        let buffer_capacity = scratch.buffer.capacity();
+
+        select_nearest_chunk_indices_with_scratch(7, -9, &positions, 64, &mut output, &mut scratch)
+            .unwrap();
+        assert_eq!(scratch.distances.capacity(), distance_capacity);
+        assert_eq!(scratch.buffer.capacity(), buffer_capacity);
     }
 
     fn pack_chunk(x: i32, z: i32) -> i64 {

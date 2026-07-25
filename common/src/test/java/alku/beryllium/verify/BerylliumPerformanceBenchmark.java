@@ -31,7 +31,7 @@ public final class BerylliumPerformanceBenchmark {
     private static final int[] CANDIDATE_COUNTS = {256, 1024, 4096, 8192, 16384};
     private static final int[] BLOCK_DISTANCE_CANDIDATE_COUNTS = {256, 1024, 4096, 8192, 16384, 65_536};
     private static final int[] CHUNK_PLAYER_COUNTS = {32, 128, 512, 2048, 4096, 8192};
-    private static final int[] CHUNK_SEND_CANDIDATE_COUNTS = {128, 512, 2048, 4096, 8192};
+    private static final int[] CHUNK_SEND_CANDIDATE_COUNTS = {128, 256, 512, 2048, 4096, 8192};
     private static final int[] CHUNK_SEND_LIMITS = {9, 64};
     private static final int WARMUP_ITERATIONS = 100;
     private static final int MEASUREMENT_ITERATIONS = 300;

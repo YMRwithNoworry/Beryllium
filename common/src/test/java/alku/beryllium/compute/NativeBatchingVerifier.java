@@ -19,9 +19,9 @@ public final class NativeBatchingVerifier {
         if (NativeBatching.potentialBatchThreshold() != 512) {
             throw new AssertionError("Native potential batch threshold mismatch, expected 512 but got " + NativeBatching.potentialBatchThreshold());
         }
-        if (NativeBatching.chunkSendSelectionThreshold() != 512) {
+        if (NativeBatching.chunkSendSelectionThreshold() != 128) {
             throw new AssertionError(
-                "Native chunk send selection threshold mismatch, expected 512 but got "
+                "Native chunk send selection threshold mismatch, expected 128 but got "
                     + NativeBatching.chunkSendSelectionThreshold()
             );
         }
@@ -58,10 +58,10 @@ public final class NativeBatchingVerifier {
         if (NativeBatching.shouldUseNativePotentialBatch(512) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native potential batch activation should follow native availability at its threshold");
         }
-        if (NativeBatching.shouldUseNativeChunkSendSelection(511)) {
+        if (NativeBatching.shouldUseNativeChunkSendSelection(127)) {
             throw new AssertionError("Native chunk send selection should remain disabled below its threshold");
         }
-        if (NativeBatching.shouldUseNativeChunkSendSelection(512) != NativeBridge.isLoaded()) {
+        if (NativeBatching.shouldUseNativeChunkSendSelection(128) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native chunk send selection activation should follow native availability at its threshold");
         }
         if (NativeBatching.shouldUseNativeNearestItemTopK(1023)) {

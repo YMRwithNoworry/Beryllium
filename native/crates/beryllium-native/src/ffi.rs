@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use crate::{
     kernel::compute_squared_distances, kernel::compute_squared_distances_f64,
     kernel::count_within_radius, kernel::filter_intersecting_aabb_f64,
@@ -9,11 +11,16 @@ use crate::{
     kernel::find_nearest_index_f64_exclusive, kernel::find_nearest_packed_block_corner_index,
     kernel::find_nearest_packed_block_corner_index_within_radius,
     kernel::has_any_within_radius_f64_exclusive, kernel::potential_energy_change,
-    kernel::select_nearest_chunk_indices,
+    kernel::select_nearest_chunk_indices_with_scratch,
     kernel::select_nearest_indices_within_radius_f64_exclusive, kernel::sort_by_block_distance,
     kernel::sort_by_distance, kernel::sort_by_distance_and_count_within_radius_f64_exclusive,
-    kernel::sort_by_distance_f64, kernel::sort_within_radius_f64_exclusive, NativeError,
+    kernel::sort_by_distance_f64, kernel::sort_within_radius_f64_exclusive,
+    kernel::ChunkSelectionScratch, NativeError,
 };
+
+thread_local! {
+    static CHUNK_SELECTION_SCRATCH: RefCell<ChunkSelectionScratch> = RefCell::new(ChunkSelectionScratch::default());
+}
 
 /// Result code returned by the stable C ABI.
 #[repr(i32)]
@@ -142,13 +149,16 @@ pub unsafe extern "C" fn beryllium_select_nearest_chunk_indices(
         Ok(value) => value,
         Err(error) => return -1 - error.code(),
     };
-    count_result(select_nearest_chunk_indices(
-        origin_x,
-        origin_z,
-        packed_chunk_positions,
-        limit as usize,
-        output,
-    ))
+    CHUNK_SELECTION_SCRATCH.with(|scratch| {
+        count_result(select_nearest_chunk_indices_with_scratch(
+            origin_x,
+            origin_z,
+            packed_chunk_positions,
+            limit as usize,
+            output,
+            &mut scratch.borrow_mut(),
+        ))
+    })
 }
 
 #[no_mangle]
@@ -866,6 +876,7 @@ mod tests {
         beryllium_compute_squared_distances, beryllium_count_within_radius,
         beryllium_filter_within_radius_double,
         beryllium_find_nearest_packed_block_corner_index_within_radius,
+        beryllium_select_nearest_chunk_indices,
         beryllium_select_nearest_indices_within_radius_exclusive_double,
     };
 
@@ -936,6 +947,43 @@ mod tests {
 
         assert_eq!(count, 2);
         assert_eq!(output, [1, 2, 99]);
+    }
+
+    #[test]
+    fn c_abi_chunk_selection_scratch_is_thread_local() {
+        let handles = (0..8)
+            .map(|thread_index| {
+                std::thread::spawn(move || {
+                    let positions = (0_i32..2048)
+                        .map(|index| {
+                            let x = index * 31 + thread_index;
+                            let z = index.rotate_left(7) - thread_index;
+                            i64::from(x as u32) | (i64::from(z as u32) << 32)
+                        })
+                        .collect::<Vec<_>>();
+                    let mut output = [0_i32; 64];
+                    for iteration in 0..50 {
+                        let count = unsafe {
+                            beryllium_select_nearest_chunk_indices(
+                                iteration,
+                                -iteration,
+                                positions.as_ptr(),
+                                positions.len(),
+                                output.len() as i32,
+                                output.as_mut_ptr(),
+                                output.len(),
+                            )
+                        };
+                        assert_eq!(count, output.len() as i32);
+                        assert!(output.iter().all(|index| *index >= 0 && *index < positions.len() as i32));
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
     }
 
     #[test]

@@ -10,7 +10,7 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 & 'C:\tmp\gradle-8121\gradle-8.12.1\bin\gradle.bat' --no-daemon :common:performanceBenchmark
 ```
 
-默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`，严格半径为 `32`；ChunkMap 玩家数量为 `32`、`128`、`512`、`2048`、`4096`、`8192`，水平半径为 `128`；PlayerChunkSender 候选数量为 `128`、`512`、`2048`、`4096`、`8192`，批次配额为 `9` 和 `64`。该任务额外传入 `-Dberyllium.native.nearestItemTopKThreshold=1`，以便单独比较 Top-K 算法；正常运行仍使用默认阈值 `1024`。
+默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`，严格半径为 `32`；ChunkMap 玩家数量为 `32`、`128`、`512`、`2048`、`4096`、`8192`，水平半径为 `128`；PlayerChunkSender 候选数量为 `128`、`256`、`512`、`2048`、`4096`、`8192`，批次配额为 `9` 和 `64`。该任务额外传入 `-Dberyllium.native.nearestItemTopKThreshold=1`，以便单独比较 Top-K 算法；正常运行仍使用默认阈值 `1024`。
 
 每组使用相同的确定性坐标和 wanted/visible 谓词，输出中位耗时：
 
@@ -156,3 +156,22 @@ ChunkMap 默认路径刻意保留在 JVM 内执行：玩家对象需要先经过
 `512` 候选在两种配额的六组独立测量中均快于原版，因此默认 `beryllium.native.chunkSendSelectionThreshold` 从 `4096` 下调到 `512`。`128` 候选虽然也快于原版，但相对 primitive Java 路径存在波动，暂不继续下探；native 不可用或低于 `512` 时仍执行原版 Guava 分支。
 
 同轮方块最近项端到端复测覆盖 `256` 到 `65,536` 候选，紧凑 `BlockPos.asLong()` native 路径的三轮中位数均未稳定快于原版，因此方块距离 native 默认保持禁用。PotentialCalculator 的缓存 native 路径从 `512` 个点电荷起三轮均快于 Java 参考，继续保留默认阈值 `512`。
+
+## 2026-07-25 Rust ChunkSend scratch 复用
+
+Rust ChunkSend Top-K 改为在每个调用线程内复用距离数组和选择 buffer，避免每次 FFM 调用重新分配完整 `Vec<i32>` 与候选 `Vec<usize>`。纯内核仍保留无状态入口；稳定 C ABI 使用线程本地 scratch，并通过 8 个并发线程各 50 次调用验证隔离。
+
+在相同 Windows x86_64、GraalVM Community JDK 21.0.2、Rust release native `OK` 环境下，运行三个独立 Gradle/JVM 进程，每组预热 `100` 次、测量 `300` 次。下表列出阈值附近所有候选规模：
+
+| 候选数 | 配额 | 原版三轮中位数 | Native 三轮中位数 | 相对原版 | 三轮 speedup 范围 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 128 | 9 | 19,500 ns | 7,600 ns | 2.57x | 2.57x-2.84x |
+| 128 | 64 | 24,600 ns | 6,100 ns | 4.03x | 2.66x-6.71x |
+| 256 | 9 | 11,500 ns | 8,500 ns | 1.35x | 1.16x-2.22x |
+| 256 | 64 | 40,500 ns | 10,200 ns | 3.97x | 3.56x-6.11x |
+| 512 | 9 | 10,900 ns | 7,100 ns | 1.54x | 1.47x-3.94x |
+| 512 | 64 | 23,400 ns | 11,500 ns | 2.03x | 1.39x-4.06x |
+
+`128`、`256`、`512` 候选在两种配额的 18 组独立测量中全部快于原版，因此默认 `beryllium.native.chunkSendSelectionThreshold` 从 `512` 下调到 `128`。低于 `128` 或 native 不可用时继续执行原版 Guava 分支。
+
+另行测试过让 Rust 直接回传 packed chunk long，以省去 Java 的索引间接访问；该方案在 `512` 候选、配额 `64` 下相对索引回传仅为 `0.61x-0.72x`，原因是 FFM 输出复制量翻倍，因此未进入生产实现。
