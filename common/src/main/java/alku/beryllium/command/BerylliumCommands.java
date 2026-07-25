@@ -32,6 +32,8 @@ public final class BerylliumCommands {
                 + NativeBridge.status()
                 + ", entity batch threshold: "
                 + NativeBatching.entityBatchThreshold()
+                + ", block distance batch threshold: "
+                + NativeBatching.blockDistanceBatchThreshold()
                 + ", potential batch threshold: "
                 + NativeBatching.potentialBatchThreshold()
                 + ", chunk send selection threshold: "

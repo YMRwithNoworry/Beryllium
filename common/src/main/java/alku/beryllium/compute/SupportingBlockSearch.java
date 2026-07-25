@@ -24,7 +24,7 @@ public final class SupportingBlockSearch {
             return Optional.empty();
         }
 
-        int index = NativeBatching.shouldUseNativeEntityBatch(positions.count())
+        int index = NativeBatching.shouldUseNativeBlockDistanceBatch(positions.count())
             ? NativeBridge.findNearestBlockCenterIndex(originX, originY, originZ, positions.values(), positions.count())
             : JavaComputeKernels.findNearestBlockCenterIndex(originX, originY, originZ, positions.values(), positions.count());
         if (index < 0) {

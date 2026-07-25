@@ -7,13 +7,16 @@ import alku.beryllium.bridge.NativeBridge;
  */
 public final class NativeBatching {
     private static final int DEFAULT_ENTITY_BATCH_THRESHOLD = 32;
+    // Compact BlockPos FFM transfer remains opt-in until it shows a stable end-to-end gain.
+    private static final int DEFAULT_BLOCK_DISTANCE_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final int DEFAULT_POTENTIAL_BATCH_THRESHOLD = 512;
-    private static final int DEFAULT_CHUNK_SEND_SELECTION_THRESHOLD = 4096;
+    private static final int DEFAULT_CHUNK_SEND_SELECTION_THRESHOLD = 512;
     private static final int DEFAULT_NEAREST_ITEM_TOP_K_THRESHOLD = 1024;
     // FFM array copies currently outweigh these primitive filters without an explicit deployment profile.
     private static final int DEFAULT_VARIABLE_RADIUS_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final int DEFAULT_AABB_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final String ENTITY_BATCH_THRESHOLD_PROPERTY = "beryllium.native.entityBatchThreshold";
+    private static final String BLOCK_DISTANCE_BATCH_THRESHOLD_PROPERTY = "beryllium.native.blockDistanceBatchThreshold";
     private static final String POTENTIAL_BATCH_THRESHOLD_PROPERTY = "beryllium.native.potentialBatchThreshold";
     private static final String CHUNK_SEND_SELECTION_THRESHOLD_PROPERTY = "beryllium.native.chunkSendSelectionThreshold";
     private static final String NEAREST_ITEM_TOP_K_THRESHOLD_PROPERTY = "beryllium.native.nearestItemTopKThreshold";
@@ -23,6 +26,10 @@ public final class NativeBatching {
     private static final int ENTITY_BATCH_THRESHOLD = readPositiveIntProperty(
         ENTITY_BATCH_THRESHOLD_PROPERTY,
         DEFAULT_ENTITY_BATCH_THRESHOLD
+    );
+    private static final int BLOCK_DISTANCE_BATCH_THRESHOLD = readPositiveIntProperty(
+        BLOCK_DISTANCE_BATCH_THRESHOLD_PROPERTY,
+        DEFAULT_BLOCK_DISTANCE_BATCH_THRESHOLD
     );
     private static final int POTENTIAL_BATCH_THRESHOLD = readPositiveIntProperty(
         POTENTIAL_BATCH_THRESHOLD_PROPERTY,
@@ -52,6 +59,10 @@ public final class NativeBatching {
         return candidateCount >= ENTITY_BATCH_THRESHOLD && NativeBridge.isLoaded();
     }
 
+    public static boolean shouldUseNativeBlockDistanceBatch(int candidateCount) {
+        return candidateCount >= BLOCK_DISTANCE_BATCH_THRESHOLD && NativeBridge.isLoaded();
+    }
+
     public static boolean shouldUseNativePotentialBatch(int chargeCount) {
         return chargeCount >= POTENTIAL_BATCH_THRESHOLD && NativeBridge.isLoaded();
     }
@@ -74,6 +85,10 @@ public final class NativeBatching {
 
     public static int entityBatchThreshold() {
         return ENTITY_BATCH_THRESHOLD;
+    }
+
+    public static int blockDistanceBatchThreshold() {
+        return BLOCK_DISTANCE_BATCH_THRESHOLD;
     }
 
     public static int potentialBatchThreshold() {

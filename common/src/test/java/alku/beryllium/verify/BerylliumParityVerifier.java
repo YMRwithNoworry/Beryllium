@@ -18,6 +18,7 @@ import alku.beryllium.compute.PotentialEnergyBatchVerifier;
 import alku.beryllium.compute.PrioritizedEntitySearchVerifier;
 import alku.beryllium.compute.SupportingBlockSearchVerifier;
 import alku.beryllium.compute.TargetingConditionsBatchVerifier;
+import net.minecraft.core.BlockPos;
 
 import java.util.Arrays;
 
@@ -45,6 +46,8 @@ public final class BerylliumParityVerifier {
         verifyJavaNearestBlockCenterIndex();
         verifyJavaNearestBlockCenterIndexRejectsNullPositions();
         verifyJavaNearestBlockCornerIndex();
+        verifyJavaNearestPackedBlockCornerIndex();
+        verifyJavaNearestPackedBlockCornerIndexRejectsNullPositions();
         verifyJavaFilterAndSort();
         verifyJavaBlockSort();
         verifyJavaDoubleSort();
@@ -68,6 +71,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeAnyWithinRadiusExclusive();
         verifyNativeBridgeNearestBlockCenterIndex();
         verifyNativeBridgeNearestBlockCornerIndex();
+        verifyNativeBridgeNearestPackedBlockCornerIndex();
         verifyNativeBridgeFilterAndSort();
         verifyNativeBridgeBlockSort();
         verifyNativeBridgeDoubleSort();
@@ -130,6 +134,8 @@ public final class BerylliumParityVerifier {
         BlockDistanceSortVerifier.verifyFindFirstSortedByBlockDistanceNoMatchChecksAllSortedCandidates();
         BlockDistanceSearchVerifier.verifyFindNearestByBlockDistance();
         BlockDistanceSearchVerifier.verifyFindNearestByBlockDistanceTieOrder();
+        BlockDistanceSearchVerifier.verifyFindNearestByBlockDistanceHandlesLargeLists();
+        BlockDistanceSearchVerifier.verifyFindNearestByBlockDistancePreservesLossyBlockPosCoordinates();
         BlockDistanceSearchVerifier.verifyFindNearestPositionByBlockDistancePreservesPredicateOrder();
         BlockDistanceSearchVerifier.verifyFindNearestPositionByBlockDistanceTieOrder();
         BlockDistanceSearchVerifier.verifyFindNearestWithinInclusiveBlockDistanceFiltersBeforePostPredicate();
@@ -253,6 +259,36 @@ public final class BerylliumParityVerifier {
 
         int missing = NativeBridge.findNearestBlockCornerIndex(0, 0, 0, new int[] {});
         assertEquals(-1, missing, "Native bridge nearest block corner empty input");
+    }
+
+    private static void verifyNativeBridgeNearestPackedBlockCornerIndex() {
+        long[] positions = {
+            new BlockPos(1, 0, 0).asLong(),
+            new BlockPos(-1, 0, 0).asLong(),
+            new BlockPos(0, 2, 0).asLong()
+        };
+        int nearest = NativeBridge.findNearestPackedBlockCornerIndex(0, 0, 0, positions);
+        assertEquals(0, nearest, "Native bridge packed nearest block corner tie order");
+
+        int bounded = NativeBridge.findNearestPackedBlockCornerIndexWithinRadius(
+            0,
+            0,
+            0,
+            4,
+            new long[] {new BlockPos(3, 0, 0).asLong(), new BlockPos(2, 0, 0).asLong()}
+        );
+        assertEquals(1, bounded, "Native bridge packed nearest block corner inclusive radius");
+
+        int coordinateBoundary = NativeBridge.findNearestPackedBlockCornerIndex(
+            -33_554_432,
+            -2_048,
+            33_554_431,
+            new long[] {
+                new BlockPos(-33_554_432, -2_048, 33_554_431).asLong(),
+                new BlockPos(-33_554_431, -2_048, 33_554_431).asLong()
+            }
+        );
+        assertEquals(0, coordinateBoundary, "Native bridge packed BlockPos coordinate boundary");
     }
 
     private static void verifyNativeBridgeFilterAndSort() {
@@ -760,6 +796,35 @@ public final class BerylliumParityVerifier {
 
         int missing = JavaComputeKernels.findNearestBlockCornerIndex(0, 0, 0, new int[] {});
         assertEquals(-1, missing, "Java nearest block corner empty input");
+    }
+
+    private static void verifyJavaNearestPackedBlockCornerIndex() {
+        long[] positions = {
+            new BlockPos(1, 0, 0).asLong(),
+            new BlockPos(-1, 0, 0).asLong(),
+            new BlockPos(0, 2, 0).asLong()
+        };
+        int nearest = JavaComputeKernels.findNearestPackedBlockCornerIndex(0, 0, 0, positions);
+        assertEquals(0, nearest, "Java packed nearest block corner tie order");
+
+        int bounded = JavaComputeKernels.findNearestPackedBlockCornerIndexWithinRadius(
+            0,
+            0,
+            0,
+            4,
+            new long[] {new BlockPos(3, 0, 0).asLong(), new BlockPos(2, 0, 0).asLong()}
+        );
+        assertEquals(1, bounded, "Java packed nearest block corner inclusive radius");
+    }
+
+    private static void verifyJavaNearestPackedBlockCornerIndexRejectsNullPositions() {
+        try {
+            JavaComputeKernels.findNearestPackedBlockCornerIndex(0, 0, 0, (long[]) null);
+        } catch (IllegalArgumentException expected) {
+            return;
+        }
+
+        throw new AssertionError("Expected null packed BlockPos longs to be rejected");
     }
 
     private static void verifyJavaIntegerOverflowSemantics() {

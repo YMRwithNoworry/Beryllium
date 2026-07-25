@@ -133,11 +133,26 @@ ChunkMap 默认路径刻意保留在 JVM 内执行：玩家对象需要先经过
 
 本节使用最终真实分支形态：两条路径都从同一个 FastUtil `LongOpenHashSet` 开始。原版测量包含 boxed `stream` 和 Guava Top-K；Beryllium 测量包含与原版同顺序的 primitive stream 快照、输出数组、完整 FFM 调用和 Rust 选择。共同的 `ChunkMap.getChunkToSend`、null 过滤、发包和集合移除不在测量区间内。
 
-在 Windows x86_64、JDK 21、Rust native `OK` 上运行三个独立 Gradle/JVM 进程，每组预热 `100` 次、测量 `300` 次。`4096` 候选是最终默认阈值：
+在 Windows x86_64、JDK 21、Rust native `OK` 上运行三个独立 Gradle/JVM 进程，每组预热 `100` 次、测量 `300` 次。该轮保守地把 `4096` 候选作为默认阈值：
 
 | 候选数 | 配额 | 原版三轮中位数 | FFM 三轮中位数 | 相对原版 | 耗时降低 | 三轮 speedup 范围 |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 4,096 | 9 | 113,300 ns | 42,500 ns | 2.67x | 62.5% | 2.26x-4.11x |
 | 4,096 | 64 | 105,000 ns | 34,500 ns | 3.04x | 67.1% | 1.50x-3.17x |
 
-`2048` 候选、配额 `9` 的独立轮次曾出现 `0.93x`，所以默认阈值不设为 `2048`。低于 `4096` 或 native 不可用时 Mixin 执行原版 Guava 分支；该策略只声明大型待发送集合的局部选择阶段加速，不推导整体 TPS、区块发送吞吐或网络延迟提升。
+`2048` 候选、配额 `9` 的独立轮次曾出现 `0.93x`，所以当时默认阈值未设为 `2048`。该策略只声明局部选择阶段加速，不推导整体 TPS、区块发送吞吐或网络延迟提升。
+
+## 2026-07-25 GraalVM PlayerChunkSender 阈值复测
+
+环境为 Windows x86_64、GraalVM Community JDK 21.0.2、Rust release native `OK`。运行三个独立 Gradle/JVM 进程，每组预热 `100` 次、测量 `300` 次；测量继续包含 FastUtil primitive 快照、输出数组、FFM downcall 和 Rust Top-K，不包含共同的区块查找、空值过滤、发送与集合移除。
+
+| 候选数 | 配额 | 原版三轮中位数 | Native 三轮中位数 | 相对原版 | 三轮 speedup 范围 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 9 | 16,000 ns | 8,100 ns | 1.98x | 1.27x-2.31x |
+| 512 | 64 | 22,300 ns | 9,400 ns | 2.37x | 1.89x-2.44x |
+| 2,048 | 9 | 33,400 ns | 19,300 ns | 1.73x | 0.85x-1.81x |
+| 2,048 | 64 | 54,800 ns | 30,300 ns | 1.81x | 1.11x-2.18x |
+
+`512` 候选在两种配额的六组独立测量中均快于原版，因此默认 `beryllium.native.chunkSendSelectionThreshold` 从 `4096` 下调到 `512`。`128` 候选虽然也快于原版，但相对 primitive Java 路径存在波动，暂不继续下探；native 不可用或低于 `512` 时仍执行原版 Guava 分支。
+
+同轮方块最近项端到端复测覆盖 `256` 到 `65,536` 候选，紧凑 `BlockPos.asLong()` native 路径的三轮中位数均未稳定快于原版，因此方块距离 native 默认保持禁用。PotentialCalculator 的缓存 native 路径从 `512` 个点电荷起三轮均快于 Java 参考，继续保留默认阈值 `512`。

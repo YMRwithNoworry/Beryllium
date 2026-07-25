@@ -24,10 +24,24 @@ public final class BlockDistanceSearch {
             return null;
         }
 
-        int[] positions = packPositions(values, positionGetter);
-        int nearestIndex = NativeBatching.shouldUseNativeEntityBatch(values.size())
-            ? NativeBridge.findNearestBlockCornerIndex(origin.getX(), origin.getY(), origin.getZ(), positions)
-            : JavaComputeKernels.findNearestBlockCornerIndex(origin.getX(), origin.getY(), origin.getZ(), positions);
+        if (!NativeBatching.shouldUseNativeBlockDistanceBatch(values.size())) {
+            return findNearestByDistanceJava(values, origin, positionGetter);
+        }
+
+        PackedNearestPositions positions = packNearestPositions(values, positionGetter);
+        int nearestIndex = positions.compactPositions() != null
+            ? NativeBridge.findNearestPackedBlockCornerIndex(
+                origin.getX(),
+                origin.getY(),
+                origin.getZ(),
+                positions.compactPositions()
+            )
+            : NativeBridge.findNearestBlockCornerIndex(
+                origin.getX(),
+                origin.getY(),
+                origin.getZ(),
+                positions.expandedPositions()
+            );
 
         return nearestIndex >= 0 ? values.get(nearestIndex) : null;
     }
@@ -47,10 +61,26 @@ public final class BlockDistanceSearch {
             return null;
         }
 
-        int[] positions = packPositions(values, positionGetter);
-        int nearestIndex = NativeBatching.shouldUseNativeEntityBatch(values.size())
-            ? NativeBridge.findNearestBlockCornerIndexWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions)
-            : JavaComputeKernels.findNearestBlockCornerIndexWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions);
+        if (!NativeBatching.shouldUseNativeBlockDistanceBatch(values.size())) {
+            return findNearestByDistanceWithinInclusiveRadiusJava(values, origin, radiusSquared, positionGetter);
+        }
+
+        PackedNearestPositions positions = packNearestPositions(values, positionGetter);
+        int nearestIndex = positions.compactPositions() != null
+            ? NativeBridge.findNearestPackedBlockCornerIndexWithinRadius(
+                origin.getX(),
+                origin.getY(),
+                origin.getZ(),
+                radiusSquared,
+                positions.compactPositions()
+            )
+            : NativeBridge.findNearestBlockCornerIndexWithinRadius(
+                origin.getX(),
+                origin.getY(),
+                origin.getZ(),
+                radiusSquared,
+                positions.expandedPositions()
+            );
 
         return nearestIndex >= 0 ? values.get(nearestIndex) : null;
     }
@@ -73,7 +103,7 @@ public final class BlockDistanceSearch {
 
         int[] positions = packPositions(values, positionGetter);
         int[] matchingIndices = new int[values.size()];
-        int matchCount = NativeBatching.shouldUseNativeEntityBatch(values.size())
+        int matchCount = NativeBatching.shouldUseNativeBlockDistanceBatch(values.size())
             ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices)
             : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices);
 
@@ -114,7 +144,7 @@ public final class BlockDistanceSearch {
 
         int[] positions = packPositions(values, positionGetter);
         int[] matchingIndices = new int[values.size()];
-        int matchCount = NativeBatching.shouldUseNativeEntityBatch(values.size())
+        int matchCount = NativeBatching.shouldUseNativeBlockDistanceBatch(values.size())
             ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices)
             : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices);
 
@@ -152,7 +182,7 @@ public final class BlockDistanceSearch {
 
         int[] positions = packPositions(values, positionGetter);
         int[] matchingIndices = new int[values.size()];
-        int matchCount = NativeBatching.shouldUseNativeEntityBatch(values.size())
+        int matchCount = NativeBatching.shouldUseNativeBlockDistanceBatch(values.size())
             ? NativeBridge.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices)
             : JavaComputeKernels.filterWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions, matchingIndices);
 
@@ -183,7 +213,7 @@ public final class BlockDistanceSearch {
         }
 
         int[] positions = packPositions(values, positionGetter);
-        return NativeBatching.shouldUseNativeEntityBatch(values.size())
+        return NativeBatching.shouldUseNativeBlockDistanceBatch(values.size())
             ? NativeBridge.countWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions)
             : JavaComputeKernels.countWithinRadius(origin.getX(), origin.getY(), origin.getZ(), radiusSquared, positions);
     }
@@ -230,12 +260,106 @@ public final class BlockDistanceSearch {
         int[] positions = new int[values.size() * 3];
         for (int index = 0; index < values.size(); index++) {
             BlockPos position = positionGetter.apply(values.get(index));
-            int offset = index * 3;
-            positions[offset] = position.getX();
-            positions[offset + 1] = position.getY();
-            positions[offset + 2] = position.getZ();
+            writePosition(positions, index, position);
         }
         return positions;
+    }
+
+    private static <T> PackedNearestPositions packNearestPositions(
+        List<T> values,
+        Function<? super T, BlockPos> positionGetter
+    ) {
+        long[] compactPositions = new long[values.size()];
+        for (int index = 0; index < values.size(); index++) {
+            BlockPos position = positionGetter.apply(values.get(index));
+            if (BlockPosPacking.isLossless(position)) {
+                compactPositions[index] = position.asLong();
+                continue;
+            }
+
+            int[] expandedPositions = new int[values.size() * 3];
+            for (int previousIndex = 0; previousIndex < index; previousIndex++) {
+                writePackedPosition(expandedPositions, previousIndex, compactPositions[previousIndex]);
+            }
+            writePosition(expandedPositions, index, position);
+            for (int remainingIndex = index + 1; remainingIndex < values.size(); remainingIndex++) {
+                writePosition(expandedPositions, remainingIndex, positionGetter.apply(values.get(remainingIndex)));
+            }
+            return new PackedNearestPositions(null, expandedPositions);
+        }
+
+        return new PackedNearestPositions(compactPositions, null);
+    }
+
+    private static <T> T findNearestByDistanceJava(
+        List<T> values,
+        BlockPos origin,
+        Function<? super T, BlockPos> positionGetter
+    ) {
+        T nearest = null;
+        double nearestDistance = 0.0;
+        for (T value : values) {
+            BlockPos position = positionGetter.apply(value);
+            double distance = squaredDistance(origin, position);
+            if (nearest == null || distance < nearestDistance) {
+                nearest = value;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearest;
+    }
+
+    private static <T> T findNearestByDistanceWithinInclusiveRadiusJava(
+        List<T> values,
+        BlockPos origin,
+        long radiusSquared,
+        Function<? super T, BlockPos> positionGetter
+    ) {
+        T nearest = null;
+        double nearestDistance = 0.0;
+        for (T value : values) {
+            BlockPos position = positionGetter.apply(value);
+            if (squaredDistanceForRadius(origin, position) > radiusSquared) {
+                continue;
+            }
+
+            double distance = squaredDistance(origin, position);
+            if (nearest == null || distance < nearestDistance) {
+                nearest = value;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearest;
+    }
+
+    private static void writePosition(int[] positions, int index, BlockPos position) {
+        int offset = index * 3;
+        positions[offset] = position.getX();
+        positions[offset + 1] = position.getY();
+        positions[offset + 2] = position.getZ();
+    }
+
+    private static void writePackedPosition(int[] positions, int index, long packedPosition) {
+        int offset = index * 3;
+        positions[offset] = BlockPosPacking.unpackX(packedPosition);
+        positions[offset + 1] = BlockPosPacking.unpackY(packedPosition);
+        positions[offset + 2] = BlockPosPacking.unpackZ(packedPosition);
+    }
+
+    private static double squaredDistance(BlockPos origin, BlockPos position) {
+        double dx = (double) position.getX() - origin.getX();
+        double dy = (double) position.getY() - origin.getY();
+        double dz = (double) position.getZ() - origin.getZ();
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static long squaredDistanceForRadius(BlockPos origin, BlockPos position) {
+        long dx = (long) position.getX() - origin.getX();
+        long dy = (long) position.getY() - origin.getY();
+        long dz = (long) position.getZ() - origin.getZ();
+        return dx * dx + dy * dy + dz * dz;
     }
 
     private static double squaredDistanceAt(BlockPos origin, int[] positions, int index) {
@@ -244,5 +368,8 @@ public final class BlockDistanceSearch {
         double dy = (double) positions[offset + 1] - origin.getY();
         double dz = (double) positions[offset + 2] - origin.getZ();
         return dx * dx + dy * dy + dz * dz;
+    }
+
+    private record PackedNearestPositions(long[] compactPositions, int[] expandedPositions) {
     }
 }

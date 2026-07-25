@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class BlockDistanceSearchVerifier {
     private BlockDistanceSearchVerifier() {
@@ -30,6 +31,32 @@ public final class BlockDistanceSearchVerifier {
         if (nearest == null || nearest.id != 0) {
             throw new AssertionError("block distance nearest tie order mismatch, expected 0 but got " + (nearest == null ? "null" : nearest.id));
         }
+    }
+
+    public static void verifyFindNearestByBlockDistanceHandlesLargeLists() {
+        List<SimpleBlock> blocks = descendingAxisBlocks(8_192);
+
+        SimpleBlock nearest = BlockDistanceSearch.findNearestByDistance(blocks, BlockPos.ZERO, block -> block.position);
+
+        assertEquals(8_191, nearest == null ? -1 : nearest.id, "large block distance nearest");
+    }
+
+    public static void verifyFindNearestByBlockDistancePreservesLossyBlockPosCoordinates() {
+        List<SimpleBlock> blocks = descendingAxisBlocks(8_192);
+        blocks.set(8_191, new SimpleBlock(8_191, new BlockPos(0, 4_096, 0)));
+        AtomicInteger mapped = new AtomicInteger();
+
+        SimpleBlock nearest = BlockDistanceSearch.findNearestByDistance(
+            blocks,
+            BlockPos.ZERO,
+            block -> {
+                mapped.incrementAndGet();
+                return block.position;
+            }
+        );
+
+        assertEquals(8_190, nearest == null ? -1 : nearest.id, "lossy BlockPos nearest");
+        assertEquals(8_192, mapped.get(), "lossy BlockPos mapping count");
     }
 
     public static void verifyFindNearestPositionByBlockDistancePreservesPredicateOrder() {

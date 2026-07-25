@@ -6,8 +6,10 @@ use crate::{
     kernel::filter_within_radius_f64, kernel::filter_within_radius_f64_exclusive,
     kernel::find_nearest_block_center_index, kernel::find_nearest_block_corner_index,
     kernel::find_nearest_block_corner_index_within_radius, kernel::find_nearest_index_f64,
-    kernel::find_nearest_index_f64_exclusive, kernel::has_any_within_radius_f64_exclusive,
-    kernel::potential_energy_change, kernel::select_nearest_chunk_indices,
+    kernel::find_nearest_index_f64_exclusive, kernel::find_nearest_packed_block_corner_index,
+    kernel::find_nearest_packed_block_corner_index_within_radius,
+    kernel::has_any_within_radius_f64_exclusive, kernel::potential_energy_change,
+    kernel::select_nearest_chunk_indices,
     kernel::select_nearest_indices_within_radius_f64_exclusive, kernel::sort_by_block_distance,
     kernel::sort_by_distance, kernel::sort_by_distance_and_count_within_radius_f64_exclusive,
     kernel::sort_by_distance_f64, kernel::sort_within_radius_f64_exclusive, NativeError,
@@ -515,6 +517,26 @@ pub unsafe extern "C" fn beryllium_find_nearest_block_corner_index(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn beryllium_find_nearest_packed_block_corner_index(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    packed_positions: *const i64,
+    packed_positions_length: usize,
+) -> i32 {
+    let packed_positions = match unsafe { read_slice(packed_positions, packed_positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    index_result(find_nearest_packed_block_corner_index(
+        origin_x,
+        origin_y,
+        origin_z,
+        packed_positions,
+    ))
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn beryllium_find_nearest_block_corner_index_within_radius(
     origin_x: i32,
     origin_y: i32,
@@ -533,6 +555,28 @@ pub unsafe extern "C" fn beryllium_find_nearest_block_corner_index_within_radius
         origin_z,
         radius_squared,
         positions,
+    ))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn beryllium_find_nearest_packed_block_corner_index_within_radius(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    radius_squared: i64,
+    packed_positions: *const i64,
+    packed_positions_length: usize,
+) -> i32 {
+    let packed_positions = match unsafe { read_slice(packed_positions, packed_positions_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    index_result(find_nearest_packed_block_corner_index_within_radius(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        packed_positions,
     ))
 }
 
@@ -756,7 +800,6 @@ pub unsafe extern "C" fn beryllium_sort_within_radius_exclusive_double(
     ))
 }
 
-
 // ---------------------------------------------------------------------------
 // Potential energy cache FFM exports
 // ---------------------------------------------------------------------------
@@ -822,6 +865,7 @@ mod tests {
     use super::{
         beryllium_compute_squared_distances, beryllium_count_within_radius,
         beryllium_filter_within_radius_double,
+        beryllium_find_nearest_packed_block_corner_index_within_radius,
         beryllium_select_nearest_indices_within_radius_exclusive_double,
     };
 
@@ -892,5 +936,22 @@ mod tests {
 
         assert_eq!(count, 2);
         assert_eq!(output, [1, 2, 99]);
+    }
+
+    #[test]
+    fn c_abi_packed_block_nearest_entry_point_decodes_block_pos_longs() {
+        let positions = [3_i64 << 38, 2_i64 << 38];
+        let nearest = unsafe {
+            beryllium_find_nearest_packed_block_corner_index_within_radius(
+                0,
+                0,
+                0,
+                4,
+                positions.as_ptr(),
+                positions.len(),
+            )
+        };
+
+        assert_eq!(nearest, 1);
     }
 }

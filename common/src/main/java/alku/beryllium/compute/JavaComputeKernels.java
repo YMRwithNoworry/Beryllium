@@ -142,6 +142,52 @@ public final class JavaComputeKernels {
         return nearestIndex;
     }
 
+    public static int findNearestPackedBlockCornerIndex(int originX, int originY, int originZ, long[] packedPositions) {
+        validatePackedBlockPositions(packedPositions);
+
+        int nearestIndex = -1;
+        double nearestDistance = Double.MAX_VALUE;
+        for (int index = 0; index < packedPositions.length; index++) {
+            double distance = packedBlockCornerDistanceAt(originX, originY, originZ, packedPositions[index]);
+            if (nearestIndex == -1 || distance < nearestDistance) {
+                nearestIndex = index;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearestIndex;
+    }
+
+    public static int findNearestPackedBlockCornerIndexWithinRadius(
+        int originX,
+        int originY,
+        int originZ,
+        long radiusSquared,
+        long[] packedPositions
+    ) {
+        validatePackedBlockPositions(packedPositions);
+        if (radiusSquared < 0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+
+        int nearestIndex = -1;
+        double nearestDistance = Double.MAX_VALUE;
+        for (int index = 0; index < packedPositions.length; index++) {
+            long packedPosition = packedPositions[index];
+            if (packedSquaredDistanceAt(originX, originY, originZ, packedPosition) > radiusSquared) {
+                continue;
+            }
+
+            double distance = packedBlockCornerDistanceAt(originX, originY, originZ, packedPosition);
+            if (nearestIndex == -1 || distance < nearestDistance) {
+                nearestIndex = index;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearestIndex;
+    }
+
     private static int findNearestIndex(
         double originX,
         double originY,
@@ -752,6 +798,12 @@ public final class JavaComputeKernels {
         }
     }
 
+    public static void validatePackedBlockPositions(long[] packedPositions) {
+        if (packedPositions == null) {
+            throw new IllegalArgumentException("packed block positions must not be null");
+        }
+    }
+
     public static void validateXzPositions(double[] positions) {
         if (positions == null || positions.length % 2 != 0) {
             throw new IllegalArgumentException("positions must contain x/z pairs");
@@ -796,6 +848,13 @@ public final class JavaComputeKernels {
         long dx = (long) positions[offset] - originX;
         long dy = (long) positions[offset + 1] - originY;
         long dz = (long) positions[offset + 2] - originZ;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static long packedSquaredDistanceAt(int originX, int originY, int originZ, long packedPosition) {
+        long dx = (long) BlockPosPacking.unpackX(packedPosition) - originX;
+        long dy = (long) BlockPosPacking.unpackY(packedPosition) - originY;
+        long dz = (long) BlockPosPacking.unpackZ(packedPosition) - originZ;
         return dx * dx + dy * dy + dz * dz;
     }
 
@@ -900,6 +959,13 @@ public final class JavaComputeKernels {
         double dx = (double) positions[offset] - originX;
         double dy = (double) positions[offset + 1] - originY;
         double dz = (double) positions[offset + 2] - originZ;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static double packedBlockCornerDistanceAt(int originX, int originY, int originZ, long packedPosition) {
+        double dx = (double) BlockPosPacking.unpackX(packedPosition) - originX;
+        double dy = (double) BlockPosPacking.unpackY(packedPosition) - originY;
+        double dz = (double) BlockPosPacking.unpackZ(packedPosition) - originZ;
         return dx * dx + dy * dy + dz * dz;
     }
 

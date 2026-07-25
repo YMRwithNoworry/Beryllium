@@ -419,6 +419,16 @@ final class FfmNativeBridge {
         ));
     }
 
+    static int findNearestPackedBlockCornerIndex(int originX, int originY, int originZ, long[] packedPositions) {
+        return withIndexSession(session -> session.invoke(
+            Function.FIND_NEAREST_PACKED_BLOCK_CORNER_INDEX,
+            originX,
+            originY,
+            originZ,
+            session.input(packedPositions, Kind.LONG)
+        ));
+    }
+
     static int findNearestBlockCornerIndexWithinRadius(
         int originX,
         int originY,
@@ -433,6 +443,23 @@ final class FfmNativeBridge {
             originZ,
             radiusSquared,
             session.input(positions, Kind.INT)
+        ));
+    }
+
+    static int findNearestPackedBlockCornerIndexWithinRadius(
+        int originX,
+        int originY,
+        int originZ,
+        long radiusSquared,
+        long[] packedPositions
+    ) {
+        return withIndexSession(session -> session.invoke(
+            Function.FIND_NEAREST_PACKED_BLOCK_CORNER_INDEX_WITHIN_RADIUS,
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            session.input(packedPositions, Kind.LONG)
         ));
     }
 
@@ -712,6 +739,8 @@ final class FfmNativeBridge {
         FIND_NEAREST_BLOCK_CENTER_INDEX_PREFIX("beryllium_find_nearest_block_center_index_prefix", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.INT),
         FIND_NEAREST_BLOCK_CORNER_INDEX("beryllium_find_nearest_block_corner_index", Kind.INT, Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG),
         FIND_NEAREST_BLOCK_CORNER_INDEX_WITHIN_RADIUS("beryllium_find_nearest_block_corner_index_within_radius", Kind.INT, Kind.INT, Kind.INT, Kind.LONG, Kind.ADDRESS, Kind.LONG),
+        FIND_NEAREST_PACKED_BLOCK_CORNER_INDEX("beryllium_find_nearest_packed_block_corner_index", Kind.INT, Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG),
+        FIND_NEAREST_PACKED_BLOCK_CORNER_INDEX_WITHIN_RADIUS("beryllium_find_nearest_packed_block_corner_index_within_radius", Kind.INT, Kind.INT, Kind.INT, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         FILTER_WITHIN_AABB_DOUBLE("beryllium_filter_within_aabb_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         FILTER_INTERSECTING_AABB_DOUBLE("beryllium_filter_intersecting_aabb_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         SORT_BY_DISTANCE("beryllium_sort_by_distance", Kind.INT, Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),

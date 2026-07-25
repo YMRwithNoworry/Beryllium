@@ -280,6 +280,26 @@ public final class NativeBridge {
         return nativeIndex;
     }
 
+    public static int findNearestPackedBlockCornerIndex(int originX, int originY, int originZ, long[] packedPositions) {
+        JavaComputeKernels.validatePackedBlockPositions(packedPositions);
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.findNearestPackedBlockCornerIndex(originX, originY, originZ, packedPositions);
+        }
+
+        int nativeIndex = findNearestPackedBlockCornerIndexNative(
+            originX,
+            originY,
+            originZ,
+            packedPositions
+        );
+        if (nativeIndex < -1 || nativeIndex >= packedPositions.length) {
+            return JavaComputeKernels.findNearestPackedBlockCornerIndex(originX, originY, originZ, packedPositions);
+        }
+
+        return nativeIndex;
+    }
+
     public static int findNearestBlockCornerIndexWithinRadius(int originX, int originY, int originZ, long radiusSquared, int[] positions) {
         JavaComputeKernels.validatePositions(positions);
         if (radiusSquared < 0) {
@@ -299,6 +319,48 @@ public final class NativeBridge {
         );
         if (nativeIndex < -1) {
             return JavaComputeKernels.findNearestBlockCornerIndexWithinRadius(originX, originY, originZ, radiusSquared, positions);
+        }
+
+        return nativeIndex;
+    }
+
+    public static int findNearestPackedBlockCornerIndexWithinRadius(
+        int originX,
+        int originY,
+        int originZ,
+        long radiusSquared,
+        long[] packedPositions
+    ) {
+        JavaComputeKernels.validatePackedBlockPositions(packedPositions);
+        if (radiusSquared < 0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.findNearestPackedBlockCornerIndexWithinRadius(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                packedPositions
+            );
+        }
+
+        int nativeIndex = findNearestPackedBlockCornerIndexWithinRadiusNative(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            packedPositions
+        );
+        if (nativeIndex < -1 || nativeIndex >= packedPositions.length) {
+            return JavaComputeKernels.findNearestPackedBlockCornerIndexWithinRadius(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                packedPositions
+            );
         }
 
         return nativeIndex;
@@ -1104,6 +1166,15 @@ public final class NativeBridge {
         return FfmNativeBridge.findNearestBlockCornerIndex(originX, originY, originZ, positions);
     }
 
+    private static int findNearestPackedBlockCornerIndexNative(
+        int originX,
+        int originY,
+        int originZ,
+        long[] packedPositions
+    ) {
+        return FfmNativeBridge.findNearestPackedBlockCornerIndex(originX, originY, originZ, packedPositions);
+    }
+
     private static int findNearestBlockCornerIndexWithinRadiusNative(
         int originX,
         int originY,
@@ -1112,6 +1183,22 @@ public final class NativeBridge {
         int[] positions
     ) {
         return FfmNativeBridge.findNearestBlockCornerIndexWithinRadius(originX, originY, originZ, radiusSquared, positions);
+    }
+
+    private static int findNearestPackedBlockCornerIndexWithinRadiusNative(
+        int originX,
+        int originY,
+        int originZ,
+        long radiusSquared,
+        long[] packedPositions
+    ) {
+        return FfmNativeBridge.findNearestPackedBlockCornerIndexWithinRadius(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            packedPositions
+        );
     }
 
     private static int filterWithinAabbDoubleNative(

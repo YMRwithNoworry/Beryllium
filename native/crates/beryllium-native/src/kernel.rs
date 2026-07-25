@@ -3,15 +3,16 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::sync::Mutex;
 
-use crate::NativeError;
 use crate::simd;
 use crate::simd::has_avx2;
 use crate::simd::{batch_4_aabb_intersections, batch_4_distances};
+use crate::NativeError;
 
 const PARALLEL_THRESHOLD: usize = 2048;
 const FILTER_PARALLEL_THRESHOLD: usize = 16_384;
 const CHUNK_SELECTION_PARALLEL_THRESHOLD: usize = 32768;
 const NEAREST_SELECTION_PARALLEL_THRESHOLD: usize = 1_048_576;
+const BLOCK_NEAREST_PARALLEL_THRESHOLD: usize = 65_536;
 const NEAREST_SELECTION_INITIAL_CAPACITY: usize = 64;
 
 /// Computes squared Euclidean distances from one origin to packed x/y/z triples.
@@ -176,7 +177,12 @@ pub fn potential_energy_change(
 
     if has_avx2() && charge_count >= 4 {
         return potential_energy_change_simd(
-            origin_x, origin_y, origin_z, positions, charges, charge_multiplier,
+            origin_x,
+            origin_y,
+            origin_z,
+            positions,
+            charges,
+            charge_multiplier,
         );
     }
 
@@ -227,7 +233,10 @@ static POTENTIAL_CACHE: Mutex<Option<(Vec<i32>, Vec<f64>)>> = Mutex::new(None);
 /// Caches one packed positions + charges snapshot.
 /// Subsequent `compute_cached_potential_energy_change` calls only transmit the
 /// origin coordinates.
-pub fn set_cached_potential_charges(positions: Vec<i32>, charges: Vec<f64>) -> Result<(), NativeError> {
+pub fn set_cached_potential_charges(
+    positions: Vec<i32>,
+    charges: Vec<f64>,
+) -> Result<(), NativeError> {
     if charge_multiplier_preconditions(&positions, &charges).is_err() {
         return Err(NativeError::InvalidInput);
     }
@@ -248,7 +257,14 @@ pub fn compute_cached_potential_energy_change(
     }
     let cache = POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
     let (positions, charges) = cache.as_ref().ok_or(NativeError::InvalidInput)?;
-    potential_energy_change(origin_x, origin_y, origin_z, positions, charges, charge_multiplier)
+    potential_energy_change(
+        origin_x,
+        origin_y,
+        origin_z,
+        positions,
+        charges,
+        charge_multiplier,
+    )
 }
 
 /// Clears the cached charges so the next compute call falls through to an error.
@@ -331,7 +347,14 @@ pub fn has_any_within_radius_f64_exclusive(
         let mut buf = [0.0_f64; 4];
         for chunk in 0..simd_chunks {
             unsafe {
-                batch_4_distances(origin_x, origin_y, origin_z, positions, chunk * 12, &mut buf);
+                batch_4_distances(
+                    origin_x,
+                    origin_y,
+                    origin_z,
+                    positions,
+                    chunk * 12,
+                    &mut buf,
+                );
             }
             for d in buf {
                 if d < max_distance_squared {
@@ -371,7 +394,7 @@ pub fn find_nearest_block_center_index(
         return Ok(None);
     }
 
-    if position_count >= PARALLEL_THRESHOLD {
+    if position_count >= BLOCK_NEAREST_PARALLEL_THRESHOLD {
         return Ok((0..position_count)
             .into_par_iter()
             .filter_map(|index| {
@@ -421,7 +444,7 @@ pub fn find_nearest_block_corner_index(
         return Ok(None);
     }
 
-    if position_count >= PARALLEL_THRESHOLD {
+    if position_count >= BLOCK_NEAREST_PARALLEL_THRESHOLD {
         return Ok((0..position_count)
             .into_par_iter()
             .map(|index| {
@@ -468,7 +491,7 @@ pub fn find_nearest_block_corner_index_within_radius(
         return Ok(None);
     }
 
-    if position_count >= PARALLEL_THRESHOLD {
+    if position_count >= BLOCK_NEAREST_PARALLEL_THRESHOLD {
         return Ok((0..position_count)
             .into_par_iter()
             .filter_map(|index| {
@@ -495,6 +518,110 @@ pub fn find_nearest_block_corner_index_within_radius(
         }
 
         let distance = block_corner_distance_at(origin_x, origin_y, origin_z, positions, index);
+        if nearest_index.is_none() || distance < nearest_distance {
+            nearest_index = Some(index);
+            nearest_distance = distance;
+        }
+    }
+
+    Ok(nearest_index)
+}
+
+/// Finds the nearest compact Minecraft BlockPos by squared distance to its block low corner.
+pub fn find_nearest_packed_block_corner_index(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    packed_positions: &[i64],
+) -> Result<Option<usize>, NativeError> {
+    if packed_positions.is_empty() {
+        return Ok(None);
+    }
+
+    if packed_positions.len() >= BLOCK_NEAREST_PARALLEL_THRESHOLD {
+        return Ok((0..packed_positions.len())
+            .into_par_iter()
+            .map(|index| {
+                (
+                    index,
+                    packed_block_corner_distance_at(
+                        origin_x,
+                        origin_y,
+                        origin_z,
+                        packed_positions[index],
+                    ),
+                )
+            })
+            .reduce_with(nearest_distance_pair)
+            .map(|(index, _)| index));
+    }
+
+    let mut nearest_index = None;
+    let mut nearest_distance = f64::MAX;
+    for (index, packed_position) in packed_positions.iter().copied().enumerate() {
+        let distance =
+            packed_block_corner_distance_at(origin_x, origin_y, origin_z, packed_position);
+        if nearest_index.is_none() || distance < nearest_distance {
+            nearest_index = Some(index);
+            nearest_distance = distance;
+        }
+    }
+
+    Ok(nearest_index)
+}
+
+/// Finds the nearest compact Minecraft BlockPos within an inclusive squared radius.
+pub fn find_nearest_packed_block_corner_index_within_radius(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    radius_squared: i64,
+    packed_positions: &[i64],
+) -> Result<Option<usize>, NativeError> {
+    if radius_squared < 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    if packed_positions.is_empty() {
+        return Ok(None);
+    }
+
+    if packed_positions.len() >= BLOCK_NEAREST_PARALLEL_THRESHOLD {
+        return Ok((0..packed_positions.len())
+            .into_par_iter()
+            .filter_map(|index| {
+                let packed_position = packed_positions[index];
+                if packed_squared_distance_at(origin_x, origin_y, origin_z, packed_position)
+                    > radius_squared
+                {
+                    None
+                } else {
+                    Some((
+                        index,
+                        packed_block_corner_distance_at(
+                            origin_x,
+                            origin_y,
+                            origin_z,
+                            packed_position,
+                        ),
+                    ))
+                }
+            })
+            .reduce_with(nearest_distance_pair)
+            .map(|(index, _)| index));
+    }
+
+    let mut nearest_index = None;
+    let mut nearest_distance = f64::MAX;
+    for (index, packed_position) in packed_positions.iter().copied().enumerate() {
+        if packed_squared_distance_at(origin_x, origin_y, origin_z, packed_position)
+            > radius_squared
+        {
+            continue;
+        }
+
+        let distance =
+            packed_block_corner_distance_at(origin_x, origin_y, origin_z, packed_position);
         if nearest_index.is_none() || distance < nearest_distance {
             nearest_index = Some(index);
             nearest_distance = distance;
@@ -601,7 +728,14 @@ pub fn filter_within_radius_f64(
         for chunk in 0..simd_chunks {
             let base = chunk * 4;
             unsafe {
-                batch_4_distances(origin_x, origin_y, origin_z, positions, chunk * 12, &mut buf);
+                batch_4_distances(
+                    origin_x,
+                    origin_y,
+                    origin_z,
+                    positions,
+                    chunk * 12,
+                    &mut buf,
+                );
             }
             for (i, distance) in buf.iter().enumerate() {
                 if *distance <= radius_squared {
@@ -611,7 +745,8 @@ pub fn filter_within_radius_f64(
             }
         }
         for index in (simd_chunks * 4)..position_count {
-            if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index) <= radius_squared
+            if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index)
+                <= radius_squared
             {
                 output[count] = index as i32;
                 count += 1;
@@ -680,7 +815,14 @@ pub fn filter_within_radius_f64_exclusive(
         for chunk in 0..simd_chunks {
             let base = chunk * 4;
             unsafe {
-                batch_4_distances(origin_x, origin_y, origin_z, positions, chunk * 12, &mut buf);
+                batch_4_distances(
+                    origin_x,
+                    origin_y,
+                    origin_z,
+                    positions,
+                    chunk * 12,
+                    &mut buf,
+                );
             }
             for (i, distance) in buf.iter().enumerate() {
                 if *distance < radius_squared {
@@ -690,7 +832,8 @@ pub fn filter_within_radius_f64_exclusive(
             }
         }
         for index in (simd_chunks * 4)..position_count {
-            if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index) < radius_squared
+            if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index)
+                < radius_squared
             {
                 output[count] = index as i32;
                 count += 1;
@@ -894,11 +1037,7 @@ pub fn filter_within_radii_f64(
                 }
             }
         }
-        for (index, radius_squared) in radii_squared
-            .iter()
-            .enumerate()
-            .skip(simd_chunks * 4)
-        {
+        for (index, radius_squared) in radii_squared.iter().enumerate().skip(simd_chunks * 4) {
             if squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index)
                 <= *radius_squared
             {
@@ -1307,9 +1446,8 @@ pub fn sort_by_distance_f64(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    let mut indexed_distances: Vec<(i32, f64)> = build_simd_pairs(
-        origin_x, origin_y, origin_z, positions,
-    );
+    let mut indexed_distances: Vec<(i32, f64)> =
+        build_simd_pairs(origin_x, origin_y, origin_z, positions);
 
     if indexed_distances.len() >= PARALLEL_THRESHOLD {
         indexed_distances.par_sort_unstable_by(|left, right| {
@@ -1347,7 +1485,14 @@ fn build_simd_pairs(
         let base = chunk * 4;
         if has_simd {
             unsafe {
-                batch_4_distances(origin_x, origin_y, origin_z, positions, chunk * 12, &mut buf);
+                batch_4_distances(
+                    origin_x,
+                    origin_y,
+                    origin_z,
+                    positions,
+                    chunk * 12,
+                    &mut buf,
+                );
             }
         } else {
             for i in 0..4 {
@@ -1384,9 +1529,8 @@ pub fn sort_by_distance_and_count_within_radius_f64_exclusive(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    let mut indexed_distances: Vec<(i32, f64)> = build_simd_pairs(
-        origin_x, origin_y, origin_z, positions,
-    );
+    let mut indexed_distances: Vec<(i32, f64)> =
+        build_simd_pairs(origin_x, origin_y, origin_z, positions);
 
     if indexed_distances.len() >= PARALLEL_THRESHOLD {
         indexed_distances.par_sort_unstable_by(|left, right| {
@@ -1662,6 +1806,46 @@ fn block_corner_distance_at(
     dx * dx + dy * dy + dz * dz
 }
 
+fn packed_squared_distance_at(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    packed_position: i64,
+) -> i64 {
+    let (x, y, z) = unpack_packed_block_pos(packed_position);
+    let dx = i64::from(x) - i64::from(origin_x);
+    let dy = i64::from(y) - i64::from(origin_y);
+    let dz = i64::from(z) - i64::from(origin_z);
+    squared_distance_components(dx, dy, dz)
+}
+
+fn packed_block_corner_distance_at(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    packed_position: i64,
+) -> f64 {
+    let (x, y, z) = unpack_packed_block_pos(packed_position);
+    let dx = f64::from(x) - f64::from(origin_x);
+    let dy = f64::from(y) - f64::from(origin_y);
+    let dz = f64::from(z) - f64::from(origin_z);
+    dx * dx + dy * dy + dz * dz
+}
+
+fn unpack_packed_block_pos(packed_position: i64) -> (i32, i32, i32) {
+    let bits = packed_position as u64;
+    (
+        sign_extend_packed_block_component(bits >> 38, 26),
+        sign_extend_packed_block_component(bits, 12),
+        sign_extend_packed_block_component(bits >> 12, 26),
+    )
+}
+
+fn sign_extend_packed_block_component(value: u64, bit_length: u32) -> i32 {
+    let shift = 64 - bit_length;
+    ((value << shift) as i64 >> shift) as i32
+}
+
 fn contains_aabb_position(
     min_x: f64,
     min_y: f64,
@@ -1895,6 +2079,12 @@ mod tests {
         i64::from(x as u32) | (i64::from(z as u32) << 32)
     }
 
+    fn pack_block_pos(x: i32, y: i32, z: i32) -> i64 {
+        ((i64::from(x) & 0x3ff_ffff) << 38)
+            | ((i64::from(z) & 0x3ff_ffff) << 12)
+            | (i64::from(y) & 0xfff)
+    }
+
     #[test]
     fn compute_squared_distances_should_reject_unpacked_positions() {
         let positions = [1, 2];
@@ -2092,10 +2282,12 @@ mod tests {
 
     #[test]
     fn find_nearest_block_center_index_should_match_parallel_reference_index() {
-        let positions: Vec<i32> = (0..5000).flat_map(|index| [0, 4999 - index, 0]).collect();
+        let positions: Vec<i32> = (0..BLOCK_NEAREST_PARALLEL_THRESHOLD)
+            .flat_map(|index| [0, (BLOCK_NEAREST_PARALLEL_THRESHOLD - 1 - index) as i32, 0])
+            .collect();
 
         let nearest = find_nearest_block_center_index(0.5, 0.5, 0.5, &positions).unwrap();
-        assert_eq!(nearest, Some(4999));
+        assert_eq!(nearest, Some(BLOCK_NEAREST_PARALLEL_THRESHOLD - 1));
     }
 
     #[test]
@@ -2114,12 +2306,12 @@ mod tests {
 
     #[test]
     fn find_nearest_block_corner_index_should_match_parallel_reference_index() {
-        let positions: Vec<i32> = (0..5000)
-            .flat_map(|index| [(4999 - index) as i32, 0, 0])
+        let positions: Vec<i32> = (0..BLOCK_NEAREST_PARALLEL_THRESHOLD)
+            .flat_map(|index| [(BLOCK_NEAREST_PARALLEL_THRESHOLD - 1 - index) as i32, 0, 0])
             .collect();
 
         let nearest = find_nearest_block_corner_index(0, 0, 0, &positions).unwrap();
-        assert_eq!(nearest, Some(4999));
+        assert_eq!(nearest, Some(BLOCK_NEAREST_PARALLEL_THRESHOLD - 1));
     }
 
     #[test]
@@ -2148,13 +2340,60 @@ mod tests {
 
     #[test]
     fn find_nearest_block_corner_index_within_radius_should_match_parallel_reference_index() {
-        let positions: Vec<i32> = (0..5000)
-            .flat_map(|index| [(4999 - index) as i32, 0, 0])
+        let positions: Vec<i32> = (0..BLOCK_NEAREST_PARALLEL_THRESHOLD)
+            .flat_map(|index| [(BLOCK_NEAREST_PARALLEL_THRESHOLD - 1 - index) as i32, 0, 0])
             .collect();
 
         let nearest =
             find_nearest_block_corner_index_within_radius(0, 0, 0, 1024, &positions).unwrap();
-        assert_eq!(nearest, Some(4999));
+        assert_eq!(nearest, Some(BLOCK_NEAREST_PARALLEL_THRESHOLD - 1));
+    }
+
+    #[test]
+    fn find_nearest_packed_block_corner_index_should_decode_block_pos_coordinates() {
+        let positions = [
+            pack_block_pos(-33_554_432, -2_048, 33_554_431),
+            pack_block_pos(-33_554_431, -2_048, 33_554_431),
+            pack_block_pos(0, 0, 0),
+        ];
+
+        let nearest =
+            find_nearest_packed_block_corner_index(-33_554_432, -2_048, 33_554_431, &positions)
+                .unwrap();
+        assert_eq!(nearest, Some(0));
+    }
+
+    #[test]
+    fn find_nearest_packed_block_corner_index_should_preserve_tie_order() {
+        let positions = [
+            pack_block_pos(1, 0, 0),
+            pack_block_pos(-1, 0, 0),
+            pack_block_pos(0, 2, 0),
+        ];
+
+        let nearest = find_nearest_packed_block_corner_index(0, 0, 0, &positions).unwrap();
+        assert_eq!(nearest, Some(0));
+    }
+
+    #[test]
+    fn find_nearest_packed_block_corner_index_within_radius_should_include_boundary() {
+        let positions = [pack_block_pos(3, 0, 0), pack_block_pos(2, 0, 0)];
+
+        let nearest =
+            find_nearest_packed_block_corner_index_within_radius(0, 0, 0, 4, &positions).unwrap();
+        assert_eq!(nearest, Some(1));
+    }
+
+    #[test]
+    fn find_nearest_packed_block_corner_index_should_match_parallel_reference_index() {
+        let positions: Vec<i64> = (0..BLOCK_NEAREST_PARALLEL_THRESHOLD)
+            .map(|index| {
+                pack_block_pos((BLOCK_NEAREST_PARALLEL_THRESHOLD - 1 - index) as i32, 0, 0)
+            })
+            .collect();
+
+        let nearest = find_nearest_packed_block_corner_index(0, 0, 0, &positions).unwrap();
+        assert_eq!(nearest, Some(BLOCK_NEAREST_PARALLEL_THRESHOLD - 1));
     }
 
     #[test]
@@ -2170,13 +2409,11 @@ mod tests {
     #[test]
     fn filter_within_radius_f64_should_preserve_order_across_simd_tail() {
         let positions = [
-            1.0, 0.0, 0.0, 3.0, 0.0, 0.0, -2.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 1.0,
-            0.0,
+            1.0, 0.0, 0.0, 3.0, 0.0, 0.0, -2.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 1.0, 0.0,
         ];
         let mut output = [-1; 5];
 
-        let count = filter_within_radius_f64(0.0, 0.0, 0.0, 4.0, &positions, &mut output)
-            .unwrap();
+        let count = filter_within_radius_f64(0.0, 0.0, 0.0, 4.0, &positions, &mut output).unwrap();
 
         assert_eq!(count, 3);
         assert_eq!(&output[..count], &[0, 2, 4]);
@@ -2209,14 +2446,12 @@ mod tests {
     #[test]
     fn filter_within_radius_f64_exclusive_should_preserve_boundary_and_simd_tail() {
         let positions = [
-            1.0, 0.0, 0.0, 2.0, 0.0, 0.0, -1.5, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 2.0,
-            0.0,
+            1.0, 0.0, 0.0, 2.0, 0.0, 0.0, -1.5, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 2.0, 0.0,
         ];
         let mut output = [-1; 5];
 
-        let count =
-            filter_within_radius_f64_exclusive(0.0, 0.0, 0.0, 4.0, &positions, &mut output)
-                .unwrap();
+        let count = filter_within_radius_f64_exclusive(0.0, 0.0, 0.0, 4.0, &positions, &mut output)
+            .unwrap();
 
         assert_eq!(count, 2);
         assert_eq!(&output[..count], &[0, 2]);
@@ -2281,21 +2516,13 @@ mod tests {
     #[test]
     fn filter_within_radii_f64_should_preserve_order_across_simd_tail() {
         let positions = [
-            1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, -2.0,
-            0.0, 0.0,
+            1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, -2.0, 0.0, 0.0,
         ];
         let radii_squared = [1.0, 4.0, 4.0, 0.0, 4.0];
         let mut output = [-1; 5];
 
-        let count = filter_within_radii_f64(
-            0.0,
-            0.0,
-            0.0,
-            &positions,
-            &radii_squared,
-            &mut output,
-        )
-        .unwrap();
+        let count = filter_within_radii_f64(0.0, 0.0, 0.0, &positions, &radii_squared, &mut output)
+            .unwrap();
 
         assert_eq!(count, 4);
         assert_eq!(&output[..count], &[0, 1, 3, 4]);
@@ -2380,25 +2607,13 @@ mod tests {
     #[test]
     fn filter_intersecting_aabb_f64_should_preserve_order_across_simd_tail() {
         let boxes = [
-            0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
-            0.5, 0.0, 0.0, 1.5, 1.0, 1.0,
-            1.0, 0.0, 0.0, 2.0, 1.0, 1.0,
-            0.0, 2.0, 0.0, 1.0, 3.0, 1.0,
-            -0.5, -0.5, -0.5, 0.5, 0.5, 0.5,
+            0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.5, 0.0, 0.0, 1.5, 1.0, 1.0, 1.0, 0.0, 0.0, 2.0, 1.0,
+            1.0, 0.0, 2.0, 0.0, 1.0, 3.0, 1.0, -0.5, -0.5, -0.5, 0.5, 0.5, 0.5,
         ];
         let mut output = [-1; 5];
 
-        let count = filter_intersecting_aabb_f64(
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            1.0,
-            1.0,
-            &boxes,
-            &mut output,
-        )
-        .unwrap();
+        let count = filter_intersecting_aabb_f64(0.0, 0.0, 0.0, 1.0, 1.0, 1.0, &boxes, &mut output)
+            .unwrap();
 
         assert_eq!(count, 3);
         assert_eq!(&output[..count], &[0, 1, 4]);

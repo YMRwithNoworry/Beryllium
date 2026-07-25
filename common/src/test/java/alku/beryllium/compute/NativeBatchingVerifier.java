@@ -10,12 +10,18 @@ public final class NativeBatchingVerifier {
         if (NativeBatching.entityBatchThreshold() != 32) {
             throw new AssertionError("Native entity batch threshold mismatch, expected 32 but got " + NativeBatching.entityBatchThreshold());
         }
+        if (NativeBatching.blockDistanceBatchThreshold() != Integer.MAX_VALUE) {
+            throw new AssertionError(
+                "Native block distance batch threshold mismatch, expected disabled default but got "
+                    + NativeBatching.blockDistanceBatchThreshold()
+            );
+        }
         if (NativeBatching.potentialBatchThreshold() != 512) {
             throw new AssertionError("Native potential batch threshold mismatch, expected 512 but got " + NativeBatching.potentialBatchThreshold());
         }
-        if (NativeBatching.chunkSendSelectionThreshold() != 4096) {
+        if (NativeBatching.chunkSendSelectionThreshold() != 512) {
             throw new AssertionError(
-                "Native chunk send selection threshold mismatch, expected 4096 but got "
+                "Native chunk send selection threshold mismatch, expected 512 but got "
                     + NativeBatching.chunkSendSelectionThreshold()
             );
         }
@@ -46,13 +52,16 @@ public final class NativeBatchingVerifier {
         if (NativeBatching.shouldUseNativePotentialBatch(511)) {
             throw new AssertionError("Native potential batch should not activate below its threshold");
         }
+        if (NativeBatching.shouldUseNativeBlockDistanceBatch(65_536)) {
+            throw new AssertionError("Native block distance batch should remain disabled by default");
+        }
         if (NativeBatching.shouldUseNativePotentialBatch(512) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native potential batch activation should follow native availability at its threshold");
         }
-        if (NativeBatching.shouldUseNativeChunkSendSelection(4095)) {
-            throw new AssertionError("Native chunk send selection should not activate below its threshold");
+        if (NativeBatching.shouldUseNativeChunkSendSelection(511)) {
+            throw new AssertionError("Native chunk send selection should remain disabled below its threshold");
         }
-        if (NativeBatching.shouldUseNativeChunkSendSelection(4096) != NativeBridge.isLoaded()) {
+        if (NativeBatching.shouldUseNativeChunkSendSelection(512) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native chunk send selection activation should follow native availability at its threshold");
         }
         if (NativeBatching.shouldUseNativeNearestItemTopK(1023)) {

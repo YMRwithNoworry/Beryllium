@@ -111,7 +111,8 @@ cargo build --manifest-path native/Cargo.toml --release
 ## Native 调优参数
 
 - `-Dberyllium.native.entityBatchThreshold=<正整数>`：控制实体批处理跨 FFM 的最小候选数，默认 `32`。数值越低越激进，数值越高越保守。`/beryllium native` 会显示当前阈值。
-- `-Dberyllium.native.potentialBatchThreshold=<正整数>`：控制 PotentialCalculator 点电荷计算跨 FFM 的最小点电荷数，默认 `32`。低于阈值时直接按原版顺序在 Java 中计算，避免小批量数组编组开销；`/beryllium native` 会显示当前阈值。
-- `-Dberyllium.native.chunkSendSelectionThreshold=<正整数>`：控制 PlayerChunkSender 最近 Top-K 跨 FFM 的最小待发送区块数，默认 `4096`。低于阈值或 native 不可用时保留原版 Guava 路径；`/beryllium native` 会显示当前阈值。
+- `-Dberyllium.native.blockDistanceBatchThreshold=<正整数>`：控制方块距离搜索、排序和支撑方块查询跨 FFM 的最小候选数。默认禁用（`2147483647`），因为紧凑 `BlockPos` FFM 路径尚未表现出稳定的端到端收益；仅应在目标服务器实测后显式调低。`/beryllium native` 会显示当前阈值。
+- `-Dberyllium.native.potentialBatchThreshold=<正整数>`：控制 PotentialCalculator 点电荷计算跨 FFM 的最小点电荷数，默认 `512`。低于阈值时直接按原版顺序在 Java 中计算，避免小批量数组编组开销；`/beryllium native` 会显示当前阈值。
+- `-Dberyllium.native.chunkSendSelectionThreshold=<正整数>`：控制 PlayerChunkSender 最近 Top-K 跨 FFM 的最小待发送区块数，默认 `512`。低于阈值或 native 不可用时保留原版 Guava 路径；`/beryllium native` 会显示当前阈值。
 - `-Dberyllium.native.nearestItemTopKThreshold=<正整数>`：控制最近物品传感器先走 Rust Top-K 快路径的最小候选数，默认 `1024`。快路径仅检查按原版距离/等距规则排列的最近 `16` 个严格半径内候选；未命中时继续完整排序，避免改变谓词与结果语义。
-- Rust Rayon 并行内核通常从 `4096` 个坐标/包围盒/charge 开始使用；最近物品 Top-K 从 `1048576` 个候选开始并行，PlayerChunkSender 的轻量距离预计算从 `32768` 个候选开始并行，避免调度开销抵消收益。
+- Rust Rayon 通用批处理内核从 `2048` 个候选开始并行，半径与 AABB 筛选从 `16384` 个候选开始，最近方块查询从 `65536` 个候选开始；最近物品 Top-K 从 `1048576` 个候选开始，PlayerChunkSender 的轻量距离预计算从 `32768` 个候选开始，避免调度开销抵消收益。

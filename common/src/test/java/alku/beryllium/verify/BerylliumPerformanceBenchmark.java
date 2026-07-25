@@ -2,6 +2,7 @@ package alku.beryllium.verify;
 
 import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
+import alku.beryllium.compute.BlockDistanceSearch;
 import alku.beryllium.compute.JavaComputeKernels;
 import alku.beryllium.compute.EntityDistanceSort;
 import alku.beryllium.compute.EntityPacking;
@@ -9,6 +10,7 @@ import alku.beryllium.compute.ChunkDistanceSearch;
 import com.google.common.collect.Comparators;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,6 +29,7 @@ import java.util.function.LongSupplier;
  */
 public final class BerylliumPerformanceBenchmark {
     private static final int[] CANDIDATE_COUNTS = {256, 1024, 4096, 8192, 16384};
+    private static final int[] BLOCK_DISTANCE_CANDIDATE_COUNTS = {256, 1024, 4096, 8192, 16384, 65_536};
     private static final int[] CHUNK_PLAYER_COUNTS = {32, 128, 512, 2048, 4096, 8192};
     private static final int[] CHUNK_SEND_CANDIDATE_COUNTS = {128, 512, 2048, 4096, 8192};
     private static final int[] CHUNK_SEND_LIMITS = {9, 64};
@@ -79,6 +82,7 @@ public final class BerylliumPerformanceBenchmark {
         }
 
         benchmarkPotentialEnergy();
+        benchmarkBlockDistanceSearch();
         benchmarkChunkDistance();
         benchmarkChunkSendSelection();
         benchmarkNativeFilters();
@@ -166,6 +170,61 @@ public final class BerylliumPerformanceBenchmark {
         long median = samples[samples.length / 2];
         System.out.printf(Locale.ROOT, "sample=%s median_ns=%d%n", name, median);
         return median;
+    }
+
+    private static void benchmarkBlockDistanceSearch() {
+        int radius = 2048;
+        System.out.printf(Locale.ROOT, "benchmark=block-distance-search radius=%d%n", radius);
+        for (int candidateCount : BLOCK_DISTANCE_CANDIDATE_COUNTS) {
+            List<BlockPos> positions = createBlockPositions(candidateCount);
+            long vanillaMedian = measureLong(
+                "vanilla_block_nearest",
+                () -> blockPositionKey(vanillaNearestBlock(positions, BlockPos.ZERO, radius))
+            );
+            long berylliumMedian = measureLong(
+                "beryllium_block_nearest",
+                () -> blockPositionKey(
+                    BlockDistanceSearch.findNearestByDistanceWithinInclusiveRadius(
+                        positions,
+                        BlockPos.ZERO,
+                        radius,
+                        position -> position
+                    )
+                )
+            );
+            long packedJavaMedian = measureLong(
+                "packed_java_block_nearest",
+                () -> packedBlockNearestJava(positions, BlockPos.ZERO, radius)
+            );
+            long packedNativeMedian = measureLong(
+                "packed_native_block_nearest",
+                () -> packedBlockNearestNative(positions, BlockPos.ZERO, radius)
+            );
+            long compactJavaMedian = measureLong(
+                "compact_java_block_nearest",
+                () -> compactBlockNearestJava(positions, BlockPos.ZERO, radius)
+            );
+            long compactNativeMedian = measureLong(
+                "compact_native_block_nearest",
+                () -> compactBlockNearestNative(positions, BlockPos.ZERO, radius)
+            );
+            System.out.printf(
+                Locale.ROOT,
+                "block_result=candidates:%d vanilla_java_median_ns:%d beryllium_median_ns:%d packed_java_median_ns:%d "
+                    + "packed_native_median_ns:%d compact_java_median_ns:%d compact_native_median_ns:%d "
+                    + "beryllium_speedup:%.2fx packed_native_speedup:%.2fx compact_native_speedup:%.2fx%n",
+                candidateCount,
+                vanillaMedian,
+                berylliumMedian,
+                packedJavaMedian,
+                packedNativeMedian,
+                compactJavaMedian,
+                compactNativeMedian,
+                speedup(vanillaMedian, berylliumMedian),
+                speedup(vanillaMedian, packedNativeMedian),
+                speedup(vanillaMedian, compactNativeMedian)
+            );
+        }
     }
 
     private static void benchmarkChunkDistance() {
@@ -524,6 +583,18 @@ public final class BerylliumPerformanceBenchmark {
         return players;
     }
 
+    private static List<BlockPos> createBlockPositions(int count) {
+        List<BlockPos> positions = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            positions.add(new BlockPos(
+                (index * 37 % 3072) - 1536,
+                (index * 53 % 384) - 192,
+                (index * 97 % 3072) - 1536
+            ));
+        }
+        return positions;
+    }
+
     private static double[] createFilterPositions(int count) {
         double[] positions = new double[count * 3];
         for (int index = 0; index < count; index++) {
@@ -649,6 +720,96 @@ public final class BerylliumPerformanceBenchmark {
         double dy = point.y - originY;
         double dz = point.z - originZ;
         return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static BlockPos vanillaNearestBlock(List<BlockPos> positions, BlockPos origin, int radius) {
+        double radiusSquared = (double) radius * radius;
+        BlockPos nearest = null;
+        double nearestDistance = 0.0;
+        for (BlockPos position : positions) {
+            double dx = (double) position.getX() - origin.getX();
+            double dy = (double) position.getY() - origin.getY();
+            double dz = (double) position.getZ() - origin.getZ();
+            double distance = dx * dx + dy * dy + dz * dz;
+            if (distance > radiusSquared || (nearest != null && distance >= nearestDistance)) {
+                continue;
+            }
+            nearest = position;
+            nearestDistance = distance;
+        }
+        return nearest;
+    }
+
+    private static long packedBlockNearestJava(List<BlockPos> positions, BlockPos origin, int radius) {
+        int[] packedPositions = packBlockPositions(positions);
+        int index = JavaComputeKernels.findNearestBlockCornerIndexWithinRadius(
+            origin.getX(),
+            origin.getY(),
+            origin.getZ(),
+            (long) radius * radius,
+            packedPositions
+        );
+        return index < 0 ? Long.MIN_VALUE : positions.get(index).asLong();
+    }
+
+    private static long packedBlockNearestNative(List<BlockPos> positions, BlockPos origin, int radius) {
+        int[] packedPositions = packBlockPositions(positions);
+        int index = NativeBridge.findNearestBlockCornerIndexWithinRadius(
+            origin.getX(),
+            origin.getY(),
+            origin.getZ(),
+            (long) radius * radius,
+            packedPositions
+        );
+        return index < 0 ? Long.MIN_VALUE : positions.get(index).asLong();
+    }
+
+    private static long compactBlockNearestJava(List<BlockPos> positions, BlockPos origin, int radius) {
+        long[] packedPositions = packCompactBlockPositions(positions);
+        int index = JavaComputeKernels.findNearestPackedBlockCornerIndexWithinRadius(
+            origin.getX(),
+            origin.getY(),
+            origin.getZ(),
+            (long) radius * radius,
+            packedPositions
+        );
+        return index < 0 ? Long.MIN_VALUE : positions.get(index).asLong();
+    }
+
+    private static long compactBlockNearestNative(List<BlockPos> positions, BlockPos origin, int radius) {
+        long[] packedPositions = packCompactBlockPositions(positions);
+        int index = NativeBridge.findNearestPackedBlockCornerIndexWithinRadius(
+            origin.getX(),
+            origin.getY(),
+            origin.getZ(),
+            (long) radius * radius,
+            packedPositions
+        );
+        return index < 0 ? Long.MIN_VALUE : positions.get(index).asLong();
+    }
+
+    private static int[] packBlockPositions(List<BlockPos> positions) {
+        int[] packedPositions = new int[positions.size() * 3];
+        for (int index = 0; index < positions.size(); index++) {
+            BlockPos position = positions.get(index);
+            int offset = index * 3;
+            packedPositions[offset] = position.getX();
+            packedPositions[offset + 1] = position.getY();
+            packedPositions[offset + 2] = position.getZ();
+        }
+        return packedPositions;
+    }
+
+    private static long[] packCompactBlockPositions(List<BlockPos> positions) {
+        long[] packedPositions = new long[positions.size()];
+        for (int index = 0; index < positions.size(); index++) {
+            packedPositions[index] = positions.get(index).asLong();
+        }
+        return packedPositions;
+    }
+
+    private static long blockPositionKey(BlockPos position) {
+        return position == null ? Long.MIN_VALUE : position.asLong();
     }
 
     private static double squaredPackedDistance(double[] positions, int index) {

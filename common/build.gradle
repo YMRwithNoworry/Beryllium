@@ -31,6 +31,9 @@ tasks.register('copyNativeLibrary', Copy) {
 
 sourceSets.main.resources.srcDir nativeGeneratedResources
 processResources.dependsOn tasks.named('copyNativeLibrary')
+tasks.withType(Jar).configureEach {
+    dependsOn tasks.named('copyNativeLibrary')
+}
 
 dependencies {
     // We depend on Fabric Loader here to use the Fabric @Environment annotations,

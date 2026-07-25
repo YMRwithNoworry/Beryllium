@@ -17,6 +17,7 @@ import alku.beryllium.compute.PotentialEnergyBatchVerifier;
 import alku.beryllium.compute.PrioritizedEntitySearchVerifier;
 import alku.beryllium.compute.SupportingBlockSearchVerifier;
 import alku.beryllium.compute.TargetingConditionsBatchVerifier;
+import net.minecraft.core.BlockPos;
 
 import java.util.Arrays;
 
@@ -44,6 +45,7 @@ public final class BerylliumNativeRuntimeVerifier {
         verifyNativeAnyWithinRadiusExclusive();
         verifyNativeNearestBlockCenterIndex();
         verifyNativeNearestBlockCornerIndex();
+        verifyNativeNearestPackedBlockCornerIndex();
         verifyNativeRadiusFilters();
         verifyNativeAabbFilter();
         verifyNativeAabbIntersectionFilter();
@@ -102,6 +104,8 @@ public final class BerylliumNativeRuntimeVerifier {
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
         BlockDistanceSearchVerifier.verifyFindNearestByBlockDistance();
         BlockDistanceSearchVerifier.verifyFindNearestByBlockDistanceTieOrder();
+        BlockDistanceSearchVerifier.verifyFindNearestByBlockDistanceHandlesLargeLists();
+        BlockDistanceSearchVerifier.verifyFindNearestByBlockDistancePreservesLossyBlockPosCoordinates();
         BlockDistanceSearchVerifier.verifyFindNearestPositionByBlockDistancePreservesPredicateOrder();
         BlockDistanceSearchVerifier.verifyFindNearestPositionByBlockDistanceTieOrder();
         BlockDistanceSearchVerifier.verifyFindNearestWithinInclusiveBlockDistanceFiltersBeforePostPredicate();
@@ -208,6 +212,24 @@ public final class BerylliumNativeRuntimeVerifier {
             0, 2, 0
         });
         assertEquals(0, nearest, "native nearest block corner tie order");
+    }
+
+    private static void verifyNativeNearestPackedBlockCornerIndex() {
+        int nearest = NativeBridge.findNearestPackedBlockCornerIndex(0, 0, 0, new long[] {
+            new BlockPos(1, 0, 0).asLong(),
+            new BlockPos(-1, 0, 0).asLong(),
+            new BlockPos(0, 2, 0).asLong()
+        });
+        assertEquals(0, nearest, "native packed nearest block corner tie order");
+
+        int bounded = NativeBridge.findNearestPackedBlockCornerIndexWithinRadius(
+            0,
+            0,
+            0,
+            4,
+            new long[] {new BlockPos(3, 0, 0).asLong(), new BlockPos(2, 0, 0).asLong()}
+        );
+        assertEquals(1, bounded, "native packed nearest block corner inclusive radius");
     }
 
     private static void verifyNativeRadiusFilters() {

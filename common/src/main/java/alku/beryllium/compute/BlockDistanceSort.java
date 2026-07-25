@@ -24,7 +24,7 @@ public final class BlockDistanceSort {
             return;
         }
 
-        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+        if (!NativeBatching.shouldUseNativeBlockDistanceBatch(values.size())) {
             values.sort(Comparator.comparingDouble(value -> squaredDistance(origin, positionGetter.get(value))));
             return;
         }
