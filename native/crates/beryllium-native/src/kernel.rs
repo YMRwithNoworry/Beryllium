@@ -21,6 +21,11 @@ pub(crate) struct ChunkSelectionScratch {
     buffer: Vec<usize>,
 }
 
+#[derive(Default)]
+pub(crate) struct NearestSelectionScratch {
+    nearest: BinaryHeap<DistanceIndex>,
+}
+
 /// Computes squared Euclidean distances from one origin to packed x/y/z triples.
 pub fn compute_squared_distances(
     origin_x: i32,
@@ -1551,6 +1556,28 @@ pub fn select_nearest_indices_within_radius_f64_exclusive(
     limit: usize,
     output: &mut [i32],
 ) -> Result<usize, NativeError> {
+    select_nearest_indices_within_radius_f64_exclusive_with_scratch(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        positions,
+        limit,
+        output,
+        &mut NearestSelectionScratch::default(),
+    )
+}
+
+pub(crate) fn select_nearest_indices_within_radius_f64_exclusive_with_scratch(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    limit: usize,
+    output: &mut [i32],
+    scratch: &mut NearestSelectionScratch,
+) -> Result<usize, NativeError> {
     if radius_squared < 0.0 || positions.len() % 3 != 0 {
         return Err(NativeError::InvalidInput);
     }
@@ -1564,8 +1591,8 @@ pub fn select_nearest_indices_within_radius_f64_exclusive(
         return Ok(0);
     }
 
-    let nearest = if position_count >= NEAREST_SELECTION_PARALLEL_THRESHOLD {
-        positions
+    if position_count >= NEAREST_SELECTION_PARALLEL_THRESHOLD {
+        let nearest = positions
             .par_chunks_exact(3)
             .enumerate()
             .fold(
@@ -1591,29 +1618,42 @@ pub fn select_nearest_indices_within_radius_f64_exclusive(
                     }
                     nearest
                 },
-            )
-    } else {
-        let mut nearest = nearest_selection_heap(selected_capacity);
-        for index in 0..position_count {
-            let distance = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
-            if distance < radius_squared {
-                retain_nearest_distance_index(
-                    &mut nearest,
-                    selected_capacity,
-                    DistanceIndex::new(index as i32, distance),
-                );
-            }
+            );
+        let mut nearest = nearest.into_vec();
+        nearest.sort_unstable();
+
+        for (output_index, candidate) in nearest.iter().enumerate() {
+            output[output_index] = candidate.index;
         }
-        nearest
-    };
-
-    let mut nearest = nearest.into_vec();
-    nearest.sort_unstable();
-
-    for (output_index, candidate) in nearest.iter().enumerate() {
-        output[output_index] = candidate.index;
+        return Ok(nearest.len());
     }
-    Ok(nearest.len())
+
+    scratch.nearest.clear();
+    if scratch.nearest.capacity() < selected_capacity {
+        scratch
+            .nearest
+            .reserve(selected_capacity - scratch.nearest.capacity());
+    }
+    for index in 0..position_count {
+        let distance = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
+        if distance < radius_squared {
+            retain_nearest_distance_index(
+                &mut scratch.nearest,
+                selected_capacity,
+                DistanceIndex::new(index as i32, distance),
+            );
+        }
+    }
+
+    let selected_count = scratch.nearest.len();
+    for output_index in (0..selected_count).rev() {
+        output[output_index] = scratch
+            .nearest
+            .pop()
+            .expect("nearest selection heap length changed")
+            .index;
+    }
+    Ok(selected_count)
 }
 
 fn nearest_selection_heap(capacity: usize) -> BinaryHeap<DistanceIndex> {
@@ -2963,6 +3003,48 @@ mod tests {
 
         assert_eq!(count, 2);
         assert_eq!(output, [1, 2, 99]);
+    }
+
+    #[test]
+    fn select_nearest_indices_within_radius_f64_exclusive_should_reuse_scratch_capacity() {
+        let positions: Vec<f64> = (0..128)
+            .flat_map(|index| [(127 - index) as f64, 0.0, 0.0])
+            .collect();
+        let mut output = [-1; 16];
+        let mut scratch = NearestSelectionScratch::default();
+
+        let first_count = select_nearest_indices_within_radius_f64_exclusive_with_scratch(
+            0.0,
+            0.0,
+            0.0,
+            f64::INFINITY,
+            &positions,
+            output.len(),
+            &mut output,
+            &mut scratch,
+        )
+        .unwrap();
+        let capacity = scratch.nearest.capacity();
+
+        let second_count = select_nearest_indices_within_radius_f64_exclusive_with_scratch(
+            4.0,
+            0.0,
+            0.0,
+            f64::INFINITY,
+            &positions,
+            output.len(),
+            &mut output,
+            &mut scratch,
+        )
+        .unwrap();
+
+        assert_eq!(first_count, output.len());
+        assert_eq!(second_count, output.len());
+        assert_eq!(scratch.nearest.capacity(), capacity);
+        assert_eq!(
+            output,
+            [123, 122, 124, 121, 125, 120, 126, 119, 127, 118, 117, 116, 115, 114, 113, 112,]
+        );
     }
 
     #[test]

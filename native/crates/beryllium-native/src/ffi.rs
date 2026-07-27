@@ -12,14 +12,16 @@ use crate::{
     kernel::find_nearest_packed_block_corner_index_within_radius,
     kernel::has_any_within_radius_f64_exclusive, kernel::potential_energy_change,
     kernel::select_nearest_chunk_indices_with_scratch,
-    kernel::select_nearest_indices_within_radius_f64_exclusive, kernel::sort_by_block_distance,
-    kernel::sort_by_distance, kernel::sort_by_distance_and_count_within_radius_f64_exclusive,
-    kernel::sort_by_distance_f64, kernel::sort_within_radius_f64_exclusive,
-    kernel::ChunkSelectionScratch, NativeError,
+    kernel::select_nearest_indices_within_radius_f64_exclusive_with_scratch,
+    kernel::sort_by_block_distance, kernel::sort_by_distance,
+    kernel::sort_by_distance_and_count_within_radius_f64_exclusive, kernel::sort_by_distance_f64,
+    kernel::sort_within_radius_f64_exclusive, kernel::ChunkSelectionScratch,
+    kernel::NearestSelectionScratch, NativeError,
 };
 
 thread_local! {
     static CHUNK_SELECTION_SCRATCH: RefCell<ChunkSelectionScratch> = RefCell::new(ChunkSelectionScratch::default());
+    static NEAREST_SELECTION_SCRATCH: RefCell<NearestSelectionScratch> = RefCell::new(NearestSelectionScratch::default());
 }
 
 /// Result code returned by the stable C ABI.
@@ -770,15 +772,20 @@ pub unsafe extern "C" fn beryllium_select_nearest_indices_within_radius_exclusiv
         Ok(value) => value,
         Err(error) => return -1 - error.code(),
     };
-    count_result(select_nearest_indices_within_radius_f64_exclusive(
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        positions,
-        limit as usize,
-        output,
-    ))
+    NEAREST_SELECTION_SCRATCH.with(|scratch| {
+        count_result(
+            select_nearest_indices_within_radius_f64_exclusive_with_scratch(
+                origin_x,
+                origin_y,
+                origin_z,
+                radius_squared,
+                positions,
+                limit as usize,
+                output,
+                &mut scratch.borrow_mut(),
+            ),
+        )
+    })
 }
 
 #[no_mangle]
@@ -976,6 +983,56 @@ mod tests {
                         };
                         assert_eq!(count, output.len() as i32);
                         assert!(output.iter().all(|index| *index >= 0 && *index < positions.len() as i32));
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn c_abi_nearest_selection_scratch_is_thread_local() {
+        let handles = (0..8)
+            .map(|thread_index| {
+                std::thread::spawn(move || {
+                    let positions = (0_i32..4096)
+                        .flat_map(|index| {
+                            [
+                                f64::from(index * 31 + thread_index),
+                                f64::from(index.rotate_left(7) - thread_index),
+                                f64::from(index * 17 - thread_index),
+                            ]
+                        })
+                        .collect::<Vec<_>>();
+                    let mut output = [0_i32; 8];
+                    for iteration in 0..50 {
+                        let count = unsafe {
+                            beryllium_select_nearest_indices_within_radius_exclusive_double(
+                                f64::from(iteration),
+                                f64::from(-iteration),
+                                0.0,
+                                f64::INFINITY,
+                                positions.as_ptr(),
+                                positions.len(),
+                                output.len() as i32,
+                                output.as_mut_ptr(),
+                                output.len(),
+                            )
+                        };
+                        assert_eq!(count, output.len() as i32);
+                        assert!(output.windows(2).all(|indices| {
+                            let distance = |index: i32| {
+                                let offset = index as usize * 3;
+                                let dx = positions[offset] - f64::from(iteration);
+                                let dy = positions[offset + 1] - f64::from(-iteration);
+                                let dz = positions[offset + 2];
+                                dx * dx + dy * dy + dz * dz
+                            };
+                            distance(indices[0]) <= distance(indices[1])
+                        }));
                     }
                 })
             })
