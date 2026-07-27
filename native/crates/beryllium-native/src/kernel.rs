@@ -26,6 +26,11 @@ pub(crate) struct NearestSelectionScratch {
     nearest: BinaryHeap<DistanceIndex>,
 }
 
+#[derive(Default)]
+pub(crate) struct DistanceSortScratch {
+    pairs: Vec<(i32, f64)>,
+}
+
 /// Computes squared Euclidean distances from one origin to packed x/y/z triples.
 pub fn compute_squared_distances(
     origin_x: i32,
@@ -903,6 +908,26 @@ pub fn sort_within_radius_f64_exclusive(
     positions: &[f64],
     output: &mut [i32],
 ) -> Result<usize, NativeError> {
+    sort_within_radius_f64_exclusive_with_scratch(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        positions,
+        output,
+        &mut DistanceSortScratch::default(),
+    )
+}
+
+pub(crate) fn sort_within_radius_f64_exclusive_with_scratch(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    output: &mut [i32],
+    scratch: &mut DistanceSortScratch,
+) -> Result<usize, NativeError> {
     if radius_squared < 0.0 {
         return Err(NativeError::InvalidInput);
     }
@@ -916,8 +941,8 @@ pub fn sort_within_radius_f64_exclusive(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    let mut matches: Vec<(i32, f64)> = if position_count >= PARALLEL_THRESHOLD {
-        positions
+    if position_count >= PARALLEL_THRESHOLD {
+        let mut matches: Vec<(i32, f64)> = positions
             .par_chunks_exact(3)
             .enumerate()
             .filter_map(|(index, position)| {
@@ -929,30 +954,31 @@ pub fn sort_within_radius_f64_exclusive(
                     None
                 }
             })
-            .collect()
-    } else {
-        let all_pairs = build_simd_pairs(origin_x, origin_y, origin_z, positions);
-        all_pairs
-            .into_iter()
-            .filter(|(_, d)| *d < radius_squared)
-            .collect::<Vec<_>>()
-    };
+            .collect();
 
-    if matches.len() >= PARALLEL_THRESHOLD {
         matches.par_sort_unstable_by(|left, right| {
             compare_distance_order_f64(left.0, left.1, right.0, right.1)
         });
-    } else {
-        matches.sort_unstable_by(|left, right| {
-            compare_distance_order_f64(left.0, left.1, right.0, right.1)
-        });
+
+        for (output_index, (index, _distance)) in matches.iter().enumerate() {
+            output[output_index] = *index;
+        }
+        return Ok(matches.len());
     }
 
-    for (output_index, (index, _distance)) in matches.iter().enumerate() {
+    build_simd_pairs_into(origin_x, origin_y, origin_z, positions, &mut scratch.pairs);
+    scratch
+        .pairs
+        .retain(|(_, distance)| *distance < radius_squared);
+    scratch.pairs.sort_unstable_by(|left, right| {
+        compare_distance_order_f64(left.0, left.1, right.0, right.1)
+    });
+
+    for (output_index, (index, _distance)) in scratch.pairs.iter().enumerate() {
         output[output_index] = *index;
     }
 
-    Ok(matches.len())
+    Ok(scratch.pairs.len())
 }
 
 /// Filters packed f64 x/y/z triples by one inclusive squared radius per position.
@@ -1427,6 +1453,24 @@ pub fn sort_by_distance_f64(
     positions: &[f64],
     output: &mut [i32],
 ) -> Result<(), NativeError> {
+    sort_by_distance_f64_with_scratch(
+        origin_x,
+        origin_y,
+        origin_z,
+        positions,
+        output,
+        &mut DistanceSortScratch::default(),
+    )
+}
+
+pub(crate) fn sort_by_distance_f64_with_scratch(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    positions: &[f64],
+    output: &mut [i32],
+    scratch: &mut DistanceSortScratch,
+) -> Result<(), NativeError> {
     if positions.len() % 3 != 0 {
         return Err(NativeError::InvalidInput);
     }
@@ -1436,20 +1480,19 @@ pub fn sort_by_distance_f64(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    let mut indexed_distances: Vec<(i32, f64)> =
-        build_simd_pairs(origin_x, origin_y, origin_z, positions);
+    build_simd_pairs_into(origin_x, origin_y, origin_z, positions, &mut scratch.pairs);
 
-    if indexed_distances.len() >= PARALLEL_THRESHOLD {
-        indexed_distances.par_sort_unstable_by(|left, right| {
+    if scratch.pairs.len() >= PARALLEL_THRESHOLD {
+        scratch.pairs.par_sort_unstable_by(|left, right| {
             compare_distance_order_f64(left.0, left.1, right.0, right.1)
         });
     } else {
-        indexed_distances.sort_unstable_by(|left, right| {
+        scratch.pairs.sort_unstable_by(|left, right| {
             compare_distance_order_f64(left.0, left.1, right.0, right.1)
         });
     }
 
-    for (output_index, (index, _distance)) in indexed_distances.iter().enumerate() {
+    for (output_index, (index, _distance)) in scratch.pairs.iter().enumerate() {
         output[output_index] = *index;
     }
     Ok(())
@@ -1459,15 +1502,19 @@ pub fn sort_by_distance_f64(
 
 /// SIMD-batched distance pair builder — computes 4 distances at a time via AVX2
 /// when available, falling back to scalar otherwise. Returns (index, distance) pairs.
-fn build_simd_pairs(
+fn build_simd_pairs_into(
     origin_x: f64,
     origin_y: f64,
     origin_z: f64,
     positions: &[f64],
-) -> Vec<(i32, f64)> {
+    pairs: &mut Vec<(i32, f64)>,
+) {
     let position_count = positions.len() / 3;
     let has_simd = has_avx2();
-    let mut pairs = Vec::with_capacity(position_count);
+    pairs.clear();
+    if pairs.capacity() < position_count {
+        pairs.reserve(position_count - pairs.capacity());
+    }
     let mut buf = [0.0_f64; 4];
     let simd_chunks = position_count / 4;
 
@@ -1499,7 +1546,6 @@ fn build_simd_pairs(
             squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index),
         ));
     }
-    pairs
 }
 
 pub fn sort_by_distance_and_count_within_radius_f64_exclusive(
@@ -1510,6 +1556,26 @@ pub fn sort_by_distance_and_count_within_radius_f64_exclusive(
     positions: &[f64],
     output: &mut [i32],
 ) -> Result<usize, NativeError> {
+    sort_by_distance_and_count_within_radius_f64_exclusive_with_scratch(
+        origin_x,
+        origin_y,
+        origin_z,
+        radius_squared,
+        positions,
+        output,
+        &mut DistanceSortScratch::default(),
+    )
+}
+
+pub(crate) fn sort_by_distance_and_count_within_radius_f64_exclusive_with_scratch(
+    origin_x: f64,
+    origin_y: f64,
+    origin_z: f64,
+    radius_squared: f64,
+    positions: &[f64],
+    output: &mut [i32],
+    scratch: &mut DistanceSortScratch,
+) -> Result<usize, NativeError> {
     if radius_squared < 0.0 || positions.len() % 3 != 0 {
         return Err(NativeError::InvalidInput);
     }
@@ -1519,21 +1585,20 @@ pub fn sort_by_distance_and_count_within_radius_f64_exclusive(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    let mut indexed_distances: Vec<(i32, f64)> =
-        build_simd_pairs(origin_x, origin_y, origin_z, positions);
+    build_simd_pairs_into(origin_x, origin_y, origin_z, positions, &mut scratch.pairs);
 
-    if indexed_distances.len() >= PARALLEL_THRESHOLD {
-        indexed_distances.par_sort_unstable_by(|left, right| {
+    if scratch.pairs.len() >= PARALLEL_THRESHOLD {
+        scratch.pairs.par_sort_unstable_by(|left, right| {
             compare_distance_order_f64(left.0, left.1, right.0, right.1)
         });
     } else {
-        indexed_distances.sort_unstable_by(|left, right| {
+        scratch.pairs.sort_unstable_by(|left, right| {
             compare_distance_order_f64(left.0, left.1, right.0, right.1)
         });
     }
 
     let mut prefix_count = 0;
-    for (output_index, (index, distance)) in indexed_distances.iter().enumerate() {
+    for (output_index, (index, distance)) in scratch.pairs.iter().enumerate() {
         output[output_index] = *index;
         if *distance < radius_squared {
             prefix_count += 1;
@@ -2895,6 +2960,51 @@ mod tests {
         let mut output = [0; 3];
         sort_by_distance_f64(0.0, 0.0, 0.0, &positions, &mut output).unwrap();
         assert_eq!(output, [0, 1, 2]);
+    }
+
+    #[test]
+    fn distance_sorts_should_reuse_scratch_capacity() {
+        let positions: Vec<f64> = (0..128)
+            .flat_map(|index| [(127 - index) as f64, 0.0, 0.0])
+            .collect();
+        let mut output = [-1; 128];
+        let mut scratch = DistanceSortScratch::default();
+
+        sort_by_distance_f64_with_scratch(0.0, 0.0, 0.0, &positions, &mut output, &mut scratch)
+            .unwrap();
+        let capacity = scratch.pairs.capacity();
+        assert_eq!(&output[..8], &[127, 126, 125, 124, 123, 122, 121, 120]);
+
+        let within_count = sort_within_radius_f64_exclusive_with_scratch(
+            0.0,
+            0.0,
+            0.0,
+            64.0,
+            &positions,
+            &mut output,
+            &mut scratch,
+        )
+        .unwrap();
+        assert_eq!(within_count, 8);
+        assert_eq!(
+            &output[..within_count],
+            &[127, 126, 125, 124, 123, 122, 121, 120]
+        );
+        assert_eq!(scratch.pairs.capacity(), capacity);
+
+        let prefix_count = sort_by_distance_and_count_within_radius_f64_exclusive_with_scratch(
+            0.0,
+            0.0,
+            0.0,
+            64.0,
+            &positions,
+            &mut output,
+            &mut scratch,
+        )
+        .unwrap();
+        assert_eq!(prefix_count, within_count);
+        assert_eq!(&output[..8], &[127, 126, 125, 124, 123, 122, 121, 120]);
+        assert_eq!(scratch.pairs.capacity(), capacity);
     }
 
     #[test]

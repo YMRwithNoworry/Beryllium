@@ -14,14 +14,16 @@ use crate::{
     kernel::select_nearest_chunk_indices_with_scratch,
     kernel::select_nearest_indices_within_radius_f64_exclusive_with_scratch,
     kernel::sort_by_block_distance, kernel::sort_by_distance,
-    kernel::sort_by_distance_and_count_within_radius_f64_exclusive, kernel::sort_by_distance_f64,
-    kernel::sort_within_radius_f64_exclusive, kernel::ChunkSelectionScratch,
-    kernel::NearestSelectionScratch, NativeError,
+    kernel::sort_by_distance_and_count_within_radius_f64_exclusive_with_scratch,
+    kernel::sort_by_distance_f64_with_scratch,
+    kernel::sort_within_radius_f64_exclusive_with_scratch, kernel::ChunkSelectionScratch,
+    kernel::DistanceSortScratch, kernel::NearestSelectionScratch, NativeError,
 };
 
 thread_local! {
     static CHUNK_SELECTION_SCRATCH: RefCell<ChunkSelectionScratch> = RefCell::new(ChunkSelectionScratch::default());
     static NEAREST_SELECTION_SCRATCH: RefCell<NearestSelectionScratch> = RefCell::new(NearestSelectionScratch::default());
+    static DISTANCE_SORT_SCRATCH: RefCell<DistanceSortScratch> = RefCell::new(DistanceSortScratch::default());
 }
 
 /// Result code returned by the stable C ABI.
@@ -715,9 +717,16 @@ pub unsafe extern "C" fn beryllium_sort_by_distance_double(
         Ok(value) => value,
         Err(error) => return error.code(),
     };
-    status_result(sort_by_distance_f64(
-        origin_x, origin_y, origin_z, positions, output,
-    ))
+    DISTANCE_SORT_SCRATCH.with(|scratch| {
+        status_result(sort_by_distance_f64_with_scratch(
+            origin_x,
+            origin_y,
+            origin_z,
+            positions,
+            output,
+            &mut scratch.borrow_mut(),
+        ))
+    })
 }
 
 #[no_mangle]
@@ -739,14 +748,19 @@ pub unsafe extern "C" fn beryllium_sort_by_distance_and_count_within_radius_excl
         Ok(value) => value,
         Err(error) => return -1 - error.code(),
     };
-    count_result(sort_by_distance_and_count_within_radius_f64_exclusive(
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        positions,
-        output,
-    ))
+    DISTANCE_SORT_SCRATCH.with(|scratch| {
+        count_result(
+            sort_by_distance_and_count_within_radius_f64_exclusive_with_scratch(
+                origin_x,
+                origin_y,
+                origin_z,
+                radius_squared,
+                positions,
+                output,
+                &mut scratch.borrow_mut(),
+            ),
+        )
+    })
 }
 
 #[no_mangle]
@@ -807,14 +821,17 @@ pub unsafe extern "C" fn beryllium_sort_within_radius_exclusive_double(
         Ok(value) => value,
         Err(error) => return -1 - error.code(),
     };
-    count_result(sort_within_radius_f64_exclusive(
-        origin_x,
-        origin_y,
-        origin_z,
-        radius_squared,
-        positions,
-        output,
-    ))
+    DISTANCE_SORT_SCRATCH.with(|scratch| {
+        count_result(sort_within_radius_f64_exclusive_with_scratch(
+            origin_x,
+            origin_y,
+            origin_z,
+            radius_squared,
+            positions,
+            output,
+            &mut scratch.borrow_mut(),
+        ))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -885,6 +902,7 @@ mod tests {
         beryllium_find_nearest_packed_block_corner_index_within_radius,
         beryllium_select_nearest_chunk_indices,
         beryllium_select_nearest_indices_within_radius_exclusive_double,
+        beryllium_sort_by_distance_double,
     };
 
     #[test]
@@ -1023,6 +1041,54 @@ mod tests {
                             )
                         };
                         assert_eq!(count, output.len() as i32);
+                        assert!(output.windows(2).all(|indices| {
+                            let distance = |index: i32| {
+                                let offset = index as usize * 3;
+                                let dx = positions[offset] - f64::from(iteration);
+                                let dy = positions[offset + 1] - f64::from(-iteration);
+                                let dz = positions[offset + 2];
+                                dx * dx + dy * dy + dz * dz
+                            };
+                            distance(indices[0]) <= distance(indices[1])
+                        }));
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn c_abi_distance_sort_scratch_is_thread_local() {
+        let handles = (0..8)
+            .map(|thread_index| {
+                std::thread::spawn(move || {
+                    let positions = (0_i32..256)
+                        .flat_map(|index| {
+                            [
+                                f64::from(index * 31 + thread_index),
+                                f64::from(index.rotate_left(7) - thread_index),
+                                f64::from(index * 17 - thread_index),
+                            ]
+                        })
+                        .collect::<Vec<_>>();
+                    let mut output = vec![0_i32; positions.len() / 3];
+                    for iteration in 0..50 {
+                        let status = unsafe {
+                            beryllium_sort_by_distance_double(
+                                f64::from(iteration),
+                                f64::from(-iteration),
+                                0.0,
+                                positions.as_ptr(),
+                                positions.len(),
+                                output.as_mut_ptr(),
+                                output.len(),
+                            )
+                        };
+                        assert_eq!(status, 0);
                         assert!(output.windows(2).all(|indices| {
                             let distance = |index: i32| {
                                 let offset = index as usize * 3;
