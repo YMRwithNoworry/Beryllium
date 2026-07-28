@@ -661,6 +661,44 @@ fn find_nearest_index_f64_by_limit(
 
     let mut nearest_index = None;
     let mut nearest_distance = 0.0;
+    if has_avx2() && position_count >= 4 {
+        let simd_chunks = position_count / 4;
+        let mut distances = [0.0_f64; 4];
+        for chunk in 0..simd_chunks {
+            let base = chunk * 4;
+            unsafe {
+                batch_4_distances(
+                    origin_x,
+                    origin_y,
+                    origin_z,
+                    positions,
+                    chunk * 12,
+                    &mut distances,
+                );
+            }
+            for (offset, distance) in distances.iter().copied().enumerate() {
+                if !within_limit(distance, max_distance_squared) {
+                    continue;
+                }
+                if nearest_index.is_none() || distance < nearest_distance {
+                    nearest_index = Some(base + offset);
+                    nearest_distance = distance;
+                }
+            }
+        }
+        for index in (simd_chunks * 4)..position_count {
+            let distance = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
+            if !within_limit(distance, max_distance_squared) {
+                continue;
+            }
+            if nearest_index.is_none() || distance < nearest_distance {
+                nearest_index = Some(index);
+                nearest_distance = distance;
+            }
+        }
+        return Ok(nearest_index);
+    }
+
     for index in 0..position_count {
         let distance = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
         if !within_limit(distance, max_distance_squared) {
@@ -2392,6 +2430,48 @@ mod tests {
         let positions = [2.0, 0.0, 0.0];
         let nearest = find_nearest_index_f64_exclusive(0.0, 0.0, 0.0, -1.0, &positions).unwrap();
         assert_eq!(nearest, Some(0));
+    }
+
+    #[test]
+    fn find_nearest_index_f64_should_preserve_simd_boundaries_ties_and_nan_behavior() {
+        let boundary_positions = [2.0, 0.0, 0.0, -2.0, 0.0, 0.0, 2.0, 0.0, 0.0, -2.0, 0.0, 0.0];
+        assert_eq!(
+            find_nearest_index_f64(0.0, 0.0, 0.0, 4.0, &boundary_positions).unwrap(),
+            Some(0)
+        );
+        assert_eq!(
+            find_nearest_index_f64_exclusive(0.0, 0.0, 0.0, 4.0, &boundary_positions).unwrap(),
+            None
+        );
+
+        let tied_positions = [1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 2.0, 0.0, 0.0, -2.0, 0.0, 0.0];
+        assert_eq!(
+            find_nearest_index_f64(0.0, 0.0, 0.0, -1.0, &tied_positions).unwrap(),
+            Some(0)
+        );
+
+        let nan_positions = [
+            f64::NAN,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            2.0,
+            0.0,
+            0.0,
+            3.0,
+            0.0,
+            0.0,
+        ];
+        assert_eq!(
+            find_nearest_index_f64(0.0, 0.0, 0.0, -1.0, &nan_positions).unwrap(),
+            Some(0)
+        );
+        assert_eq!(
+            find_nearest_index_f64(0.0, 0.0, 0.0, 4.0, &nan_positions).unwrap(),
+            Some(1)
+        );
     }
 
     #[test]
