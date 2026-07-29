@@ -111,6 +111,7 @@ cargo build --manifest-path native/Cargo.toml --release
 ## Native 调优参数
 
 - `-Dberyllium.native.entityBatchThreshold=<正整数>`：控制实体批处理跨 FFM 的最小候选数，默认 `32`。数值越低越激进，数值越高越保守。`/beryllium native` 会显示当前阈值。
+- `-Dberyllium.native.nearestEntitySearchThreshold=<正整数>`：控制直接最近实体索引搜索跨 FFM 的最小候选数，默认禁用。当前 GraalVM 实测在 `32` 到 `8192` 候选间没有稳定优于 Java 顺序扫描；显式设置后可用于特定部署调优。
 - `-Dberyllium.native.blockDistanceBatchThreshold=<正整数>`：控制方块距离搜索、排序和支撑方块查询跨 FFM 的最小候选数。默认禁用（`2147483647`），因为紧凑 `BlockPos` FFM 路径尚未表现出稳定的端到端收益；仅应在目标服务器实测后显式调低。`/beryllium native` 会显示当前阈值。
 - `-Dberyllium.native.potentialBatchThreshold=<正整数>`：控制 PotentialCalculator 点电荷计算跨 FFM 的最小点电荷数，默认 `512`。低于阈值时直接按原版顺序在 Java 中计算，避免小批量数组编组开销；`/beryllium native` 会显示当前阈值。
 - `-Dberyllium.native.chunkSendSelectionThreshold=<正整数>`：控制 PlayerChunkSender 最近 Top-K 跨 FFM 的最小待发送区块数，默认 `128`。Rust 在每个调用线程内复用距离和选择 scratch buffer；低于阈值或 native 不可用时保留原版 Guava 路径。`/beryllium native` 会显示当前阈值。

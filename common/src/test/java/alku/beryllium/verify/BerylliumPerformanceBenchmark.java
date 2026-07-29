@@ -29,6 +29,7 @@ import java.util.function.LongSupplier;
  */
 public final class BerylliumPerformanceBenchmark {
     private static final int[] CANDIDATE_COUNTS = {256, 1024, 4096, 8192, 16384};
+    private static final int[] NEAREST_ENTITY_CANDIDATE_COUNTS = {32, 64, 128, 256, 512, 1024, 4096, 8192};
     private static final int[] BLOCK_DISTANCE_CANDIDATE_COUNTS = {256, 1024, 4096, 8192, 16384, 65_536};
     private static final int[] CHUNK_PLAYER_COUNTS = {32, 128, 512, 2048, 4096, 8192};
     private static final int[] CHUNK_SEND_CANDIDATE_COUNTS = {128, 256, 512, 2048, 4096, 8192};
@@ -82,6 +83,7 @@ public final class BerylliumPerformanceBenchmark {
         }
 
         benchmarkPotentialEnergy();
+        benchmarkNearestEntityIndex();
         benchmarkBlockDistanceSearch();
         benchmarkChunkDistance();
         benchmarkChunkSendSelection();
@@ -113,6 +115,37 @@ public final class BerylliumPerformanceBenchmark {
     private static void benchmarkPotentialEnergy() {
         for (int chargeCount : POTENTIAL_CHARGE_COUNTS) {
             benchmarkPotentialEnergy(chargeCount);
+        }
+    }
+
+    private static void benchmarkNearestEntityIndex() {
+        System.out.println("benchmark=nearest-entity-index radius=unbounded");
+        for (int candidateCount : NEAREST_ENTITY_CANDIDATE_COUNTS) {
+            double[] positions = createFilterPositions(candidateCount);
+            int expected = JavaComputeKernels.findNearestIndex(0.25, -0.5, 0.75, -1.0, positions);
+            int actual = NativeBridge.findNearestIndex(0.25, -0.5, 0.75, -1.0, positions);
+            if (actual != expected) {
+                throw new AssertionError(
+                    "Nearest entity benchmark parity mismatch, expected " + expected + " but got " + actual
+                );
+            }
+
+            long javaMedian = measureLong(
+                "java_nearest_entity_index",
+                () -> JavaComputeKernels.findNearestIndex(0.25, -0.5, 0.75, -1.0, positions)
+            );
+            long nativeMedian = measureLong(
+                "native_nearest_entity_index",
+                () -> NativeBridge.findNearestIndex(0.25, -0.5, 0.75, -1.0, positions)
+            );
+            System.out.printf(
+                Locale.ROOT,
+                "nearest_entity_result=candidates:%d java_median_ns:%d native_ffm_median_ns:%d speedup:%.2fx%n",
+                candidateCount,
+                javaMedian,
+                nativeMedian,
+                speedup(javaMedian, nativeMedian)
+            );
         }
     }
 

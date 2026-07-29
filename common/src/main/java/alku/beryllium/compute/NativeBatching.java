@@ -7,6 +7,7 @@ import alku.beryllium.bridge.NativeBridge;
  */
 public final class NativeBatching {
     private static final int DEFAULT_ENTITY_BATCH_THRESHOLD = 32;
+    private static final int DEFAULT_NEAREST_ENTITY_SEARCH_THRESHOLD = Integer.MAX_VALUE;
     // Compact BlockPos FFM transfer remains opt-in until it shows a stable end-to-end gain.
     private static final int DEFAULT_BLOCK_DISTANCE_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final int DEFAULT_POTENTIAL_BATCH_THRESHOLD = 512;
@@ -16,6 +17,8 @@ public final class NativeBatching {
     private static final int DEFAULT_VARIABLE_RADIUS_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final int DEFAULT_AABB_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final String ENTITY_BATCH_THRESHOLD_PROPERTY = "beryllium.native.entityBatchThreshold";
+    private static final String NEAREST_ENTITY_SEARCH_THRESHOLD_PROPERTY =
+        "beryllium.native.nearestEntitySearchThreshold";
     private static final String BLOCK_DISTANCE_BATCH_THRESHOLD_PROPERTY = "beryllium.native.blockDistanceBatchThreshold";
     private static final String POTENTIAL_BATCH_THRESHOLD_PROPERTY = "beryllium.native.potentialBatchThreshold";
     private static final String CHUNK_SEND_SELECTION_THRESHOLD_PROPERTY = "beryllium.native.chunkSendSelectionThreshold";
@@ -26,6 +29,10 @@ public final class NativeBatching {
     private static final int ENTITY_BATCH_THRESHOLD = readPositiveIntProperty(
         ENTITY_BATCH_THRESHOLD_PROPERTY,
         DEFAULT_ENTITY_BATCH_THRESHOLD
+    );
+    private static final int NEAREST_ENTITY_SEARCH_THRESHOLD = readPositiveIntProperty(
+        NEAREST_ENTITY_SEARCH_THRESHOLD_PROPERTY,
+        DEFAULT_NEAREST_ENTITY_SEARCH_THRESHOLD
     );
     private static final int BLOCK_DISTANCE_BATCH_THRESHOLD = readPositiveIntProperty(
         BLOCK_DISTANCE_BATCH_THRESHOLD_PROPERTY,
@@ -59,6 +66,10 @@ public final class NativeBatching {
         return candidateCount >= ENTITY_BATCH_THRESHOLD && NativeBridge.isLoaded();
     }
 
+    public static boolean shouldUseNativeNearestEntitySearch(int candidateCount) {
+        return candidateCount >= NEAREST_ENTITY_SEARCH_THRESHOLD && NativeBridge.isLoaded();
+    }
+
     public static boolean shouldUseNativeBlockDistanceBatch(int candidateCount) {
         return candidateCount >= BLOCK_DISTANCE_BATCH_THRESHOLD && NativeBridge.isLoaded();
     }
@@ -85,6 +96,10 @@ public final class NativeBatching {
 
     public static int entityBatchThreshold() {
         return ENTITY_BATCH_THRESHOLD;
+    }
+
+    public static int nearestEntitySearchThreshold() {
+        return NEAREST_ENTITY_SEARCH_THRESHOLD;
     }
 
     public static int blockDistanceBatchThreshold() {

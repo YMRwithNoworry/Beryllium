@@ -234,7 +234,7 @@ public final class NearestEntitySearch {
         }
 
         double[] positions = EntityPacking.packPositions(filteredCandidates);
-        int nearestIndex = NativeBatching.shouldUseNativeEntityBatch(positions.length / 3)
+        int nearestIndex = NativeBatching.shouldUseNativeNearestEntitySearch(positions.length / 3)
             ? findNearestIndexNative(originX, originY, originZ, maxDistanceSquared, includeMaxDistance, positions)
             : findNearestIndexJava(originX, originY, originZ, maxDistanceSquared, includeMaxDistance, positions);
 

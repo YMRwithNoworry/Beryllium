@@ -10,6 +10,12 @@ public final class NativeBatchingVerifier {
         if (NativeBatching.entityBatchThreshold() != 32) {
             throw new AssertionError("Native entity batch threshold mismatch, expected 32 but got " + NativeBatching.entityBatchThreshold());
         }
+        if (NativeBatching.nearestEntitySearchThreshold() != Integer.MAX_VALUE) {
+            throw new AssertionError(
+                "Native nearest entity search threshold mismatch, expected disabled default but got "
+                    + NativeBatching.nearestEntitySearchThreshold()
+            );
+        }
         if (NativeBatching.blockDistanceBatchThreshold() != Integer.MAX_VALUE) {
             throw new AssertionError(
                 "Native block distance batch threshold mismatch, expected disabled default but got "
@@ -54,6 +60,9 @@ public final class NativeBatchingVerifier {
         }
         if (NativeBatching.shouldUseNativeBlockDistanceBatch(65_536)) {
             throw new AssertionError("Native block distance batch should remain disabled by default");
+        }
+        if (NativeBatching.shouldUseNativeNearestEntitySearch(8192)) {
+            throw new AssertionError("Native nearest entity search should remain disabled by default");
         }
         if (NativeBatching.shouldUseNativePotentialBatch(512) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native potential batch activation should follow native availability at its threshold");

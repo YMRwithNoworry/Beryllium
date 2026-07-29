@@ -1,6 +1,6 @@
 # 性能基准
 
-该基准测最近物品传感器的距离阶段、PotentialCalculator 点电荷阶段、ChunkMap 刷怪水平距离阶段，以及 PlayerChunkSender 最近 Top-K 阶段，不等同于整机 TPS 或帧率测试。
+该基准测最近物品传感器的距离阶段、直接最近实体索引、PotentialCalculator 点电荷阶段、ChunkMap 刷怪水平距离阶段，以及 PlayerChunkSender 最近 Top-K 阶段，不等同于整机 TPS 或帧率测试。
 
 ## 运行
 
@@ -23,6 +23,12 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 - `native_chunk_send`：primitive stream 候选快照、输出数组分配、完整 FFM downcall 和 Rust Top-K；FFM session/native buffer 继续按线程复用。
 
 `speedup` 是中位耗时的比值，例如 `fused_speedup:2.00x` 表示当前路径耗时约为原版的一半。FFM、数组打包、排序和结果扫描均包含在测量区间内；世界实体查询、区块加载、其他 AI 传感器和 tick 调度不包含在内。
+
+## 2026-07-29 最近实体索引阈值复测
+
+环境为 Windows x86_64、GraalVM Community JDK 21.0.2 和 Rust release native `OK`。运行三个独立 Gradle/JVM 进程，每组预热 `100` 次、测量 `300` 次；packed `double[]` 预先生成，测量完整 Java 内核或 FFM 调用，不包含实体谓词与坐标打包。
+
+`32`、`64`、`128` 和 `512` 候选的三轮 Native 均慢于 Java；`256`、`1024`、`4096`、`8192` 至少有一轮慢于 Java，且跨轮波动明显，不能确定安全的默认交叉点。因此直接最近实体索引改用独立 `beryllium.native.nearestEntitySearchThreshold`，默认禁用；其他实体排序、半径筛选和最近物品 Top-K 继续使用各自已验证策略。Rust AVX2 内核和显式属性仍保留，便于特定硬件部署自行调优。
 
 因此结果用于比较本次距离查询热点的算法开销，不能直接换算成“整体 TPS 提升百分比”。实际收益取决于候选数量、谓词命中率、CPU、JVM、实体密度和 Native 是否成功加载。
 
