@@ -9,7 +9,7 @@ $env.JAVA_HOME = 'D:/MC/jdk/graalvm-community-openjdk-21.0.2+13.1'
 gradle --no-daemon :common:performanceBenchmark
 ```
 
-默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`、`16384`，严格半径为 `32`；最近实体候选数量为 `32` 到 `8192`；PlayerChunkSender 候选数量为 `128`、`256`、`512`、`2048`、`4096`、`8192`，批次配额为 `9` 和 `64`。该任务额外传入 `-Dberyllium.native.nearestItemTopKThreshold=1`，以便单独比较 Top-K 算法；正常运行仍使用默认阈值 `1024`。
+默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`、`16384`，严格半径为 `32`；最近实体候选数量为 `32` 到 `8192`；PlayerChunkSender 候选数量为 `128`、`256`、`512`、`2048`、`4096`、`8192`、`16384`，批次配额为 `9` 和 `64`。该任务额外传入 `-Dberyllium.native.nearestItemTopKThreshold=1`，以便单独比较 Top-K 算法；正常运行仍使用默认阈值 `1024`。
 
 每组使用相同的确定性坐标和 wanted/visible 谓词，输出中位耗时：
 
@@ -19,7 +19,8 @@ gradle --no-daemon :common:performanceBenchmark
 - `allocating_top_k_native`：与当前 Top-K 语义相同的旧 Java 实现，每次重新分配 packed 坐标、Top-K 索引、完整排序索引和已评估标记，作为同进程分配对照。
 - `top_k_native`：当前最近物品快路径。Rust 先在线性扫描中选择严格半径内最近 `16` 项，再由 Java 按完整排序会采用的顺序执行谓词；未命中才回退到 `fused_native` 的完整排序。
 - `vanilla_chunk_send`：原版 `LongOpenHashSet.stream()`、`Long` 装箱和 Guava `Comparators.least` Top-K。
-- `native_chunk_send`：primitive stream 候选快照、输出数组分配、完整 FFM downcall 和 Rust Top-K；FFM session/native buffer 继续按线程复用。
+- `allocating_native_chunk_send`：旧生产路径，每次通过 primitive stream 分配候选快照与输出数组，再执行完整 FFM downcall 和 Rust Top-K。
+- `reused_native_chunk_send`：当前生产路径，按 FastUtil stream 的桶顺序写入可重入线程 scratch，只将当次有效前缀传给 FFM；Java、FFM 和 Rust 三层 buffer 均按线程复用。
 
 `speedup` 是中位耗时的比值，例如 `fused_speedup:2.00x` 表示当前路径耗时约为原版的一半。FFM、数组打包、排序和结果扫描均包含在测量区间内；世界实体查询、区块加载、其他 AI 传感器和 tick 调度不包含在内。
 
@@ -212,3 +213,20 @@ PlayerChunkSender 在本轮某些中等规模组合出现回退：`256` 候选�
 | 16,384 | 143,200 ns | 123,600 ns | 1.16x | 1.06x-1.16x |
 
 五个规模的三轮同进程对照均未低于 `1.0x`，因此复用逻辑进入默认 native 路径。`1,024` 候选的收益最小，故 Top-K 生产阈值不再下调；小规模和 native 不可用场景不承担 ThreadLocal/FFM 路径成本。
+
+## 2026-08-01 PlayerChunkSender Java/FFM 有效前缀复用
+
+PlayerChunkSender 的大批量 native 分支原本每次通过 `LongSet.longStream().toArray()` 分配 packed chunk 快照，并另外分配输出索引。新路径按调用线程复用两个 Java buffer，FFM 只复制当次有效前缀，Rust 继续复用已有的距离与选择 scratch。scratch 池按重入深度分配独立项，不会覆盖尚在执行的外层批次。
+
+FastUtil 8.5.12 sources JAR 显示 `LongOpenHashSet.SetSpliterator` 会先输出 null key，再从桶 `0` 正序扫描到 `n - 1`。生产快照使用 `remap=false` shadow mixin 读取 `key` 与 `containsNull`，按相同规则直接写入 scratch，因此保留 boxed stream 的 encounter order 与等距 tie 行为。如果其他模组把 `pendingChunks` 替换为其他 `LongSet` 实现，`instanceof` 守卫会使该次调用回到原版 Guava 分支。
+
+在 Windows x86_64、GraalVM Community JDK 21.0.2、Rust release native `OK` 上运行三个独立 Gradle/JVM 进程，每组预热 `100` 次、测量 `300` 次。`allocating_native_chunk_send` 与 `reused_native_chunk_send` 在同一进程中使用同一个确定性 `LongOpenHashSet`、FFM session 和 Rust 内核：
+
+| 候选数 | 配额 | 原版三轮中位数 | 旧分配 native 中位数 | 复用 native 中位数 | 相对旧 native | 相对原版 | 三轮复用 speedup 范围 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 8,192 | 9 | 125,700 ns | 89,600 ns | 60,800 ns | 1.47x | 2.07x | 1.47x-1.54x |
+| 8,192 | 64 | 157,900 ns | 100,000 ns | 66,800 ns | 1.50x | 2.36x | 1.31x-1.50x |
+| 16,384 | 9 | 284,200 ns | 189,100 ns | 136,600 ns | 1.38x | 2.08x | 1.38x-1.48x |
+| 16,384 | 64 | 280,000 ns | 196,100 ns | 146,300 ns | 1.34x | 1.91x | 1.34x-1.40x |
+
+默认覆盖的四个组合在全部独立 JVM 中均快于旧分配 native 和原版。但 `256` 候选、配额 `9` 仍有独立轮次只达原版 `0.86x` 和 `0.91x`，所以生产 `beryllium.native.chunkSendSelectionThreshold` 严格保持 `8192`，不因大批量复用收益下调。

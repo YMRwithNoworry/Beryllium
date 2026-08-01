@@ -714,24 +714,42 @@ public final class JavaComputeKernels {
         int limit,
         int[] output
     ) {
-        int selectedCount = validateChunkSelection(packedChunkPositions, limit, output);
+        return selectNearestChunkIndices(
+            originX,
+            originZ,
+            packedChunkPositions,
+            packedChunkPositions == null ? 0 : packedChunkPositions.length,
+            limit,
+            output
+        );
+    }
+
+    public static int selectNearestChunkIndices(
+        int originX,
+        int originZ,
+        long[] packedChunkPositions,
+        int candidateCount,
+        int limit,
+        int[] output
+    ) {
+        int selectedCount = validateChunkSelection(packedChunkPositions, candidateCount, limit, output);
         if (selectedCount == 0) {
             return 0;
         }
 
-        int[] distances = new int[packedChunkPositions.length];
-        for (int index = 0; index < packedChunkPositions.length; index++) {
+        int[] distances = new int[candidateCount];
+        for (int index = 0; index < candidateCount; index++) {
             distances[index] = chunkDistanceSquared(originX, originZ, packedChunkPositions[index]);
         }
 
-        int bufferCapacity = selectedCount == packedChunkPositions.length
+        int bufferCapacity = selectedCount == candidateCount
             ? selectedCount
             : Math.multiplyExact(selectedCount, 2);
         int[] buffer = new int[bufferCapacity];
         int bufferSize = 0;
         int thresholdDistance = 0;
 
-        for (int index = 0; index < packedChunkPositions.length; index++) {
+        for (int index = 0; index < candidateCount; index++) {
             int distance = distances[index];
             if (bufferSize == 0) {
                 buffer[0] = index;
@@ -759,14 +777,31 @@ public final class JavaComputeKernels {
     }
 
     public static int validateChunkSelection(long[] packedChunkPositions, int limit, int[] output) {
+        return validateChunkSelection(
+            packedChunkPositions,
+            packedChunkPositions == null ? 0 : packedChunkPositions.length,
+            limit,
+            output
+        );
+    }
+
+    public static int validateChunkSelection(
+        long[] packedChunkPositions,
+        int candidateCount,
+        int limit,
+        int[] output
+    ) {
         if (packedChunkPositions == null) {
             throw new IllegalArgumentException("packedChunkPositions must not be null");
+        }
+        if (candidateCount < 0 || candidateCount > packedChunkPositions.length) {
+            throw new IllegalArgumentException("candidateCount must be within the packed chunk position bounds");
         }
         if (limit < 0) {
             throw new IllegalArgumentException("limit must be non-negative");
         }
 
-        int selectedCount = Math.min(limit, packedChunkPositions.length);
+        int selectedCount = Math.min(limit, candidateCount);
         if (output == null || output.length < selectedCount) {
             throw new IllegalArgumentException("output must contain at least one slot per selected chunk");
         }

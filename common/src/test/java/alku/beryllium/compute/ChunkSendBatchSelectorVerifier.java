@@ -3,8 +3,8 @@ package alku.beryllium.compute;
 import alku.beryllium.bridge.NativeBridge;
 import com.google.common.collect.Comparators;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import it.unimi.dsi.fastutil.longs.LongSet;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -15,6 +15,9 @@ import java.util.Random;
  * Regression checks for PlayerChunkSender's packed chunk Top-K selection.
  */
 public final class ChunkSendBatchSelectorVerifier {
+    private static final Field KEY_TABLE_FIELD = field("key");
+    private static final Field CONTAINS_NULL_FIELD = field("containsNull");
+
     private ChunkSendBatchSelectorVerifier() {
     }
 
@@ -106,15 +109,95 @@ public final class ChunkSendBatchSelectorVerifier {
     }
 
     public static void verifyFastutilPrimitiveStreamPreservesBoxedStreamOrder() {
-        LongSet pendingChunks = new LongOpenHashSet();
+        LongOpenHashSet pendingChunks = new LongOpenHashSet();
         for (long position : createLargePositions(257)) {
             pendingChunks.add(position);
         }
+        pendingChunks.add(0L);
 
         long[] streamOrder = pendingChunks.stream().mapToLong(Long::longValue).toArray();
         long[] snapshotOrder = pendingChunks.longStream().toArray();
         if (!Arrays.equals(streamOrder, snapshotOrder)) {
             throw new AssertionError("FastUtil primitive stream order differs from vanilla boxed stream encounter order");
+        }
+
+        ChunkSendBatchSelector.Scratch scratch = ChunkSendBatchSelector.acquireScratch(pendingChunks.size(), 64);
+        try {
+            int snapshotSize = scratch.snapshot(keyTable(pendingChunks), containsNull(pendingChunks));
+            assertArrayEquals(
+                streamOrder,
+                Arrays.copyOf(scratch.packedChunkPositions(), snapshotSize),
+                "scratch table encounter order"
+            );
+        } finally {
+            ChunkSendBatchSelector.releaseScratch(scratch);
+        }
+    }
+
+    public static void verifyScratchReuseIgnoresUnusedCapacity() {
+        LongOpenHashSet largePendingChunks = new LongOpenHashSet(createLargePositions(16384));
+        ChunkSendBatchSelector.Scratch largeScratch = ChunkSendBatchSelector.acquireScratch(
+            largePendingChunks.size(),
+            64
+        );
+        try {
+            largeScratch.snapshot(keyTable(largePendingChunks), containsNull(largePendingChunks));
+        } finally {
+            ChunkSendBatchSelector.releaseScratch(largeScratch);
+        }
+
+        LongOpenHashSet pendingChunks = new LongOpenHashSet(createLargePositions(8192));
+        ChunkSendBatchSelector.Scratch scratch = ChunkSendBatchSelector.acquireScratch(pendingChunks.size(), 64);
+        try {
+            int candidateCount = scratch.snapshot(keyTable(pendingChunks), containsNull(pendingChunks));
+            long[] packedChunkPositions = scratch.packedChunkPositions();
+            if (packedChunkPositions.length <= candidateCount) {
+                throw new AssertionError("expected the smaller snapshot to reuse a larger packed buffer");
+            }
+            Arrays.fill(packedChunkPositions, candidateCount, packedChunkPositions.length, pack(0, 0));
+
+            int[] expected = guavaSelection(
+                0,
+                0,
+                Arrays.copyOf(packedChunkPositions, candidateCount),
+                64
+            );
+            int[] output = scratch.selectedIndices();
+            int actualCount = ChunkSendBatchSelector.selectNearestChunkIndices(
+                0,
+                0,
+                packedChunkPositions,
+                candidateCount,
+                64,
+                output
+            );
+
+            assertEquals(expected.length, actualCount, "scratch prefix selection count");
+            assertArrayEquals(expected, Arrays.copyOf(output, actualCount), "scratch prefix selection indices");
+        } finally {
+            ChunkSendBatchSelector.releaseScratch(scratch);
+        }
+    }
+
+    public static void verifyScratchPoolIsReentrant() {
+        ChunkSendBatchSelector.Scratch outer = ChunkSendBatchSelector.acquireScratch(8192, 64);
+        try {
+            outer.packedChunkPositions()[0] = pack(17, -29);
+            ChunkSendBatchSelector.Scratch nested = ChunkSendBatchSelector.acquireScratch(8192, 64);
+            try {
+                if (nested == outer) {
+                    throw new AssertionError("nested chunk send selection reused the active outer scratch");
+                }
+                nested.packedChunkPositions()[0] = pack(-91, 37);
+            } finally {
+                ChunkSendBatchSelector.releaseScratch(nested);
+            }
+
+            if (outer.packedChunkPositions()[0] != pack(17, -29)) {
+                throw new AssertionError("nested chunk send selection overwrote the outer scratch");
+            }
+        } finally {
+            ChunkSendBatchSelector.releaseScratch(outer);
         }
     }
 
@@ -205,6 +288,32 @@ public final class ChunkSendBatchSelectorVerifier {
         return (long) x & 0xFFFFFFFFL | ((long) z & 0xFFFFFFFFL) << 32;
     }
 
+    private static Field field(String name) {
+        try {
+            Field field = LongOpenHashSet.class.getDeclaredField(name);
+            field.setAccessible(true);
+            return field;
+        } catch (ReflectiveOperationException failure) {
+            throw new ExceptionInInitializerError(failure);
+        }
+    }
+
+    private static long[] keyTable(LongOpenHashSet values) {
+        try {
+            return (long[]) KEY_TABLE_FIELD.get(values);
+        } catch (IllegalAccessException failure) {
+            throw new AssertionError("Unable to read FastUtil key table", failure);
+        }
+    }
+
+    private static boolean containsNull(LongOpenHashSet values) {
+        try {
+            return CONTAINS_NULL_FIELD.getBoolean(values);
+        } catch (IllegalAccessException failure) {
+            throw new AssertionError("Unable to read FastUtil null-key state", failure);
+        }
+    }
+
     private static void assertEquals(int expected, int actual, String label) {
         if (expected != actual) {
             throw new AssertionError(label + " mismatch, expected " + expected + " but got " + actual);
@@ -212,6 +321,12 @@ public final class ChunkSendBatchSelectorVerifier {
     }
 
     private static void assertArrayEquals(int[] expected, int[] actual, String label) {
+        if (!Arrays.equals(expected, actual)) {
+            throw new AssertionError(label + " mismatch, expected " + Arrays.toString(expected) + " but got " + Arrays.toString(actual));
+        }
+    }
+
+    private static void assertArrayEquals(long[] expected, long[] actual, String label) {
         if (!Arrays.equals(expected, actual)) {
             throw new AssertionError(label + " mismatch, expected " + Arrays.toString(expected) + " but got " + Arrays.toString(actual));
         }

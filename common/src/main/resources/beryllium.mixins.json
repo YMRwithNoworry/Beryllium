@@ -10,6 +10,7 @@
     "ClassInstanceMultiMapAccessor",
     "EntitySectionMixin",
     "FrogAttackablesSensorMixin",
+    "LongOpenHashSetMixin",
     "NearestItemSensorMixin",
     "NearestLivingEntitySensorMixin",
     "PlayerSensorMixin",

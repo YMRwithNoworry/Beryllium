@@ -42,22 +42,38 @@ public class PlayerChunkSenderMixin {
         List<LevelChunk> chunks;
         if (!this.memoryConnection
             && this.pendingChunks.size() > limit
-            && NativeBatching.shouldUseNativeChunkSendSelection(this.pendingChunks.size())) {
-            long[] packedChunkPositions = this.pendingChunks.longStream().toArray();
-            int[] selectedIndices = ChunkSendBatchSelector.selectNearestChunkIndices(
-                chunkPos.x,
-                chunkPos.z,
-                packedChunkPositions,
+            && NativeBatching.shouldUseNativeChunkSendSelection(this.pendingChunks.size())
+            && this.pendingChunks instanceof LongOpenHashSetAccess pendingChunksAccess) {
+            ChunkSendBatchSelector.Scratch scratch = ChunkSendBatchSelector.acquireScratch(
+                this.pendingChunks.size(),
                 limit
             );
-            List<LevelChunk> selectedChunks = new ArrayList<>(selectedIndices.length);
-            for (int selectedIndex : selectedIndices) {
-                LevelChunk chunk = chunkMap.getChunkToSend(packedChunkPositions[selectedIndex]);
-                if (chunk != null) {
-                    selectedChunks.add(chunk);
+            try {
+                int candidateCount = scratch.snapshot(
+                    pendingChunksAccess.beryllium$getKeyTable(),
+                    pendingChunksAccess.beryllium$containsNull()
+                );
+                long[] packedChunkPositions = scratch.packedChunkPositions();
+                int[] selectedIndices = scratch.selectedIndices();
+                int selectedCount = ChunkSendBatchSelector.selectNearestChunkIndices(
+                    chunkPos.x,
+                    chunkPos.z,
+                    packedChunkPositions,
+                    candidateCount,
+                    limit,
+                    selectedIndices
+                );
+                List<LevelChunk> selectedChunks = new ArrayList<>(selectedCount);
+                for (int outputIndex = 0; outputIndex < selectedCount; outputIndex++) {
+                    LevelChunk chunk = chunkMap.getChunkToSend(packedChunkPositions[selectedIndices[outputIndex]]);
+                    if (chunk != null) {
+                        selectedChunks.add(chunk);
+                    }
                 }
+                chunks = selectedChunks.stream().toList();
+            } finally {
+                ChunkSendBatchSelector.releaseScratch(scratch);
             }
-            chunks = selectedChunks.stream().toList();
         } else if (!this.memoryConnection && this.pendingChunks.size() > limit) {
             chunks = this.pendingChunks
                 .stream()

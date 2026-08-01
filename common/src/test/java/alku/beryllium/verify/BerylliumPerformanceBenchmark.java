@@ -2,6 +2,7 @@ package alku.beryllium.verify;
 
 import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.bridge.NativeStatus;
+import alku.beryllium.compute.ChunkSendBatchSelector;
 import alku.beryllium.compute.JavaComputeKernels;
 import alku.beryllium.compute.EntityDistanceSort;
 import alku.beryllium.compute.EntityPacking;
@@ -10,6 +11,7 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -26,10 +28,12 @@ import java.util.function.LongSupplier;
  * bundled native library is loaded and the result is printed for inspection.
  */
 public final class BerylliumPerformanceBenchmark {
+    private static final Field LONG_SET_KEY_TABLE_FIELD = longSetField("key");
+    private static final Field LONG_SET_CONTAINS_NULL_FIELD = longSetField("containsNull");
     private static final int[] CANDIDATE_COUNTS = {256, 1024, 4096, 8192, 16384};
     private static final int[] NEAREST_ENTITY_CANDIDATE_COUNTS = {32, 64, 128, 256, 512, 1024, 4096, 8192};
     private static final int[] BLOCK_DISTANCE_CANDIDATE_COUNTS = {256, 1024, 4096, 8192, 16384, 65_536};
-    private static final int[] CHUNK_SEND_CANDIDATE_COUNTS = {128, 256, 512, 2048, 4096, 8192};
+    private static final int[] CHUNK_SEND_CANDIDATE_COUNTS = {128, 256, 512, 2048, 4096, 8192, 16384};
     private static final int[] CHUNK_SEND_LIMITS = {9, 64};
     private static final int WARMUP_ITERATIONS = 100;
     private static final int MEASUREMENT_ITERATIONS = 300;
@@ -250,7 +254,9 @@ public final class BerylliumPerformanceBenchmark {
     private static void benchmarkChunkSendSelection() {
         System.out.println("benchmark=chunk-send-top-k");
         for (int candidateCount : CHUNK_SEND_CANDIDATE_COUNTS) {
-            LongSet pendingChunks = new LongOpenHashSet(createChunkSendPositions(candidateCount));
+            LongOpenHashSet pendingChunks = new LongOpenHashSet(createChunkSendPositions(candidateCount));
+            long[] keyTable = longSetKeyTable(pendingChunks);
+            boolean containsNull = longSetContainsNull(pendingChunks);
             for (int limit : CHUNK_SEND_LIMITS) {
                 long vanillaMedian = measureLong(
                     "vanilla_chunk_send",
@@ -260,23 +266,29 @@ public final class BerylliumPerformanceBenchmark {
                     "java_chunk_send",
                     () -> javaChunkSendSelection(pendingChunks, limit)
                 );
+                long allocatingNativeMedian = measureLong(
+                    "allocating_native_chunk_send",
+                    () -> allocatingNativeChunkSendSelection(pendingChunks, limit)
+                );
                 long nativeMedian = measureLong(
-                    "native_chunk_send",
-                    () -> nativeChunkSendSelection(pendingChunks, limit)
+                    "reused_native_chunk_send",
+                    () -> reusedNativeChunkSendSelection(pendingChunks, keyTable, containsNull, limit)
                 );
                 System.out.printf(
                     Locale.ROOT,
                     "chunk_send_result=candidates:%d limit:%d vanilla_java_median_ns:%d "
-                        + "primitive_java_median_ns:%d native_ffm_median_ns:%d "
-                        + "java_speedup:%.2fx native_speedup:%.2fx native_vs_java:%.2fx%n",
+                        + "primitive_java_median_ns:%d allocating_native_ffm_median_ns:%d native_ffm_median_ns:%d "
+                        + "java_speedup:%.2fx native_speedup:%.2fx native_vs_java:%.2fx reuse_speedup:%.2fx%n",
                     candidateCount,
                     limit,
                     vanillaMedian,
                     javaMedian,
+                    allocatingNativeMedian,
                     nativeMedian,
                     speedup(vanillaMedian, javaMedian),
                     speedup(vanillaMedian, nativeMedian),
-                    speedup(javaMedian, nativeMedian)
+                    speedup(javaMedian, nativeMedian),
+                    speedup(allocatingNativeMedian, nativeMedian)
                 );
             }
         }
@@ -441,11 +453,36 @@ public final class BerylliumPerformanceBenchmark {
         return consumeChunkSelection(positions, output, count);
     }
 
-    private static long nativeChunkSendSelection(LongSet pendingChunks, int limit) {
+    private static long allocatingNativeChunkSendSelection(LongSet pendingChunks, int limit) {
         long[] positions = pendingChunks.longStream().toArray();
         int[] output = new int[Math.min(limit, positions.length)];
         int count = NativeBridge.selectNearestChunkIndices(0, 0, positions, limit, output);
         return consumeChunkSelection(positions, output, count);
+    }
+
+    private static long reusedNativeChunkSendSelection(
+        LongSet pendingChunks,
+        long[] keyTable,
+        boolean containsNull,
+        int limit
+    ) {
+        ChunkSendBatchSelector.Scratch scratch = ChunkSendBatchSelector.acquireScratch(pendingChunks.size(), limit);
+        try {
+            int candidateCount = scratch.snapshot(keyTable, containsNull);
+            long[] positions = scratch.packedChunkPositions();
+            int[] output = scratch.selectedIndices();
+            int count = NativeBridge.selectNearestChunkIndices(
+                0,
+                0,
+                positions,
+                candidateCount,
+                limit,
+                output
+            );
+            return consumeChunkSelection(positions, output, count);
+        } finally {
+            ChunkSendBatchSelector.releaseScratch(scratch);
+        }
     }
 
     private static long consumeChunkSelection(long[] positions, int[] selectedIndices, int count) {
@@ -463,6 +500,32 @@ public final class BerylliumPerformanceBenchmark {
             result = result * 31 + indices[count - 1];
         }
         return result;
+    }
+
+    private static Field longSetField(String name) {
+        try {
+            Field field = LongOpenHashSet.class.getDeclaredField(name);
+            field.setAccessible(true);
+            return field;
+        } catch (ReflectiveOperationException failure) {
+            throw new ExceptionInInitializerError(failure);
+        }
+    }
+
+    private static long[] longSetKeyTable(LongOpenHashSet values) {
+        try {
+            return (long[]) LONG_SET_KEY_TABLE_FIELD.get(values);
+        } catch (IllegalAccessException failure) {
+            throw new AssertionError("Unable to read FastUtil key table", failure);
+        }
+    }
+
+    private static boolean longSetContainsNull(LongOpenHashSet values) {
+        try {
+            return LONG_SET_CONTAINS_NULL_FIELD.getBoolean(values);
+        } catch (IllegalAccessException failure) {
+            throw new AssertionError("Unable to read FastUtil null-key state", failure);
+        }
     }
 
     private static void assertFilterParity(

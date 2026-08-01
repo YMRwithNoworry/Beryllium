@@ -817,12 +817,36 @@ public final class NativeBridge {
         int limit,
         int[] output
     ) {
-        int selectedCount = JavaComputeKernels.validateChunkSelection(packedChunkPositions, limit, output);
+        return selectNearestChunkIndices(
+            originX,
+            originZ,
+            packedChunkPositions,
+            packedChunkPositions == null ? 0 : packedChunkPositions.length,
+            limit,
+            output
+        );
+    }
+
+    public static int selectNearestChunkIndices(
+        int originX,
+        int originZ,
+        long[] packedChunkPositions,
+        int candidateCount,
+        int limit,
+        int[] output
+    ) {
+        int selectedCount = JavaComputeKernels.validateChunkSelection(
+            packedChunkPositions,
+            candidateCount,
+            limit,
+            output
+        );
         if (!isLoaded()) {
             return JavaComputeKernels.selectNearestChunkIndices(
                 originX,
                 originZ,
                 packedChunkPositions,
+                candidateCount,
                 limit,
                 output
             );
@@ -832,7 +856,9 @@ public final class NativeBridge {
             originX,
             originZ,
             packedChunkPositions,
+            candidateCount,
             limit,
+            selectedCount,
             output
         );
         if (nativeCount != selectedCount) {
@@ -840,6 +866,7 @@ public final class NativeBridge {
                 originX,
                 originZ,
                 packedChunkPositions,
+                candidateCount,
                 limit,
                 output
             );
@@ -1073,15 +1100,19 @@ public final class NativeBridge {
         int originX,
         int originZ,
         long[] packedChunkPositions,
+        int candidateCount,
         int limit,
+        int outputLength,
         int[] output
     ) {
         return FfmNativeBridge.selectNearestChunkIndices(
             originX,
             originZ,
             packedChunkPositions,
+            candidateCount,
             limit,
-            output
+            output,
+            outputLength
         );
     }
 

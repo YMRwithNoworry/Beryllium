@@ -21,7 +21,7 @@ Java 与 Rust 之间使用 Java 21 FFM downcall，不依赖 JNI、`jni` 或 `jni
 - JVM AI 热点：玩家、诱惑、Breeze 和 Warden 传感器以有序循环替代中间 Stream；实体分区迭代和青蛙攻击目标判断采用 Lithium 1.21.1 的已验证方案。
 - FFM scratch session：每个 Java 线程复用 native buffer 和 arena slot，并只传输当次数组的有效前缀；buffer 扩容或类型切换时释放旧 arena，避免长期累积 native 内存。
 - PotentialCalculator 批处理：点电荷贡献在 Rust 中按索引计算，再沿原版顺序累加；小批量直接调用原版点电荷方法，不经过通用数据打包。
-- PlayerChunkSender 区块批次：远程连接的大型待发送集合会把 packed chunk long 通过 FFM 交给 Rust 选择最近 Top-K；保留原版 Guava 的 signed-int 回绕距离、Quickselect tie 行为、FastUtil stream 顺序、空区块过滤和移除副作用。低于实测阈值或 native 不可用时执行原版分支。
+- PlayerChunkSender 区块批次：远程连接的大型待发送集合会按 FastUtil stream 的哈希桶遇到顺序写入可重入 Java scratch，再通过 FFM 交给 Rust 选择最近 Top-K；保持原版 Guava 的 signed-int 回绕距离、Quickselect tie 行为、空区块过滤和移除副作用。低于实测阈值、native 不可用或集合实现被其他模组替换时执行原版分支。
 
 ## 目录结构
 
@@ -108,6 +108,6 @@ cargo build --manifest-path native/Cargo.toml --release
 - `-Dberyllium.native.entityDistanceSortThreshold=<正整数>`：控制实体距离排序跨 FFM 的最小候选数，默认 `256`。排序仍保留 Rust 路径，因为完整排序在该规模已有端到端收益；较小的常见 AI 列表直接使用 JVM 稳定排序。
 - `-Dberyllium.native.blockDistanceBatchThreshold=<正整数>`：控制方块距离排序跨 FFM 的最小候选数。默认禁用（`2147483647`），因为紧凑 `BlockPos` FFM 路径尚未表现出稳定的端到端收益；仅应在目标服务器实测后显式调低。`/beryllium native` 会显示当前阈值。
 - `-Dberyllium.native.potentialBatchThreshold=<正整数>`：控制 PotentialCalculator 点电荷计算跨 FFM 的最小点电荷数，默认 `512`。低于阈值时直接按原版顺序在 Java 中计算，避免小批量数组编组开销；`/beryllium native` 会显示当前阈值。
-- `-Dberyllium.native.chunkSendSelectionThreshold=<正整数>`：控制 PlayerChunkSender 最近 Top-K 跨 FFM 的最小待发送区块数，默认 `8192`。Rust 在每个调用线程内复用距离和选择 scratch buffer；低于阈值或 native 不可用时保留原版 Guava 路径。该保守阈值避开了复测中有波动的中等候选规模。
+- `-Dberyllium.native.chunkSendSelectionThreshold=<正整数>`：控制 PlayerChunkSender 最近 Top-K 跨 FFM 的最小待发送区块数，默认 `8192`。Java 在每个调用线程内复用候选快照与输出索引，Rust 复用距离和选择 scratch buffer；低于阈值或 native 不可用时保留原版 Guava 路径。该保守阈值避开了复测中有波动的中等候选规模。
 - `-Dberyllium.native.nearestItemTopKThreshold=<正整数>`：控制最近物品传感器先走 Rust Top-K 快路径的最小候选数，默认 `1024`。快路径仅检查按原版距离/等距规则排列的最近 `16` 个严格半径内候选；未命中时继续完整排序，避免改变谓词与结果语义。
 - Rust Rayon 通用批处理内核从 `2048` 个候选开始并行，半径与 AABB 筛选从 `16384` 个候选开始，最近方块查询从 `65536` 个候选开始；最近物品 Top-K 从 `1048576` 个候选开始，PlayerChunkSender 的轻量距离预计算从 `32768` 个候选开始，避免调度开销抵消收益。

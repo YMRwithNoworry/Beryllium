@@ -76,9 +76,29 @@ final class FfmNativeBridge {
         int limit,
         int[] output
     ) {
+        return selectNearestChunkIndices(
+            originX,
+            originZ,
+            packedChunkPositions,
+            packedChunkPositions.length,
+            limit,
+            output,
+            Math.min(limit, packedChunkPositions.length)
+        );
+    }
+
+    static int selectNearestChunkIndices(
+        int originX,
+        int originZ,
+        long[] packedChunkPositions,
+        int positionsLength,
+        int limit,
+        int[] output,
+        int outputLength
+    ) {
         return withSession(session -> {
-            Buffer positionsBuffer = session.input(packedChunkPositions, Kind.LONG);
-            Buffer outputBuffer = session.output(output, Kind.INT);
+            Buffer positionsBuffer = session.input(packedChunkPositions, Kind.LONG, positionsLength);
+            Buffer outputBuffer = session.output(output, Kind.INT, outputLength);
             int result = session.invoke(
                 Function.SELECT_NEAREST_CHUNK_INDICES,
                 originX,
@@ -87,7 +107,7 @@ final class FfmNativeBridge {
                 limit,
                 outputBuffer
             );
-            int expectedCount = Math.min(limit, packedChunkPositions.length);
+            int expectedCount = Math.min(limit, positionsLength);
             if (result == expectedCount) {
                 session.copyOutputs();
             }

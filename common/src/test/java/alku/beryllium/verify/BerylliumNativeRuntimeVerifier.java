@@ -34,6 +34,8 @@ public final class BerylliumNativeRuntimeVerifier {
         ChunkSendBatchSelectorVerifier.verifyBridgeLeavesOutputTailUntouched();
         ChunkSendBatchSelectorVerifier.verifyBridgeRandomizedMatchesGuava();
         ChunkSendBatchSelectorVerifier.verifySelectorFacadeMatchesGuavaTopK();
+        ChunkSendBatchSelectorVerifier.verifyScratchReuseIgnoresUnusedCapacity();
+        ChunkSendBatchSelectorVerifier.verifyScratchPoolIsReentrant();
         verifyNativeDistance();
         verifyNativeDoubleDistance();
         verifyNativeNearestIndex();

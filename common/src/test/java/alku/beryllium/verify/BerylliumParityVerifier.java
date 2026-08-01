@@ -33,6 +33,8 @@ public final class BerylliumParityVerifier {
         ChunkSendBatchSelectorVerifier.verifyBridgeLeavesOutputTailUntouched();
         ChunkSendBatchSelectorVerifier.verifySelectorFacadeMatchesGuavaTopK();
         ChunkSendBatchSelectorVerifier.verifyFastutilPrimitiveStreamPreservesBoxedStreamOrder();
+        ChunkSendBatchSelectorVerifier.verifyScratchReuseIgnoresUnusedCapacity();
+        ChunkSendBatchSelectorVerifier.verifyScratchPoolIsReentrant();
         verifyJavaKernel();
         verifyJavaKernelDouble();
         verifyJavaNearestIndex();
