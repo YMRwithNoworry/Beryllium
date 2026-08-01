@@ -4,19 +4,19 @@
 
 ## 运行
 
-```powershell
-$env:JAVA_HOME='C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot'
-$env:Path="$env:JAVA_HOME\bin;$env:Path"
-& 'C:\tmp\gradle-8121\gradle-8.12.1\bin\gradle.bat' --no-daemon :common:performanceBenchmark
+```nu
+$env.JAVA_HOME = 'D:/MC/jdk/graalvm-community-openjdk-21.0.2+13.1'
+gradle --no-daemon :common:performanceBenchmark
 ```
 
-默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`，严格半径为 `32`；最近实体候选数量为 `32` 到 `8192`；PlayerChunkSender 候选数量为 `128`、`256`、`512`、`2048`、`4096`、`8192`，批次配额为 `9` 和 `64`。该任务额外传入 `-Dberyllium.native.nearestItemTopKThreshold=1`，以便单独比较 Top-K 算法；正常运行仍使用默认阈值 `1024`。
+默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`、`16384`，严格半径为 `32`；最近实体候选数量为 `32` 到 `8192`；PlayerChunkSender 候选数量为 `128`、`256`、`512`、`2048`、`4096`、`8192`，批次配额为 `9` 和 `64`。该任务额外传入 `-Dberyllium.native.nearestItemTopKThreshold=1`，以便单独比较 Top-K 算法；正常运行仍使用默认阈值 `1024`。
 
 每组使用相同的确定性坐标和 wanted/visible 谓词，输出中位耗时：
 
 - `vanilla_java`：原版风格的 Java `List.sort` 加 Java 半径/谓词扫描。
 - `legacy_native`：上一版 Beryllium 的 FFM 完整排序，再由 Java 重算距离和筛选半径。
 - `fused_native`：一次 FFM 融合排序，返回完整索引顺序和严格半径前缀长度，再由 Java 执行谓词；FFM session 和 native buffer 在每个 Java 线程内复用。
+- `allocating_top_k_native`：与当前 Top-K 语义相同的旧 Java 实现，每次重新分配 packed 坐标、Top-K 索引、完整排序索引和已评估标记，作为同进程分配对照。
 - `top_k_native`：当前最近物品快路径。Rust 先在线性扫描中选择严格半径内最近 `16` 项，再由 Java 按完整排序会采用的顺序执行谓词；未命中才回退到 `fused_native` 的完整排序。
 - `vanilla_chunk_send`：原版 `LongOpenHashSet.stream()`、`Long` 装箱和 Guava `Comparators.least` Top-K。
 - `native_chunk_send`：primitive stream 候选快照、输出数组分配、完整 FFM downcall 和 Rust Top-K；FFM session/native buffer 继续按线程复用。
@@ -196,3 +196,19 @@ Rust ChunkSend Top-K 改为在每个调用线程内复用距离数组和选择 b
 PlayerChunkSender 在本轮某些中等规模组合出现回退：`256` 候选、配额 `9` 为 `0.93x`，`4096` 候选、配额 `64` 为 `0.87x`。虽然其他独立 JVM 中这些组合快于原版，但默认覆盖不能建立在易波动的结果上，因此生产阈值从 `128` 收紧到 `8192`；本轮 `8192` 候选的四组配额复测均未慢于原版，范围为 `1.11x-1.68x`。
 
 同轮最近实体、变量半径、AABB 和方块最近项 FFM 仍存在低于 `1.0x` 的规模，继续默认禁用。旧 EntityGetter、TargetingConditions、ChunkMap、POI、支撑方块和批量 EntitySection 覆盖均已移除；实体分区只保留 Lithium 1.21.1 的直接列表迭代器重定向，青蛙传感器只保留 Lithium 的廉价食物类型检查前置。小批量 PotentialCalculator 直接调用原版点电荷方法，玩家与诱惑传感器使用 JVM 循环消除多余 Stream/候选列表。
+
+## 2026-08-01 最近物品 Java/FFM scratch 复用
+
+最近物品 native 路径改为在每个 Java 调用线程内复用 packed 坐标、完整排序索引、Top-K 索引和已评估标记。scratch 池按谓词重入深度分配独立项，避免嵌套实体查询覆盖外层数据；Top-K 未命中时只清理最多 `16` 个实际标记，不再线性清零整个候选数组。FFM session 保留数组容量以便后续复用，但只将当次有效前缀传给 Rust 和复制回 Java。native 不可用或小于已实测阈值时仍走原有 JVM 分支。
+
+在 Windows x86_64、GraalVM Community JDK 21.0.2、Rust release native `OK` 上运行三个独立 Gradle/JVM 进程，每组预热 `100` 次、测量 `300` 次。`allocating_top_k_native` 在同一进程内重现旧的每次分配路径，两条路径共享相同 Rust 内核和 FFM session，因此表格隔离的是 Java scratch 与有效前缀复用收益：
+
+| 候选数 | 旧分配路径三轮中位数 | scratch 三轮中位数 | 相对旧路径 | 三轮 speedup 范围 |
+| ---: | ---: | ---: | ---: | ---: |
+| 256 | 21,000 ns | 17,700 ns | 1.19x | 1.18x-1.51x |
+| 1,024 | 38,700 ns | 38,300 ns | 1.01x | 1.01x-1.21x |
+| 4,096 | 68,400 ns | 37,500 ns | 1.82x | 1.49x-2.19x |
+| 8,192 | 64,700 ns | 56,800 ns | 1.14x | 1.13x-1.30x |
+| 16,384 | 143,200 ns | 123,600 ns | 1.16x | 1.06x-1.16x |
+
+五个规模的三轮同进程对照均未低于 `1.0x`，因此复用逻辑进入默认 native 路径。`1,024` 候选的收益最小，故 Top-K 生产阈值不再下调；小规模和 native 不可用场景不承担 ThreadLocal/FFM 路径成本。

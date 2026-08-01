@@ -73,6 +73,7 @@ public final class BerylliumParityVerifier {
         verifyNativeBridgeDoubleSort();
         verifyNativeBridgeDoubleFusedSortAndRadiusPrefix();
         verifyNativeBridgeNearestSelection();
+        verifyNativeBridgeFusedOperationsRejectMalformedPositions();
         verifyNativeBridgeDoubleFilter();
         verifyNativeBridgeVariableRadiusFilter();
         verifyNativeBridgeAabbFilter();
@@ -119,6 +120,8 @@ public final class BerylliumParityVerifier {
         EntityDistanceSortVerifier.verifyFindFirstSortedWithinExclusiveDistanceShortCircuitsAfterRadius();
         EntityDistanceSortVerifier.verifyNearestItemTopKHitPreservesPredicateOrder();
         EntityDistanceSortVerifier.verifyNearestItemTopKFallbackPreservesPredicateOrder();
+        EntityDistanceSortVerifier.verifyNearestItemScratchReuseIgnoresUnusedCapacity();
+        EntityDistanceSortVerifier.verifyNearestItemScratchIsReentrant();
         EntityDistanceSortVerifier.verifyFindFirstBySortedOrderWithinPrefixPreservesPredicateOrderAndShortCircuits();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
@@ -362,6 +365,36 @@ public final class BerylliumParityVerifier {
         );
         assertEquals(0, nanCount, "Native bridge nearest selection NaN radius count");
         assertArrayEquals(new int[] {1, 2, 99}, output, "Native bridge nearest selection NaN radius tail");
+    }
+
+    private static void verifyNativeBridgeFusedOperationsRejectMalformedPositions() {
+        double[] malformed = {0.0, 0.0, 0.0, 1.0};
+        try {
+            NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                malformed,
+                new int[1]
+            );
+            throw new AssertionError("Expected fused distance sort to reject a trailing coordinate");
+        } catch (IllegalArgumentException expected) {
+        }
+
+        try {
+            NativeBridge.selectNearestIndicesWithinRadiusExclusive(
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                malformed,
+                1,
+                new int[1]
+            );
+            throw new AssertionError("Expected nearest selection to reject a trailing coordinate");
+        } catch (IllegalArgumentException expected) {
+        }
     }
 
     private static void verifyNativeBridgeBlockSort() {

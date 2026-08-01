@@ -14,6 +14,8 @@ import java.util.function.Predicate;
  */
 public final class EntityDistanceSort {
     private static final int NEAREST_ITEM_TOP_K_LIMIT = 16;
+    private static final ThreadLocal<DistanceScratchPool> DISTANCE_SCRATCH =
+        ThreadLocal.withInitial(DistanceScratchPool::new);
 
     private EntityDistanceSort() {
     }
@@ -266,65 +268,78 @@ public final class EntityDistanceSort {
             return Optional.empty();
         }
 
-        double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-        if (NativeBatching.shouldUseNativeNearestItemTopK(values.size())) {
-            int[] nearestOrder = new int[Math.min(NEAREST_ITEM_TOP_K_LIMIT, values.size())];
-            int nearestCount = NativeBridge.selectNearestIndicesWithinRadiusExclusive(
-                originX,
-                originY,
-                originZ,
-                radiusSquared,
-                positions,
-                NEAREST_ITEM_TOP_K_LIMIT,
-                nearestOrder
-            );
-            for (int orderIndex = 0; orderIndex < nearestCount; orderIndex++) {
-                T value = values.get(nearestOrder[orderIndex]);
-                if (beforeDistancePredicate.test(value) && afterDistancePredicate.test(value)) {
-                    return Optional.of(value);
+        int candidateCount = values.size();
+        DistanceScratchPool scratchPool = DISTANCE_SCRATCH.get();
+        DistanceScratch scratch = scratchPool.acquire(candidateCount);
+        try {
+            EntityPacking.packPositions(values, xGetter, yGetter, zGetter, scratch.positions);
+            if (NativeBatching.shouldUseNativeNearestItemTopK(candidateCount)) {
+                int nearestCapacity = Math.min(NEAREST_ITEM_TOP_K_LIMIT, candidateCount);
+                int nearestCount = NativeBridge.selectNearestIndicesWithinRadiusExclusive(
+                    originX,
+                    originY,
+                    originZ,
+                    radiusSquared,
+                    scratch.positions,
+                    candidateCount,
+                    nearestCapacity,
+                    scratch.nearestOrder
+                );
+                for (int orderIndex = 0; orderIndex < nearestCount; orderIndex++) {
+                    T value = values.get(scratch.nearestOrder[orderIndex]);
+                    if (beforeDistancePredicate.test(value) && afterDistancePredicate.test(value)) {
+                        return Optional.of(value);
+                    }
                 }
+
+                for (int orderIndex = 0; orderIndex < nearestCount; orderIndex++) {
+                    scratch.markEvaluated(scratch.nearestOrder[orderIndex]);
+                }
+
+                int orderCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+                    originX,
+                    originY,
+                    originZ,
+                    radiusSquared,
+                    scratch.positions,
+                    candidateCount,
+                    scratch.order
+                );
+                return findFirstBySortedOrderWithinPrefixSkippingEvaluated(
+                    values,
+                    scratch.order,
+                    candidateCount,
+                    orderCount,
+                    beforeDistancePredicate,
+                    afterDistancePredicate,
+                    scratch.alreadyEvaluated
+                );
             }
 
-            boolean[] alreadyEvaluated = new boolean[values.size()];
-            for (int orderIndex = 0; orderIndex < nearestCount; orderIndex++) {
-                alreadyEvaluated[nearestOrder[orderIndex]] = true;
-            }
-
-            int[] order = new int[values.size()];
             int orderCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
                 originX,
                 originY,
                 originZ,
                 radiusSquared,
-                positions,
-                order
+                scratch.positions,
+                candidateCount,
+                scratch.order
             );
-            return findFirstBySortedOrderWithinPrefixSkippingEvaluated(
+            return findFirstBySortedOrderWithinPrefix(
                 values,
-                order,
+                scratch.order,
+                candidateCount,
                 orderCount,
                 beforeDistancePredicate,
-                afterDistancePredicate,
-                alreadyEvaluated
+                afterDistancePredicate
             );
+        } finally {
+            try {
+                scratch.clearEvaluated();
+            } finally {
+                scratchPool.release();
+            }
         }
-
-        int[] order = new int[values.size()];
-        int orderCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
-            originX,
-            originY,
-            originZ,
-            radiusSquared,
-            positions,
-            order
-        );
-        return findFirstBySortedOrderWithinPrefix(
-            values,
-            order,
-            orderCount,
-            beforeDistancePredicate,
-            afterDistancePredicate
-        );
     }
 
     static <T> Optional<T> findFirstBySortedOrderWithinPrefix(
@@ -334,11 +349,27 @@ public final class EntityDistanceSort {
         Predicate<? super T> beforeDistancePredicate,
         Predicate<? super T> afterDistancePredicate
     ) {
-        if (prefixCount < 0 || prefixCount > order.length) {
-            throw new IllegalArgumentException("prefixCount must be within the order bounds");
-        }
+        return findFirstBySortedOrderWithinPrefix(
+            values,
+            order,
+            order.length,
+            prefixCount,
+            beforeDistancePredicate,
+            afterDistancePredicate
+        );
+    }
 
-        for (int orderIndex = 0; orderIndex < order.length; orderIndex++) {
+    private static <T> Optional<T> findFirstBySortedOrderWithinPrefix(
+        List<? extends T> values,
+        int[] order,
+        int orderLength,
+        int prefixCount,
+        Predicate<? super T> beforeDistancePredicate,
+        Predicate<? super T> afterDistancePredicate
+    ) {
+        validateOrderPrefix(order, orderLength, prefixCount);
+
+        for (int orderIndex = 0; orderIndex < orderLength; orderIndex++) {
             T value = values.get(order[orderIndex]);
             if (beforeDistancePredicate.test(value)
                 && orderIndex < prefixCount
@@ -352,16 +383,18 @@ public final class EntityDistanceSort {
     private static <T> Optional<T> findFirstBySortedOrderWithinPrefixSkippingEvaluated(
         List<? extends T> values,
         int[] order,
+        int orderLength,
         int prefixCount,
         Predicate<? super T> beforeDistancePredicate,
         Predicate<? super T> afterDistancePredicate,
         boolean[] alreadyEvaluated
     ) {
-        if (alreadyEvaluated.length != values.size()) {
-            throw new IllegalArgumentException("alreadyEvaluated must contain one entry per value");
+        validateOrderPrefix(order, orderLength, prefixCount);
+        if (alreadyEvaluated.length < values.size()) {
+            throw new IllegalArgumentException("alreadyEvaluated must contain at least one entry per value");
         }
 
-        for (int orderIndex = 0; orderIndex < order.length; orderIndex++) {
+        for (int orderIndex = 0; orderIndex < orderLength; orderIndex++) {
             int valueIndex = order[orderIndex];
             if (alreadyEvaluated[valueIndex]) {
                 continue;
@@ -375,6 +408,15 @@ public final class EntityDistanceSort {
             }
         }
         return Optional.empty();
+    }
+
+    private static void validateOrderPrefix(int[] order, int orderLength, int prefixCount) {
+        if (orderLength < 0 || orderLength > order.length) {
+            throw new IllegalArgumentException("orderLength must be within the order bounds");
+        }
+        if (prefixCount < 0 || prefixCount > orderLength) {
+            throw new IllegalArgumentException("prefixCount must be within the used order bounds");
+        }
     }
 
     private static <T> Optional<T> findNearestWithinExclusivePackedDistance(
@@ -497,6 +539,61 @@ public final class EntityDistanceSort {
         double dy = positions[offset + 1] - originY;
         double dz = positions[offset + 2] - originZ;
         return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static final class DistanceScratchPool {
+        private final List<DistanceScratch> entries = new ArrayList<>();
+        private int depth;
+
+        private DistanceScratch acquire(int candidateCount) {
+            if (this.depth == this.entries.size()) {
+                this.entries.add(new DistanceScratch());
+            }
+            DistanceScratch scratch = this.entries.get(this.depth);
+            scratch.ensureCapacity(candidateCount);
+            this.depth++;
+            return scratch;
+        }
+
+        private void release() {
+            if (this.depth <= 0) {
+                throw new IllegalStateException("distance scratch released without a matching acquire");
+            }
+            this.depth--;
+        }
+    }
+
+    private static final class DistanceScratch {
+        private double[] positions = new double[0];
+        private int[] order = new int[0];
+        private final int[] nearestOrder = new int[NEAREST_ITEM_TOP_K_LIMIT];
+        private boolean[] alreadyEvaluated = new boolean[0];
+        private int evaluatedCount;
+
+        private void ensureCapacity(int candidateCount) {
+            int positionsLength = Math.multiplyExact(candidateCount, 3);
+            if (this.positions.length < positionsLength) {
+                this.positions = new double[positionsLength];
+            }
+            if (this.order.length < candidateCount) {
+                this.order = new int[candidateCount];
+            }
+            if (this.alreadyEvaluated.length < candidateCount) {
+                this.alreadyEvaluated = new boolean[candidateCount];
+            }
+        }
+
+        private void markEvaluated(int index) {
+            this.alreadyEvaluated[index] = true;
+            this.evaluatedCount++;
+        }
+
+        private void clearEvaluated() {
+            for (int index = 0; index < this.evaluatedCount; index++) {
+                this.alreadyEvaluated[this.nearestOrder[index]] = false;
+            }
+            this.evaluatedCount = 0;
+        }
     }
 
 }

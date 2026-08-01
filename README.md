@@ -17,9 +17,9 @@ Java 与 Rust 之间使用 Java 21 FFM downcall，不依赖 JNI、`jni` 或 `jni
 - `/beryllium native`：显示 Rust native 后端加载状态。
 - `/beryllium distance`：运行批量平方距离计算示例，优先使用 Rust native，native 不可用时自动回退到 Java 参考实现。
 - Native distance sort：AI 实体距离排序达到实测阈值后使用 Rust；小列表继续执行 JVM 稳定排序，保持原版等距顺序。
-- Native nearest-item Top-K：最近物品传感器在大候选集上先由 Rust 选择严格半径内稳定排序的最近小前缀；命中时避免完整排序，未命中时复用已打包坐标回退到完整排序，保持原版的距离、等距和谓词执行顺序。
+- Native nearest-item Top-K：最近物品传感器在大候选集上先由 Rust 选择严格半径内稳定排序的最近小前缀；命中时避免完整排序，未命中时复用已打包坐标回退到完整排序。Java 侧以可重入的线程本地 scratch 复用坐标、排序索引和 Top-K 标记，保持原版的距离、等距和谓词执行顺序。
 - JVM AI 热点：玩家、诱惑、Breeze 和 Warden 传感器以有序循环替代中间 Stream；实体分区迭代和青蛙攻击目标判断采用 Lithium 1.21.1 的已验证方案。
-- FFM scratch session：每个 Java 线程复用 native buffer 和 arena slot，降低重复 FFM 调用的分配成本；buffer 扩容或类型切换时释放旧 arena，避免长期累积 native 内存。
+- FFM scratch session：每个 Java 线程复用 native buffer 和 arena slot，并只传输当次数组的有效前缀；buffer 扩容或类型切换时释放旧 arena，避免长期累积 native 内存。
 - PotentialCalculator 批处理：点电荷贡献在 Rust 中按索引计算，再沿原版顺序累加；小批量直接调用原版点电荷方法，不经过通用数据打包。
 - PlayerChunkSender 区块批次：远程连接的大型待发送集合会把 packed chunk long 通过 FFM 交给 Rust 选择最近 Top-K；保留原版 Guava 的 signed-int 回绕距离、Quickselect tie 行为、FastUtil stream 顺序、空区块过滤和移除副作用。低于实测阈值或 native 不可用时执行原版分支。
 

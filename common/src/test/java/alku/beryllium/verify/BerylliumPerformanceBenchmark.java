@@ -35,6 +35,7 @@ public final class BerylliumPerformanceBenchmark {
     private static final int MEASUREMENT_ITERATIONS = 300;
     private static final int[] POTENTIAL_CHARGE_COUNTS = {32, 128, 512, 2048, 8192};
     private static final double RADIUS = 32.0;
+    private static final int NEAREST_ITEM_TOP_K_LIMIT = 16;
     private static long blackHole;
 
     private BerylliumPerformanceBenchmark() {
@@ -60,22 +61,25 @@ public final class BerylliumPerformanceBenchmark {
             long vanillaMedian = measure("vanilla_java", () -> vanillaQuery(points));
             long legacyMedian = measure("legacy_native", () -> legacyNativeQuery(points));
             long fusedMedian = measure("fused_native", () -> fusedNativeQuery(points));
+            long allocatingTopKMedian = measure("allocating_top_k_native", () -> allocatingTopKNativeQuery(points));
             long topKMedian = measure("top_k_native", () -> topKNativeQuery(points));
 
             System.out.printf(
                 Locale.ROOT,
                 "result=candidates:%d vanilla_java_median_ns:%d legacy_native_median_ns:%d fused_native_median_ns:%d "
-                    + "top_k_native_median_ns:%d legacy_speedup:%.2fx fused_speedup:%.2fx top_k_speedup:%.2fx "
-                    + "top_k_vs_fused:%.2fx%n",
+                    + "allocating_top_k_native_median_ns:%d top_k_native_median_ns:%d legacy_speedup:%.2fx "
+                    + "fused_speedup:%.2fx top_k_speedup:%.2fx top_k_vs_fused:%.2fx top_k_reuse_speedup:%.2fx%n",
                 candidateCount,
                 vanillaMedian,
                 legacyMedian,
                 fusedMedian,
+                allocatingTopKMedian,
                 topKMedian,
                 speedup(vanillaMedian, legacyMedian),
                 speedup(vanillaMedian, fusedMedian),
                 speedup(vanillaMedian, topKMedian),
-                speedup(fusedMedian, topKMedian)
+                speedup(fusedMedian, topKMedian),
+                speedup(allocatingTopKMedian, topKMedian)
             );
         }
 
@@ -611,6 +615,57 @@ public final class BerylliumPerformanceBenchmark {
         );
         for (int orderIndex = 0; orderIndex < order.length; orderIndex++) {
             BenchmarkPoint point = source.get(order[orderIndex]);
+            if (point.wanted && orderIndex < withinRadiusCount && point.visible) {
+                return Optional.of(point);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<BenchmarkPoint> allocatingTopKNativeQuery(List<BenchmarkPoint> source) {
+        double[] positions = EntityPacking.packPositions(
+            source,
+            BenchmarkPoint::x,
+            BenchmarkPoint::y,
+            BenchmarkPoint::z
+        );
+        int[] nearestOrder = new int[Math.min(NEAREST_ITEM_TOP_K_LIMIT, source.size())];
+        int nearestCount = NativeBridge.selectNearestIndicesWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            RADIUS * RADIUS,
+            positions,
+            NEAREST_ITEM_TOP_K_LIMIT,
+            nearestOrder
+        );
+        for (int orderIndex = 0; orderIndex < nearestCount; orderIndex++) {
+            BenchmarkPoint point = source.get(nearestOrder[orderIndex]);
+            if (point.wanted && point.visible) {
+                return Optional.of(point);
+            }
+        }
+
+        boolean[] alreadyEvaluated = new boolean[source.size()];
+        for (int orderIndex = 0; orderIndex < nearestCount; orderIndex++) {
+            alreadyEvaluated[nearestOrder[orderIndex]] = true;
+        }
+
+        int[] order = new int[source.size()];
+        int withinRadiusCount = NativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
+            0.0,
+            0.0,
+            0.0,
+            RADIUS * RADIUS,
+            positions,
+            order
+        );
+        for (int orderIndex = 0; orderIndex < order.length; orderIndex++) {
+            int valueIndex = order[orderIndex];
+            if (alreadyEvaluated[valueIndex]) {
+                continue;
+            }
+            BenchmarkPoint point = source.get(valueIndex);
             if (point.wanted && orderIndex < withinRadiusCount && point.visible) {
                 return Optional.of(point);
             }

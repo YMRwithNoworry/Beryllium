@@ -22,6 +22,21 @@ public final class EntityPacking {
         CoordinateGetter<? super T> zGetter
     ) {
         double[] positions = new double[values.size() * 3];
+        packPositions(values, xGetter, yGetter, zGetter, positions);
+        return positions;
+    }
+
+    public static <T> void packPositions(
+        List<? extends T> values,
+        CoordinateGetter<? super T> xGetter,
+        CoordinateGetter<? super T> yGetter,
+        CoordinateGetter<? super T> zGetter,
+        double[] positions
+    ) {
+        int requiredLength = Math.multiplyExact(values.size(), 3);
+        if (positions.length < requiredLength) {
+            throw new IllegalArgumentException("positions must contain three values per input");
+        }
         for (int index = 0; index < values.size(); index++) {
             T value = values.get(index);
             int offset = index * 3;
@@ -29,7 +44,6 @@ public final class EntityPacking {
             positions[offset + 1] = yGetter.get(value);
             positions[offset + 2] = zGetter.get(value);
         }
-        return positions;
     }
 
     @FunctionalInterface

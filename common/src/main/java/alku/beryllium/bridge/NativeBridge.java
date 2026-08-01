@@ -2,6 +2,8 @@ package alku.beryllium.bridge;
 
 import alku.beryllium.compute.JavaComputeKernels;
 
+import java.util.Arrays;
+
 /**
  * Entry point for the native backend.
  *
@@ -898,10 +900,30 @@ public final class NativeBridge {
         int[] output
     ) {
         JavaComputeKernels.validatePositions(positions);
+        return sortByDistanceAndCountWithinRadiusExclusive(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            positions.length / 3,
+            output
+        );
+    }
+
+    public static int sortByDistanceAndCountWithinRadiusExclusive(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int positionCount,
+        int[] output
+    ) {
+        int positionsLength = validatePositionPrefix(positions, positionCount);
         if (radiusSquared < 0.0) {
             throw new IllegalArgumentException("radiusSquared must be non-negative");
         }
-        int positionCount = positions.length / 3;
         JavaComputeKernels.validateOutputCapacity(positionCount, output);
 
         if (!isLoaded()) {
@@ -910,7 +932,7 @@ public final class NativeBridge {
                 originY,
                 originZ,
                 radiusSquared,
-                positions,
+                exactPositionPrefix(positions, positionsLength),
                 output
             );
         }
@@ -921,6 +943,8 @@ public final class NativeBridge {
             originZ,
             radiusSquared,
             positions,
+            positionsLength,
+            positionCount,
             output
         );
         if (nativeCount < 0 || nativeCount > positionCount) {
@@ -929,7 +953,7 @@ public final class NativeBridge {
                 originY,
                 originZ,
                 radiusSquared,
-                positions,
+                exactPositionPrefix(positions, positionsLength),
                 output
             );
         }
@@ -947,10 +971,37 @@ public final class NativeBridge {
         int[] output
     ) {
         JavaComputeKernels.validatePositions(positions);
+        return selectNearestIndicesWithinRadiusExclusive(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            positions.length / 3,
+            limit,
+            output
+        );
+    }
+
+    public static int selectNearestIndicesWithinRadiusExclusive(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int positionCount,
+        int limit,
+        int[] output
+    ) {
+        int positionsLength = validatePositionPrefix(positions, positionCount);
         if (radiusSquared < 0.0) {
             throw new IllegalArgumentException("radiusSquared must be non-negative");
         }
-        int selectedCapacity = JavaComputeKernels.validateNearestSelection(positions, limit, output);
+        if (limit < 0) {
+            throw new IllegalArgumentException("limit must be non-negative");
+        }
+        int selectedCapacity = Math.min(positionCount, limit);
+        JavaComputeKernels.validateOutputCapacity(selectedCapacity, output);
 
         if (!isLoaded()) {
             return JavaComputeKernels.selectNearestIndicesWithinRadiusExclusive(
@@ -958,7 +1009,7 @@ public final class NativeBridge {
                 originY,
                 originZ,
                 radiusSquared,
-                positions,
+                exactPositionPrefix(positions, positionsLength),
                 limit,
                 output
             );
@@ -970,6 +1021,8 @@ public final class NativeBridge {
             originZ,
             radiusSquared,
             positions,
+            positionsLength,
+            selectedCapacity,
             limit,
             output
         );
@@ -979,13 +1032,31 @@ public final class NativeBridge {
                 originY,
                 originZ,
                 radiusSquared,
-                positions,
+                exactPositionPrefix(positions, positionsLength),
                 limit,
                 output
             );
         }
 
         return nativeCount;
+    }
+
+    private static int validatePositionPrefix(double[] positions, int positionCount) {
+        if (positions == null) {
+            throw new IllegalArgumentException("positions must contain x/y/z triples");
+        }
+        if (positionCount < 0) {
+            throw new IllegalArgumentException("positionCount must be non-negative");
+        }
+        int positionsLength = Math.multiplyExact(positionCount, 3);
+        if (positionsLength > positions.length) {
+            throw new IllegalArgumentException("positionCount exceeds the packed position capacity");
+        }
+        return positionsLength;
+    }
+
+    private static double[] exactPositionPrefix(double[] positions, int positionsLength) {
+        return positionsLength == positions.length ? positions : Arrays.copyOf(positions, positionsLength);
     }
 
     private static int computeSquaredDistancesNative(
@@ -1281,6 +1352,8 @@ public final class NativeBridge {
         double originZ,
         double radiusSquared,
         double[] positions,
+        int positionsLength,
+        int outputLength,
         int[] output
     ) {
         return FfmNativeBridge.sortByDistanceAndCountWithinRadiusExclusive(
@@ -1289,7 +1362,9 @@ public final class NativeBridge {
             originZ,
             radiusSquared,
             positions,
-            output
+            positionsLength,
+            output,
+            outputLength
         );
     }
 
@@ -1299,6 +1374,8 @@ public final class NativeBridge {
         double originZ,
         double radiusSquared,
         double[] positions,
+        int positionsLength,
+        int outputLength,
         int limit,
         int[] output
     ) {
@@ -1308,8 +1385,10 @@ public final class NativeBridge {
             originZ,
             radiusSquared,
             positions,
+            positionsLength,
             limit,
-            output
+            output,
+            outputLength
         );
     }
 

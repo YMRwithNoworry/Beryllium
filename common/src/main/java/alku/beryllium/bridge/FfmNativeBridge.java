@@ -590,9 +590,31 @@ final class FfmNativeBridge {
         double[] positions,
         int[] output
     ) {
+        return sortByDistanceAndCountWithinRadiusExclusive(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            positions.length,
+            output,
+            output.length
+        );
+    }
+
+    static int sortByDistanceAndCountWithinRadiusExclusive(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int positionsLength,
+        int[] output,
+        int outputLength
+    ) {
         return withSession(session -> {
-            Buffer positionsBuffer = session.input(positions, Kind.DOUBLE);
-            Buffer outputBuffer = session.output(output, Kind.INT);
+            Buffer positionsBuffer = session.input(positions, Kind.DOUBLE, positionsLength);
+            Buffer outputBuffer = session.output(output, Kind.INT, outputLength);
             int result = session.invoke(
                 Function.SORT_BY_DISTANCE_AND_COUNT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
                 originX,
@@ -618,9 +640,33 @@ final class FfmNativeBridge {
         int limit,
         int[] output
     ) {
+        return selectNearestIndicesWithinRadiusExclusive(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            positions.length,
+            limit,
+            output,
+            output.length
+        );
+    }
+
+    static int selectNearestIndicesWithinRadiusExclusive(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int positionsLength,
+        int limit,
+        int[] output,
+        int outputLength
+    ) {
         return withSession(session -> {
-            Buffer positionsBuffer = session.input(positions, Kind.DOUBLE);
-            Buffer outputBuffer = session.output(output, Kind.INT);
+            Buffer positionsBuffer = session.input(positions, Kind.DOUBLE, positionsLength);
+            Buffer outputBuffer = session.output(output, Kind.INT, outputLength);
             int result = session.invoke(
                 Function.SELECT_NEAREST_INDICES_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
                 originX,
@@ -884,20 +930,31 @@ final class FfmNativeBridge {
         }
 
         private Buffer input(Object array, Kind kind) throws Throwable {
-            Buffer buffer = nextBuffer(array, kind);
-            copyToNative(array, buffer.segment, kind);
+            return input(array, kind, java.lang.reflect.Array.getLength(array));
+        }
+
+        private Buffer input(Object array, Kind kind, int length) throws Throwable {
+            Buffer buffer = nextBuffer(array, kind, length);
+            copyToNative(array, buffer.segment, kind, length);
             return buffer;
         }
 
         private Buffer output(Object array, Kind kind) throws Throwable {
-            Buffer buffer = nextBuffer(array, kind);
-            copyToNative(array, buffer.segment, kind);
+            return output(array, kind, java.lang.reflect.Array.getLength(array));
+        }
+
+        private Buffer output(Object array, Kind kind, int length) throws Throwable {
+            Buffer buffer = nextBuffer(array, kind, length);
+            copyToNative(array, buffer.segment, kind, length);
             outputs.add(buffer);
             return buffer;
         }
 
-        private Buffer nextBuffer(Object array, Kind kind) throws Throwable {
-            int length = java.lang.reflect.Array.getLength(array);
+        private Buffer nextBuffer(Object array, Kind kind, int length) throws Throwable {
+            int arrayLength = java.lang.reflect.Array.getLength(array);
+            if (length < 0 || length > arrayLength) {
+                throw new IllegalArgumentException("buffer length must be within the array bounds");
+            }
             int index = nextBufferIndex++;
             Buffer buffer;
             if (index == buffers.size()) {
@@ -908,6 +965,7 @@ final class FfmNativeBridge {
                 buffer.ensureCapacity(runtime, kind, length);
             }
             buffer.array = array;
+            buffer.length = length;
             return buffer;
         }
 
@@ -916,7 +974,7 @@ final class FfmNativeBridge {
             for (Object argument : arguments) {
                 if (argument instanceof Buffer buffer) {
                     expanded.add(buffer.segment);
-                    expanded.add((long) java.lang.reflect.Array.getLength(buffer.array));
+                    expanded.add((long) buffer.length);
                 } else {
                     expanded.add(argument);
                 }
@@ -927,7 +985,7 @@ final class FfmNativeBridge {
 
         private void copyOutputs() throws ReflectiveOperationException {
             for (Buffer output : outputs) {
-                int length = java.lang.reflect.Array.getLength(output.array);
+                int length = output.length;
                 if (length > 0) {
                     runtime.copySegmentToArray.invoke(
                         null,
@@ -942,8 +1000,7 @@ final class FfmNativeBridge {
             }
         }
 
-        private void copyToNative(Object array, Object segment, Kind kind) throws ReflectiveOperationException {
-            int length = java.lang.reflect.Array.getLength(array);
+        private void copyToNative(Object array, Object segment, Kind kind, int length) throws ReflectiveOperationException {
             if (length > 0) {
                 runtime.copyArrayToSegment.invoke(
                     null,
@@ -968,6 +1025,7 @@ final class FfmNativeBridge {
         private Object segment;
         private Kind kind;
         private int capacity;
+        private int length;
 
         private Buffer(Runtime runtime, Kind kind, int capacity) throws Throwable {
             arena = runtime.newArena();

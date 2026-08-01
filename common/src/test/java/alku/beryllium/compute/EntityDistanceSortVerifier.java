@@ -394,6 +394,73 @@ public final class EntityDistanceSortVerifier {
         assertListEquals(descendingRange(1023, 998), afterDistance, "Top-K fallback after-distance predicate order");
     }
 
+    public static void verifyNearestItemScratchReuseIgnoresUnusedCapacity() {
+        List<SimplePoint> largePoints = descendingAxisPoints(1024);
+        SimplePoint largeMatch = findNearestItemMatch(largePoints, 1023);
+        if (largeMatch.id != 1023) {
+            throw new AssertionError("large scratch warmup mismatch, expected 1023 but got " + largeMatch.id);
+        }
+
+        List<SimplePoint> smallPoints = descendingAxisPoints(256);
+        List<Integer> evaluated = new ArrayList<>();
+        SimplePoint smallMatch = EntityDistanceSort.findFirstSortedByDistanceWithinExclusiveDistanceAfterPredicate(
+                smallPoints,
+                0.0,
+                0.0,
+                0.0,
+                512.0,
+                point -> {
+                    evaluated.add(point.id);
+                    return true;
+                },
+                point -> point.id == 230,
+                point -> point.x,
+                point -> point.y,
+                point -> point.z
+            )
+            .orElseThrow(() -> new AssertionError("expected a match after scratch capacity reuse"));
+
+        if (smallMatch.id != 230) {
+            throw new AssertionError("scratch reuse match mismatch, expected 230 but got " + smallMatch.id);
+        }
+        assertListEquals(descendingRange(255, 230), evaluated, "scratch reuse predicate order");
+    }
+
+    public static void verifyNearestItemScratchIsReentrant() {
+        List<SimplePoint> outerPoints = descendingAxisPoints(1024);
+        List<Integer> evaluated = new ArrayList<>();
+        boolean[] nested = {false};
+
+        SimplePoint outerMatch = EntityDistanceSort.findFirstSortedByDistanceWithinExclusiveDistanceAfterPredicate(
+                outerPoints,
+                0.0,
+                0.0,
+                0.0,
+                2048.0,
+                point -> {
+                    evaluated.add(point.id);
+                    if (!nested[0]) {
+                        nested[0] = true;
+                        SimplePoint nestedMatch = findNearestItemMatch(descendingAxisPoints(1024), 1022);
+                        if (nestedMatch.id != 1022) {
+                            throw new AssertionError("nested scratch match mismatch, expected 1022 but got " + nestedMatch.id);
+                        }
+                    }
+                    return true;
+                },
+                point -> point.id == 1021,
+                point -> point.x,
+                point -> point.y,
+                point -> point.z
+            )
+            .orElseThrow(() -> new AssertionError("expected an outer match after nested query"));
+
+        if (outerMatch.id != 1021) {
+            throw new AssertionError("reentrant scratch match mismatch, expected 1021 but got " + outerMatch.id);
+        }
+        assertListEquals(descendingRange(1023, 1021), evaluated, "reentrant scratch predicate order");
+    }
+
     public static void verifyFindFirstBySortedOrderWithinPrefixPreservesPredicateOrderAndShortCircuits() {
         List<SimplePoint> points = List.of(
             new SimplePoint(0, 1.0, 0.0, 0.0),
@@ -454,6 +521,22 @@ public final class EntityDistanceSortVerifier {
             points.add(new SimplePoint(index, count - 1 - index, 0.0, 0.0));
         }
         return points;
+    }
+
+    private static SimplePoint findNearestItemMatch(List<SimplePoint> points, int expectedId) {
+        return EntityDistanceSort.findFirstSortedByDistanceWithinExclusiveDistanceAfterPredicate(
+                points,
+                0.0,
+                0.0,
+                0.0,
+                2048.0,
+                point -> true,
+                point -> point.id == expectedId,
+                point -> point.x,
+                point -> point.y,
+                point -> point.z
+            )
+            .orElseThrow(() -> new AssertionError("expected nearest-item match " + expectedId));
     }
 
     private static List<Integer> ids(List<SimplePoint> points) {
