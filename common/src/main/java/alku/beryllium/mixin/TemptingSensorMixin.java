@@ -1,6 +1,5 @@
 package alku.beryllium.mixin;
 
-import alku.beryllium.compute.EntityDistanceSort;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntitySelector;
@@ -16,9 +15,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
 import java.util.function.Predicate;
 
 @Mixin(TemptingSensor.class)
@@ -38,29 +34,28 @@ public class TemptingSensorMixin {
     @Overwrite
     protected void doTick(ServerLevel level, PathfinderMob mob) {
         Brain<?> brain = mob.getBrain();
-        List<ServerPlayer> candidatePlayers = new ArrayList<>();
+        ServerPlayer nearestPlayer = null;
+        double nearestDistance = Double.MAX_VALUE;
         for (ServerPlayer player : level.players()) {
-            if (EntitySelector.NO_SPECTATORS.test(player)) {
-                candidatePlayers.add(player);
+            if (!EntitySelector.NO_SPECTATORS.test(player)
+                || !TEMPT_TARGETING.test(mob, player)
+                || !mob.closerThan(player, 10.0)
+                || !this.beryllium$playerHoldingTemptation(player)
+                || mob.hasPassenger(player)) {
+                continue;
+            }
+
+            double distance = mob.distanceToSqr(player);
+            if (distance < nearestDistance) {
+                nearestPlayer = player;
+                nearestDistance = distance;
             }
         }
 
-        Optional<ServerPlayer> temptingPlayer = EntityDistanceSort.findFirstWithinExclusiveDistanceAfterPredicatesSortedByDistance(
-            candidatePlayers,
-            mob.getX(),
-            mob.getY(),
-            mob.getZ(),
-            10.0,
-            player -> TEMPT_TARGETING.test(mob, player),
-            player -> this.beryllium$playerHoldingTemptation(player) && !mob.hasPassenger(player),
-            ServerPlayer::getX,
-            ServerPlayer::getY,
-            ServerPlayer::getZ
-        );
-        if (temptingPlayer.isEmpty()) {
+        if (nearestPlayer == null) {
             brain.eraseMemory(MemoryModuleType.TEMPTING_PLAYER);
         } else {
-            brain.setMemory(MemoryModuleType.TEMPTING_PLAYER, temptingPlayer.get());
+            brain.setMemory(MemoryModuleType.TEMPTING_PLAYER, nearestPlayer);
         }
     }
 

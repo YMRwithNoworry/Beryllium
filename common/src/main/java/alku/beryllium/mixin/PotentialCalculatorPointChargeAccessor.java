@@ -3,6 +3,7 @@ package alku.beryllium.mixin;
 import net.minecraft.core.BlockPos;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
+import org.spongepowered.asm.mixin.gen.Invoker;
 
 @Mixin(targets = "net.minecraft.world.level.PotentialCalculator$PointCharge")
 public interface PotentialCalculatorPointChargeAccessor {
@@ -11,4 +12,7 @@ public interface PotentialCalculatorPointChargeAccessor {
 
     @Accessor("charge")
     double beryllium$charge();
+
+    @Invoker("getPotentialChange")
+    double beryllium$getPotentialChange(BlockPos position);
 }

@@ -20,44 +20,41 @@ import java.util.Optional;
 @Mixin(PlayerSensor.class)
 public class PlayerSensorMixin {
     /**
-     * @reason Batch nearest-player memory ordering through native distance sort.
+     * @reason Replace player sensor streams with allocation-aware loops while retaining native sorting for large lists.
      * @author YMRwithNoworry
      */
     @Overwrite
     protected void doTick(ServerLevel level, LivingEntity entity) {
-        List<Player> candidatePlayers = new ArrayList<>();
+        List<Player> nearbyPlayers = new ArrayList<>();
         for (ServerPlayer player : level.players()) {
-            if (EntitySelector.NO_SPECTATORS.test(player)) {
-                candidatePlayers.add(player);
+            if (EntitySelector.NO_SPECTATORS.test(player) && entity.closerThan(player, 16.0)) {
+                nearbyPlayers.add(player);
             }
         }
-        List<Player> nearbyPlayers = EntityDistanceSort.filterWithinExclusiveDistanceSortedByDistance(
-            candidatePlayers,
-            entity.getX(),
-            entity.getY(),
-            entity.getZ(),
-            16.0,
-            Player::getX,
-            Player::getY,
-            Player::getZ
-        );
+        EntityDistanceSort.sortByDistance(nearbyPlayers, entity);
 
         Brain<?> brain = entity.getBrain();
         brain.setMemory(MemoryModuleType.NEAREST_PLAYERS, nearbyPlayers);
 
-        Player nearestVisiblePlayer = null;
-        Optional<Player> attackablePlayer = Optional.empty();
+        List<Player> visiblePlayers = new ArrayList<>();
         for (Player player : nearbyPlayers) {
             if (Sensor.isEntityTargetable(entity, player)) {
-                if (nearestVisiblePlayer == null) {
-                    nearestVisiblePlayer = player;
-                }
-                if (attackablePlayer.isEmpty() && Sensor.isEntityAttackable(entity, player)) {
-                    attackablePlayer = Optional.of(player);
-                }
+                visiblePlayers.add(player);
             }
         }
-        brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_PLAYER, nearestVisiblePlayer);
+
+        brain.setMemory(
+            MemoryModuleType.NEAREST_VISIBLE_PLAYER,
+            visiblePlayers.isEmpty() ? null : visiblePlayers.getFirst()
+        );
+
+        Optional<Player> attackablePlayer = Optional.empty();
+        for (Player player : visiblePlayers) {
+            if (Sensor.isEntityAttackable(entity, player)) {
+                attackablePlayer = Optional.of(player);
+                break;
+            }
+        }
         brain.setMemory(MemoryModuleType.NEAREST_VISIBLE_ATTACKABLE_PLAYER, attackablePlayer);
     }
 }

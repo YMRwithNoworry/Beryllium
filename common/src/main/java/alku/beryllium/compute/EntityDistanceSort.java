@@ -43,7 +43,7 @@ public final class EntityDistanceSort {
             return;
         }
 
-        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+        if (!NativeBatching.shouldUseNativeEntityDistanceSort(values.size())) {
             values.sort(Comparator.comparingDouble(value -> squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value)));
             return;
         }
@@ -70,7 +70,7 @@ public final class EntityDistanceSort {
         }
 
         double radiusSquared = radius * radius;
-        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+        if (!NativeBatching.shouldUseNativeEntityDistanceSort(values.size())) {
             List<T> matches = new ArrayList<>();
             for (T value : values) {
                 if (squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared) {
@@ -110,7 +110,7 @@ public final class EntityDistanceSort {
         }
 
         double radiusSquared = radius * radius;
-        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+        if (!NativeBatching.shouldUseNativeEntityDistanceSort(values.size())) {
             List<T> matches = new ArrayList<>();
             for (T value : values) {
                 if (squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared) {
@@ -169,7 +169,7 @@ public final class EntityDistanceSort {
         }
 
         double radiusSquared = radius * radius;
-        if (NativeBatching.shouldUseNativeEntityBatch(beforeDistanceMatches.size())) {
+        if (NativeBatching.shouldUseNativeEntityDistanceSort(beforeDistanceMatches.size())) {
             double[] positions = EntityPacking.packPositions(beforeDistanceMatches, xGetter, yGetter, zGetter);
             return findNearestWithinExclusivePackedDistance(
                 beforeDistanceMatches,
@@ -182,14 +182,19 @@ public final class EntityDistanceSort {
             );
         }
 
-        List<T> matches = new ArrayList<>();
+        T nearest = null;
+        double nearestDistance = 0.0;
         for (T value : beforeDistanceMatches) {
-            if (squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared
-                && afterDistancePredicate.test(value)) {
-                matches.add(value);
+            double distance = squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value);
+            if (!(distance < radiusSquared) || !afterDistancePredicate.test(value)) {
+                continue;
+            }
+            if (nearest == null || Double.compare(distance, nearestDistance) < 0) {
+                nearest = value;
+                nearestDistance = distance;
             }
         }
-        return findNearestByCurrentDistance(matches, originX, originY, originZ, xGetter, yGetter, zGetter);
+        return Optional.ofNullable(nearest);
     }
 
     public static <T> Optional<T> findFirstSortedByDistance(
@@ -206,7 +211,7 @@ public final class EntityDistanceSort {
             return Optional.empty();
         }
 
-        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+        if (!NativeBatching.shouldUseNativeEntityDistanceSort(values.size())) {
             List<T> sortedValues = new ArrayList<>(values);
             sortByDistance(sortedValues, originX, originY, originZ, xGetter, yGetter, zGetter);
             for (T value : sortedValues) {
@@ -248,7 +253,7 @@ public final class EntityDistanceSort {
         }
 
         double radiusSquared = radius * radius;
-        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+        if (!NativeBatching.shouldUseNativeEntityDistanceSort(values.size())) {
             List<T> sortedValues = new ArrayList<>(values);
             sortByDistance(sortedValues, originX, originY, originZ, xGetter, yGetter, zGetter);
             for (T value : sortedValues) {
@@ -372,27 +377,6 @@ public final class EntityDistanceSort {
         return Optional.empty();
     }
 
-    private static <T> Optional<T> findNearestByCurrentDistance(
-        List<? extends T> values,
-        double originX,
-        double originY,
-        double originZ,
-        EntityPacking.CoordinateGetter<? super T> xGetter,
-        EntityPacking.CoordinateGetter<? super T> yGetter,
-        EntityPacking.CoordinateGetter<? super T> zGetter
-    ) {
-        T nearest = null;
-        double nearestDistance = 0.0;
-        for (T value : values) {
-            double distance = squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value);
-            if (nearest == null || Double.compare(distance, nearestDistance) < 0) {
-                nearest = value;
-                nearestDistance = distance;
-            }
-        }
-        return Optional.ofNullable(nearest);
-    }
-
     private static <T> Optional<T> findNearestWithinExclusivePackedDistance(
         List<? extends T> values,
         double[] positions,
@@ -441,7 +425,7 @@ public final class EntityDistanceSort {
         }
 
         double radiusSquared = radius * radius;
-        if (!NativeBatching.shouldUseNativeEntityBatch(values.size())) {
+        if (!NativeBatching.shouldUseNativeEntityDistanceSort(values.size())) {
             List<T> matches = new ArrayList<>();
             for (T value : values) {
                 if (squaredDistance(originX, originY, originZ, xGetter, yGetter, zGetter, value) < radiusSquared

@@ -1,6 +1,7 @@
 package alku.beryllium.mixin;
 
 import alku.beryllium.compute.PotentialEnergyBatch;
+import alku.beryllium.compute.NativeBatching;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.PotentialCalculator;
 import org.spongepowered.asm.mixin.Final;
@@ -29,6 +30,17 @@ public class PotentialCalculatorMixin {
      */
     @Overwrite
     public double getPotentialEnergyChange(BlockPos position, double chargeMultiplier) {
+        if (chargeMultiplier == 0.0) {
+            return 0.0;
+        }
+        if (!NativeBatching.shouldUseNativePotentialBatch(this.charges.size())) {
+            double energy = 0.0;
+            for (Object charge : this.charges) {
+                energy += ((PotentialCalculatorPointChargeAccessor) charge).beryllium$getPotentialChange(position);
+            }
+            return energy * chargeMultiplier;
+        }
+
         return PotentialEnergyBatch.getPotentialEnergyChangeCached(
             this,
             this.beryllium$chargeVersion,

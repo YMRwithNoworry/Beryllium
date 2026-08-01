@@ -6,19 +6,20 @@ import alku.beryllium.bridge.NativeBridge;
  * Shared policy for deciding when a Java-side batch is large enough to cross the FFM boundary.
  */
 public final class NativeBatching {
-    private static final int DEFAULT_ENTITY_BATCH_THRESHOLD = 32;
-    private static final int DEFAULT_NEAREST_ENTITY_SEARCH_THRESHOLD = Integer.MAX_VALUE;
+    // Distance-only FFM batches remain opt-in because packing and copying outweigh the kernels in measured entity queries.
+    private static final int DEFAULT_ENTITY_BATCH_THRESHOLD = Integer.MAX_VALUE;
+    private static final int DEFAULT_ENTITY_DISTANCE_SORT_THRESHOLD = 256;
     // Compact BlockPos FFM transfer remains opt-in until it shows a stable end-to-end gain.
     private static final int DEFAULT_BLOCK_DISTANCE_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final int DEFAULT_POTENTIAL_BATCH_THRESHOLD = 512;
-    private static final int DEFAULT_CHUNK_SEND_SELECTION_THRESHOLD = 128;
+    private static final int DEFAULT_CHUNK_SEND_SELECTION_THRESHOLD = 8192;
     private static final int DEFAULT_NEAREST_ITEM_TOP_K_THRESHOLD = 1024;
     // FFM array copies currently outweigh these primitive filters without an explicit deployment profile.
     private static final int DEFAULT_VARIABLE_RADIUS_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final int DEFAULT_AABB_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final String ENTITY_BATCH_THRESHOLD_PROPERTY = "beryllium.native.entityBatchThreshold";
-    private static final String NEAREST_ENTITY_SEARCH_THRESHOLD_PROPERTY =
-        "beryllium.native.nearestEntitySearchThreshold";
+    private static final String ENTITY_DISTANCE_SORT_THRESHOLD_PROPERTY =
+        "beryllium.native.entityDistanceSortThreshold";
     private static final String BLOCK_DISTANCE_BATCH_THRESHOLD_PROPERTY = "beryllium.native.blockDistanceBatchThreshold";
     private static final String POTENTIAL_BATCH_THRESHOLD_PROPERTY = "beryllium.native.potentialBatchThreshold";
     private static final String CHUNK_SEND_SELECTION_THRESHOLD_PROPERTY = "beryllium.native.chunkSendSelectionThreshold";
@@ -30,9 +31,9 @@ public final class NativeBatching {
         ENTITY_BATCH_THRESHOLD_PROPERTY,
         DEFAULT_ENTITY_BATCH_THRESHOLD
     );
-    private static final int NEAREST_ENTITY_SEARCH_THRESHOLD = readPositiveIntProperty(
-        NEAREST_ENTITY_SEARCH_THRESHOLD_PROPERTY,
-        DEFAULT_NEAREST_ENTITY_SEARCH_THRESHOLD
+    private static final int ENTITY_DISTANCE_SORT_THRESHOLD = readPositiveIntProperty(
+        ENTITY_DISTANCE_SORT_THRESHOLD_PROPERTY,
+        DEFAULT_ENTITY_DISTANCE_SORT_THRESHOLD
     );
     private static final int BLOCK_DISTANCE_BATCH_THRESHOLD = readPositiveIntProperty(
         BLOCK_DISTANCE_BATCH_THRESHOLD_PROPERTY,
@@ -66,8 +67,8 @@ public final class NativeBatching {
         return candidateCount >= ENTITY_BATCH_THRESHOLD && NativeBridge.isLoaded();
     }
 
-    public static boolean shouldUseNativeNearestEntitySearch(int candidateCount) {
-        return candidateCount >= NEAREST_ENTITY_SEARCH_THRESHOLD && NativeBridge.isLoaded();
+    public static boolean shouldUseNativeEntityDistanceSort(int candidateCount) {
+        return candidateCount >= ENTITY_DISTANCE_SORT_THRESHOLD && NativeBridge.isLoaded();
     }
 
     public static boolean shouldUseNativeBlockDistanceBatch(int candidateCount) {
@@ -98,8 +99,8 @@ public final class NativeBatching {
         return ENTITY_BATCH_THRESHOLD;
     }
 
-    public static int nearestEntitySearchThreshold() {
-        return NEAREST_ENTITY_SEARCH_THRESHOLD;
+    public static int entityDistanceSortThreshold() {
+        return ENTITY_DISTANCE_SORT_THRESHOLD;
     }
 
     public static int blockDistanceBatchThreshold() {

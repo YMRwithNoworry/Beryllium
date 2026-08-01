@@ -1,6 +1,6 @@
 # 性能基准
 
-该基准测最近物品传感器的距离阶段、直接最近实体索引、PotentialCalculator 点电荷阶段、ChunkMap 刷怪水平距离阶段，以及 PlayerChunkSender 最近 Top-K 阶段，不等同于整机 TPS 或帧率测试。
+该基准测最近物品传感器的距离阶段、直接最近实体、PotentialCalculator 点电荷阶段、方块距离内核，以及 PlayerChunkSender 最近 Top-K 阶段，不等同于整机 TPS 或帧率测试。
 
 ## 运行
 
@@ -10,7 +10,7 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 & 'C:\tmp\gradle-8121\gradle-8.12.1\bin\gradle.bat' --no-daemon :common:performanceBenchmark
 ```
 
-默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`，严格半径为 `32`；ChunkMap 玩家数量为 `32`、`128`、`512`、`2048`、`4096`、`8192`，水平半径为 `128`；PlayerChunkSender 候选数量为 `128`、`256`、`512`、`2048`、`4096`、`8192`，批次配额为 `9` 和 `64`。该任务额外传入 `-Dberyllium.native.nearestItemTopKThreshold=1`，以便单独比较 Top-K 算法；正常运行仍使用默认阈值 `1024`。
+默认配置为预热 `100` 次、测量 `300` 次；最近物品候选数量为 `256`、`1024`、`4096`、`8192`，严格半径为 `32`；最近实体候选数量为 `32` 到 `8192`；PlayerChunkSender 候选数量为 `128`、`256`、`512`、`2048`、`4096`、`8192`，批次配额为 `9` 和 `64`。该任务额外传入 `-Dberyllium.native.nearestItemTopKThreshold=1`，以便单独比较 Top-K 算法；正常运行仍使用默认阈值 `1024`。
 
 每组使用相同的确定性坐标和 wanted/visible 谓词，输出中位耗时：
 
@@ -18,17 +18,24 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 - `legacy_native`：上一版 Beryllium 的 FFM 完整排序，再由 Java 重算距离和筛选半径。
 - `fused_native`：一次 FFM 融合排序，返回完整索引顺序和严格半径前缀长度，再由 Java 执行谓词；FFM session 和 native buffer 在每个 Java 线程内复用。
 - `top_k_native`：当前最近物品快路径。Rust 先在线性扫描中选择严格半径内最近 `16` 项，再由 Java 按完整排序会采用的顺序执行谓词；未命中才回退到 `fused_native` 的完整排序。
-- `beryllium_chunk_spawn`：当前 ChunkMap 路径的资格谓词、严格水平距离过滤和结果构建。
 - `vanilla_chunk_send`：原版 `LongOpenHashSet.stream()`、`Long` 装箱和 Guava `Comparators.least` Top-K。
 - `native_chunk_send`：primitive stream 候选快照、输出数组分配、完整 FFM downcall 和 Rust Top-K；FFM session/native buffer 继续按线程复用。
 
 `speedup` 是中位耗时的比值，例如 `fused_speedup:2.00x` 表示当前路径耗时约为原版的一半。FFM、数组打包、排序和结果扫描均包含在测量区间内；世界实体查询、区块加载、其他 AI 传感器和 tick 调度不包含在内。
 
+## 2026-08-01 JVM 实体路径与负优化清理
+
+环境为 Windows x86_64、GraalVM Community JDK 21.0.2、Rust release native `OK`，预热 `100` 次、测量 `300` 次。最近实体原生索引在 `32` 到 `8192` 候选的本轮测量中仅为 Java 内核的 `0.29x` 到 `0.88x`；变量半径过滤为 `0.24x` 到 `0.82x`，AABB 过滤为 `0.14x` 到 `0.64x`。这些路径继续默认禁用 FFM。
+
+旧 `EntityGetter` 覆盖会先构造过滤列表、打包 `double[]` 并分配命中索引；改成通用 JVM 单遍扫描后虽然相对 packed Java 快 `1.07x` 到 `3.59x`，部分规模仍慢于原版手写循环，因此该覆盖链已整体移除并恢复 Minecraft 原版查询。实体距离排序单独使用 `beryllium.native.entityDistanceSortThreshold=256`，因为同轮最近物品端到端排序在 `256` 候选已快于原版 `2.00x`，不再与无收益的半径过滤共用阈值。
+
+同轮也再次发现旧 ChunkMap 覆盖在多数规模慢于原版，POI 覆盖在 native 默认禁用时仍会把原版流收集为列表。两者已从 Mixin 配置移除并恢复 Minecraft 1.21.1 原版逻辑；后续 POI 优化只会采用经验证的 Lithium 分区索引方案，不再保留数组批处理覆盖。实体分区查询则采用 Lithium 1.21.1 `alloc.entity_iteration` 的做法，直接遍历 `ClassInstanceMultiMap.allInstances`，避免其公开迭代器的快照分配。
+
 ## 2026-07-29 最近实体索引阈值复测
 
 环境为 Windows x86_64、GraalVM Community JDK 21.0.2 和 Rust release native `OK`。运行三个独立 Gradle/JVM 进程，每组预热 `100` 次、测量 `300` 次；packed `double[]` 预先生成，测量完整 Java 内核或 FFM 调用，不包含实体谓词与坐标打包。
 
-`32`、`64`、`128` 和 `512` 候选的三轮 Native 均慢于 Java；`256`、`1024`、`4096`、`8192` 至少有一轮慢于 Java，且跨轮波动明显，不能确定安全的默认交叉点。因此直接最近实体索引改用独立 `beryllium.native.nearestEntitySearchThreshold`，默认禁用；其他实体排序、半径筛选和最近物品 Top-K 继续使用各自已验证策略。Rust AVX2 内核和显式属性仍保留，便于特定硬件部署自行调优。
+`32`、`64`、`128` 和 `512` 候选的三轮 Native 均慢于 Java；`256`、`1024`、`4096`、`8192` 至少有一轮慢于 Java，且跨轮波动明显，不能确定安全的默认交叉点。因此生产 `EntityGetter` 覆盖已在 2026-08-01 移除；Rust AVX2 内核仅保留给基准和底层校验，不再接管原版最近实体查询。
 
 因此结果用于比较本次距离查询热点的算法开销，不能直接换算成“整体 TPS 提升百分比”。实际收益取决于候选数量、谓词命中率、CPU、JVM、实体密度和 Native 是否成功加载。
 
@@ -181,3 +188,11 @@ Rust ChunkSend Top-K 改为在每个调用线程内复用距离数组和选择 b
 `128`、`256`、`512` 候选在两种配额的 18 组独立测量中全部快于原版，因此默认 `beryllium.native.chunkSendSelectionThreshold` 从 `512` 下调到 `128`。低于 `128` 或 native 不可用时继续执行原版 Guava 分支。
 
 另行测试过让 Rust 直接回传 packed chunk long，以省去 Java 的索引间接访问；该方案在 `512` 候选、配额 `64` 下相对索引回传仅为 `0.61x-0.72x`，原因是 FFM 输出复制量翻倍，因此未进入生产实现。
+
+## 2026-08-01 默认路径负优化审计
+
+环境仍为 Windows x86_64、GraalVM Community JDK 21.0.2、Rust release native `OK`，每个 JVM 预热 `100` 次并测量 `300` 次。最近物品完整融合排序在 `256` 候选的复测中为原版 `2.87x` 和 `2.96x`，因此实体距离排序阈值继续保持 `256`。PotentialCalculator 缓存路径在 `512` 个点电荷为 `1.07x` 和 `1.33x`，在 `2048` 个点电荷为 `1.23x` 和 `1.36x`，继续保留默认阈值 `512`。
+
+PlayerChunkSender 在本轮某些中等规模组合出现回退：`256` 候选、配额 `9` 为 `0.93x`，`4096` 候选、配额 `64` 为 `0.87x`。虽然其他独立 JVM 中这些组合快于原版，但默认覆盖不能建立在易波动的结果上，因此生产阈值从 `128` 收紧到 `8192`；本轮 `8192` 候选的四组配额复测均未慢于原版，范围为 `1.11x-1.68x`。
+
+同轮最近实体、变量半径、AABB 和方块最近项 FFM 仍存在低于 `1.0x` 的规模，继续默认禁用。旧 EntityGetter、TargetingConditions、ChunkMap、POI、支撑方块和批量 EntitySection 覆盖均已移除；实体分区只保留 Lithium 1.21.1 的直接列表迭代器重定向，青蛙传感器只保留 Lithium 的廉价食物类型检查前置。小批量 PotentialCalculator 直接调用原版点电荷方法，玩家与诱惑传感器使用 JVM 循环消除多余 Stream/候选列表。
