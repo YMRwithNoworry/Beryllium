@@ -7,6 +7,7 @@ public final class InputLatencyGateVerifier {
     public static void main(String[] args) {
         preservesRepeatedClicksWithinOneVanillaHandlingPass();
         blocksRepeatedHandlingWithinOneTick();
+        flushesTargetedInputWhenTargetingIsCurrent();
         defersTargetedInputUntilFrameTargetingIsCurrent();
         defersSecondAttackUntilTheNextTick();
         defersSecondUseUntilTheNextTick();
@@ -81,16 +82,22 @@ public final class InputLatencyGateVerifier {
 
     private static void defersTargetedInputUntilFrameTargetingIsCurrent() {
         InputLatencyGate gate = new InputLatencyGate();
-        check(!gate.shouldFlush(true, true, false, true), "attack must wait for current-frame targeting");
+        check(!gate.shouldFlush(true, true, false, true, false), "attack must wait for current-frame targeting");
         check(gate.takeDeferredTargetedInput(), "the first attack must flush before rendering");
         gate.beginHandling();
         check(gate.allowAttack(), "the frame-aligned attack must run");
         gate.endHandling();
     }
 
+    private static void flushesTargetedInputWhenTargetingIsCurrent() {
+        InputLatencyGate gate = new InputLatencyGate();
+        check(gate.shouldFlush(true, true, false, true, true), "a current targeted attack must flush immediately");
+        check(!gate.takeDeferredTargetedInput(), "an immediate targeted attack must not remain queued");
+    }
+
     private static void defersSecondAttackUntilTheNextTick() {
         InputLatencyGate gate = handledAttackGate();
-        check(!gate.shouldFlush(true, true, false, true), "a second attack must remain queued");
+        check(!gate.shouldFlush(true, true, false, true, true), "a current second attack must remain queued");
         check(!gate.takeDeferredTargetedInput(), "a second attack must not bypass the vanilla tick rate");
         gate.prepareTickHandling();
         gate.beginHandling();
@@ -98,7 +105,7 @@ public final class InputLatencyGateVerifier {
         check(gate.allowContinueAttack(), "block breaking must resume on the next vanilla tick");
         gate.endHandling();
         gate.finishTickHandling();
-        check(!gate.shouldFlush(true, true, false, true), "the following attack must wait for frame targeting");
+        check(!gate.shouldFlush(true, true, false, true, false), "the following attack must wait for frame targeting");
         check(gate.takeDeferredTargetedInput(), "the following tick interval must accept a new attack");
     }
 
@@ -107,7 +114,7 @@ public final class InputLatencyGateVerifier {
         gate.beginHandling();
         check(gate.allowUse(), "first use must run immediately");
         gate.endHandling();
-        check(!gate.shouldFlush(true, false, true, true), "a second use must remain queued");
+        check(!gate.shouldFlush(true, false, true, true, true), "a current second use must remain queued");
         check(!gate.takeDeferredTargetedInput(), "a second use must not bypass the vanilla tick rate");
         gate.prepareTickHandling();
         gate.beginHandling();
@@ -117,7 +124,7 @@ public final class InputLatencyGateVerifier {
 
     private static void flushesReleasesWithoutRepeatingHeldActions() {
         InputLatencyGate gate = handledAttackGate();
-        check(gate.shouldFlush(false, false, false, false), "a release must flush immediately");
+        check(gate.shouldFlush(false, false, false, false, false), "a release must flush immediately");
         gate.beginHandling();
         check(!gate.allowContinueAttack(), "an extra held attack must remain blocked");
         gate.endHandling();
@@ -125,8 +132,8 @@ public final class InputLatencyGateVerifier {
 
     private static void blocksOtherFlushesWhileADeferredClickIsQueued() {
         InputLatencyGate gate = handledAttackGate();
-        check(!gate.shouldFlush(true, true, false, true), "the repeated attack must be deferred");
-        check(!gate.shouldFlush(true, false, false, false), "other input must not consume the queued attack");
+        check(!gate.shouldFlush(true, true, false, true, false), "the repeated attack must be deferred");
+        check(!gate.shouldFlush(true, false, false, false, false), "other input must not consume the queued attack");
         gate.prepareTickHandling();
         gate.beginHandling();
         check(gate.allowAttack(), "the deferred attack must still be available to vanilla");

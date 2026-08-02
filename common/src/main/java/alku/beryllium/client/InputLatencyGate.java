@@ -18,7 +18,13 @@ final class InputLatencyGate {
     private boolean useOccurred;
     private boolean mouseSmoothersReset;
 
-    boolean shouldFlush(boolean createsClick, boolean attackInput, boolean useInput, boolean targetedInput) {
+    boolean shouldFlush(
+        boolean createsClick,
+        boolean attackInput,
+        boolean useInput,
+        boolean targetedInput,
+        boolean targetedInputReady
+    ) {
         int actions = (attackInput ? ATTACK : 0) | (useInput ? USE : 0) | (targetedInput ? TARGETED : 0);
         if (this.deferredActions != 0) {
             if (createsClick) {
@@ -28,8 +34,12 @@ final class InputLatencyGate {
         }
 
         if (createsClick && targetedInput) {
-            this.deferredActions = actions;
-            return false;
+            boolean actionAlreadyHandled = (actions & ATTACK) != 0 && (this.attackHandled || this.continueAttackHandled)
+                || (actions & USE) != 0 && this.useHandled;
+            if (!targetedInputReady || actionAlreadyHandled) {
+                this.deferredActions = actions;
+                return false;
+            }
         }
         return true;
     }

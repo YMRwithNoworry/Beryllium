@@ -22,7 +22,8 @@ public final class ClientInputLatency {
         boolean createsClick,
         boolean attackInput,
         boolean useInput,
-        boolean targetedInput
+        boolean targetedInput,
+        boolean targetedInputReady
     ) {
         if (!ENABLED || flushing || !minecraft.isSameThread()) {
             return;
@@ -31,11 +32,18 @@ public final class ClientInputLatency {
             GATE.reset();
             return;
         }
-        if (!GATE.shouldFlush(createsClick, attackInput, useInput, targetedInput)) {
+        if (!GATE.shouldFlush(createsClick, attackInput, useInput, targetedInput, targetedInputReady)) {
             return;
         }
 
+        if (createsClick && targetedInput && targetedInputReady) {
+            minecraft.gameRenderer.pick(1.0F);
+        }
         invokeHandleKeybinds(minecraft);
+    }
+
+    public static boolean canPrepareTargetedInput(Minecraft minecraft) {
+        return ENABLED && !flushing && minecraft.isSameThread() && canHandleGameplayInput(minecraft);
     }
 
     public static void flushDeferredTargetedInput(Minecraft minecraft) {
