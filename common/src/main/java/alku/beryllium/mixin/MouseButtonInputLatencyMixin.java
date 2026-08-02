@@ -9,6 +9,7 @@ import org.lwjgl.glfw.GLFWScrollCallbackI;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArgs;
@@ -20,6 +21,24 @@ public class MouseButtonInputLatencyMixin {
     @Shadow
     @Final
     private Minecraft minecraft;
+
+    @Shadow
+    private boolean ignoreFirstMove;
+
+    @Shadow
+    private boolean mouseGrabbed;
+
+    @Unique
+    private long beryllium$registeredWindow;
+
+    @Unique
+    private double beryllium$pendingMoveX;
+
+    @Unique
+    private double beryllium$pendingMoveY;
+
+    @Unique
+    private boolean beryllium$hasPendingMove;
 
     @Shadow
     private void onMove(long window, double x, double y) {
@@ -48,27 +67,76 @@ public class MouseButtonInputLatencyMixin {
         GLFWCursorPosCallbackI scheduledMoveCallback = args.get(1);
         GLFWMouseButtonCallbackI scheduledButtonCallback = args.get(2);
         GLFWScrollCallbackI scheduledScrollCallback = args.get(3);
+        this.beryllium$drainPendingMove();
+        this.beryllium$registeredWindow = args.get(0);
         args.set(1, (GLFWCursorPosCallbackI) (window, x, y) -> {
             if (this.minecraft.isSameThread()) {
-                this.onMove(window, x, y);
+                this.beryllium$queueOrHandleMove(window, x, y);
             } else {
-                scheduledMoveCallback.invoke(window, x, y);
+                this.minecraft.execute(() -> {
+                    this.beryllium$drainPendingMove();
+                    scheduledMoveCallback.invoke(window, x, y);
+                });
             }
         });
         args.set(2, (GLFWMouseButtonCallbackI) (window, button, action, modifiers) -> {
             if (this.minecraft.isSameThread()) {
+                this.beryllium$drainPendingMove();
                 this.onPress(window, button, action, modifiers);
             } else {
-                scheduledButtonCallback.invoke(window, button, action, modifiers);
+                this.minecraft.execute(() -> {
+                    this.beryllium$drainPendingMove();
+                    scheduledButtonCallback.invoke(window, button, action, modifiers);
+                });
             }
         });
         args.set(3, (GLFWScrollCallbackI) (window, horizontal, vertical) -> {
             if (this.minecraft.isSameThread()) {
+                this.beryllium$drainPendingMove();
                 this.onScroll(window, horizontal, vertical);
             } else {
-                scheduledScrollCallback.invoke(window, horizontal, vertical);
+                this.minecraft.execute(() -> {
+                    this.beryllium$drainPendingMove();
+                    scheduledScrollCallback.invoke(window, horizontal, vertical);
+                });
             }
         });
+    }
+
+    @Unique
+    private void beryllium$queueOrHandleMove(long window, double x, double y) {
+        if (window == this.beryllium$registeredWindow && this.mouseGrabbed && !this.ignoreFirstMove
+            && this.minecraft.isWindowActive()) {
+            this.beryllium$pendingMoveX = x;
+            this.beryllium$pendingMoveY = y;
+            if (!this.beryllium$hasPendingMove) {
+                this.beryllium$hasPendingMove = true;
+            }
+            return;
+        }
+
+        this.beryllium$drainPendingMove();
+        this.onMove(window, x, y);
+    }
+
+    @Unique
+    private void beryllium$drainPendingMove() {
+        if (!this.beryllium$hasPendingMove) {
+            return;
+        }
+
+        this.beryllium$hasPendingMove = false;
+        this.onMove(this.beryllium$registeredWindow, this.beryllium$pendingMoveX, this.beryllium$pendingMoveY);
+    }
+
+    @Inject(method = "handleAccumulatedMovement", at = @At("HEAD"))
+    private void beryllium$drainMoveBeforeConsumption(CallbackInfo ci) {
+        this.beryllium$drainPendingMove();
+    }
+
+    @Inject(method = {"setIgnoreFirstMove", "cursorEntered"}, at = @At("HEAD"))
+    private void beryllium$drainMoveBeforeIgnoringNextEvent(CallbackInfo ci) {
+        this.beryllium$drainPendingMove();
     }
 
     @Inject(method = "onPress(JIII)V", at = @At("TAIL"))

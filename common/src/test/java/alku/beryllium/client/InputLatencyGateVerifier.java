@@ -12,6 +12,33 @@ public final class InputLatencyGateVerifier {
         defersSecondUseUntilTheNextTick();
         flushesReleasesWithoutRepeatingHeldActions();
         blocksOtherFlushesWhileADeferredClickIsQueued();
+        coalescedCursorEventsPreserveAccumulatedDelta();
+        firstCursorEventRemainsUncoalesced();
+    }
+
+    private static void coalescedCursorEventsPreserveAccumulatedDelta() {
+        double[] positions = {12.0, 15.5, 14.0, 23.25, 18.75};
+        double originalDelta = 0.0;
+        for (int i = 1; i < positions.length; i++) {
+            originalDelta += positions[i] - positions[i - 1];
+        }
+        checkEqual(originalDelta, positions[positions.length - 1] - positions[0], "coalesced cursor delta");
+    }
+
+    private static void firstCursorEventRemainsUncoalesced() {
+        double positionBeforeGrab = 100.0;
+        double ignoredWarpPosition = 500.0;
+        double[] positionsAfterWarp = {503.0, 501.0, 508.0};
+        double originalDelta = positionsAfterWarp[0] - ignoredWarpPosition;
+        for (int i = 1; i < positionsAfterWarp.length; i++) {
+            originalDelta += positionsAfterWarp[i] - positionsAfterWarp[i - 1];
+        }
+        double coalescedDelta = positionsAfterWarp[positionsAfterWarp.length - 1] - ignoredWarpPosition;
+        checkEqual(originalDelta, coalescedDelta, "post-warp cursor delta");
+        check(
+            Double.compare(coalescedDelta, positionsAfterWarp[positionsAfterWarp.length - 1] - positionBeforeGrab) != 0,
+            "the first cursor warp must remain a distinct event"
+        );
     }
 
     private static void blocksRepeatedHandlingWithinOneTick() {
@@ -104,6 +131,12 @@ public final class InputLatencyGateVerifier {
     private static void check(boolean condition, String message) {
         if (!condition) {
             throw new AssertionError(message);
+        }
+    }
+
+    private static void checkEqual(double expected, double actual, String message) {
+        if (Double.compare(expected, actual) != 0) {
+            throw new AssertionError(message + ": expected " + expected + ", got " + actual);
         }
     }
 }
