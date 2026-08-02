@@ -1,6 +1,7 @@
 package alku.beryllium.bridge;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -99,8 +100,7 @@ final class FfmNativeBridge {
         return withSession(session -> {
             Buffer positionsBuffer = session.input(packedChunkPositions, Kind.LONG, positionsLength);
             Buffer outputBuffer = session.output(output, Kind.INT, outputLength);
-            int result = session.invoke(
-                Function.SELECT_NEAREST_CHUNK_INDICES,
+            int result = session.invokeSelectNearestChunkIndices(
                 originX,
                 originZ,
                 positionsBuffer,
@@ -153,8 +153,7 @@ final class FfmNativeBridge {
             Buffer positionsBuffer = session.input(positions, Kind.INT);
             Buffer chargesBuffer = session.input(charges, Kind.DOUBLE);
             Buffer outputBuffer = session.output(output, Kind.DOUBLE);
-            int result = session.invoke(
-                Function.COMPUTE_POTENTIAL_ENERGY_CHANGE,
+            int result = session.invokeComputePotentialEnergyChange(
                 originX,
                 originY,
                 originZ,
@@ -174,7 +173,7 @@ final class FfmNativeBridge {
         return withStatusSession(session -> {
             Buffer posBuf = session.input(positions, Kind.INT);
             Buffer chgBuf = session.input(charges, Kind.DOUBLE);
-            return session.invoke(Function.POTENTIAL_SET_CHARGES, posBuf, chgBuf);
+            return session.invokeSetPotentialCharges(posBuf, chgBuf);
         });
     }
 
@@ -183,8 +182,7 @@ final class FfmNativeBridge {
     ) {
         return withStatusSession(session -> {
             Buffer outputBuffer = session.output(output, Kind.DOUBLE);
-            int result = session.invoke(
-                Function.POTENTIAL_COMPUTE_CACHED,
+            int result = session.invokeComputePotentialEnergyChangeCached(
                 originX, originY, originZ, chargeMultiplier, outputBuffer
             );
             if (result == NativeStatus.OK.code()) {
@@ -587,8 +585,7 @@ final class FfmNativeBridge {
         return withStatusSession(session -> {
             Buffer positionsBuffer = session.input(positions, Kind.DOUBLE);
             Buffer outputBuffer = session.output(output, Kind.INT);
-            int result = session.invoke(
-                Function.SORT_BY_DISTANCE_DOUBLE,
+            int result = session.invokeSortByDistance(
                 originX,
                 originY,
                 originZ,
@@ -635,8 +632,7 @@ final class FfmNativeBridge {
         return withSession(session -> {
             Buffer positionsBuffer = session.input(positions, Kind.DOUBLE, positionsLength);
             Buffer outputBuffer = session.output(output, Kind.INT, outputLength);
-            int result = session.invoke(
-                Function.SORT_BY_DISTANCE_AND_COUNT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
+            int result = session.invokeSortByDistanceAndCountWithinRadiusExclusive(
                 originX,
                 originY,
                 originZ,
@@ -687,8 +683,7 @@ final class FfmNativeBridge {
         return withSession(session -> {
             Buffer positionsBuffer = session.input(positions, Kind.DOUBLE, positionsLength);
             Buffer outputBuffer = session.output(output, Kind.INT, outputLength);
-            int result = session.invoke(
-                Function.SELECT_NEAREST_INDICES_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
+            int result = session.invokeSelectNearestIndicesWithinRadiusExclusive(
                 originX,
                 originY,
                 originZ,
@@ -783,6 +778,15 @@ final class FfmNativeBridge {
             this.byteSize = byteSize;
             this.alignment = alignment;
         }
+
+        private Class<?> carrier() {
+            return switch (this) {
+                case ADDRESS -> Object.class;
+                case INT -> int.class;
+                case LONG -> long.class;
+                case DOUBLE -> double.class;
+            };
+        }
     }
 
     private enum Function {
@@ -823,6 +827,19 @@ final class FfmNativeBridge {
             this.symbol = symbol;
             this.arguments = arguments;
         }
+
+        private boolean usesExactHandle() {
+            return switch (this) {
+                case SELECT_NEAREST_CHUNK_INDICES,
+                    POTENTIAL_SET_CHARGES,
+                    POTENTIAL_COMPUTE_CACHED,
+                    COMPUTE_POTENTIAL_ENERGY_CHANGE,
+                    SORT_BY_DISTANCE_DOUBLE,
+                    SORT_BY_DISTANCE_AND_COUNT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
+                    SELECT_NEAREST_INDICES_WITHIN_RADIUS_EXCLUSIVE_DOUBLE -> true;
+                default -> false;
+            };
+        }
     }
 
     private static final class Runtime {
@@ -833,6 +850,7 @@ final class FfmNativeBridge {
         private final ThreadLocal<Session> sessions;
         private final EnumMap<Kind, Object> layouts = new EnumMap<>(Kind.class);
         private final EnumMap<Function, MethodHandle> handles = new EnumMap<>(Function.class);
+        private final MethodHandle[] exactHandles = new MethodHandle[Function.values().length];
 
         private Runtime() throws ReflectiveOperationException {
             Class<?> arenaClass = Class.forName("java.lang.foreign.Arena");
@@ -902,6 +920,15 @@ final class FfmNativeBridge {
                     options
                 );
                 handles.put(function, handle);
+                if (function.usesExactHandle()) {
+                    Class<?>[] parameterTypes = new Class<?>[function.arguments.length];
+                    for (int index = 0; index < function.arguments.length; index++) {
+                        parameterTypes[index] = function.arguments[index].carrier();
+                    }
+                    exactHandles[function.ordinal()] = handle.asType(
+                        MethodType.methodType(int.class, parameterTypes)
+                    );
+                }
             }
 
             sessions = ThreadLocal.withInitial(() -> new Session(this));
@@ -930,6 +957,10 @@ final class FfmNativeBridge {
 
         private MethodHandle handle(Function function) {
             return handles.get(function);
+        }
+
+        private MethodHandle exactHandle(Function function) {
+            return exactHandles[function.ordinal()];
         }
     }
 
@@ -1001,6 +1032,137 @@ final class FfmNativeBridge {
             }
             Object result = runtime.handle(function).invokeWithArguments(expanded);
             return ((Number) result).intValue();
+        }
+
+        private int invokeSelectNearestChunkIndices(
+            int originX,
+            int originZ,
+            Buffer positions,
+            int limit,
+            Buffer output
+        ) throws Throwable {
+            return (int) runtime.exactHandle(Function.SELECT_NEAREST_CHUNK_INDICES).invokeExact(
+                originX,
+                originZ,
+                positions.segment,
+                (long) positions.length,
+                limit,
+                output.segment,
+                (long) output.length
+            );
+        }
+
+        private int invokeComputePotentialEnergyChange(
+            int originX,
+            int originY,
+            int originZ,
+            Buffer positions,
+            Buffer charges,
+            double chargeMultiplier,
+            Buffer output
+        ) throws Throwable {
+            return (int) runtime.exactHandle(Function.COMPUTE_POTENTIAL_ENERGY_CHANGE).invokeExact(
+                originX,
+                originY,
+                originZ,
+                positions.segment,
+                (long) positions.length,
+                charges.segment,
+                (long) charges.length,
+                chargeMultiplier,
+                output.segment,
+                (long) output.length
+            );
+        }
+
+        private int invokeSetPotentialCharges(Buffer positions, Buffer charges) throws Throwable {
+            return (int) runtime.exactHandle(Function.POTENTIAL_SET_CHARGES).invokeExact(
+                positions.segment,
+                (long) positions.length,
+                charges.segment,
+                (long) charges.length
+            );
+        }
+
+        private int invokeComputePotentialEnergyChangeCached(
+            int originX,
+            int originY,
+            int originZ,
+            double chargeMultiplier,
+            Buffer output
+        ) throws Throwable {
+            return (int) runtime.exactHandle(Function.POTENTIAL_COMPUTE_CACHED).invokeExact(
+                originX,
+                originY,
+                originZ,
+                chargeMultiplier,
+                output.segment,
+                (long) output.length
+            );
+        }
+
+        private int invokeSortByDistance(
+            double originX,
+            double originY,
+            double originZ,
+            Buffer positions,
+            Buffer output
+        ) throws Throwable {
+            return (int) runtime.exactHandle(Function.SORT_BY_DISTANCE_DOUBLE).invokeExact(
+                originX,
+                originY,
+                originZ,
+                positions.segment,
+                (long) positions.length,
+                output.segment,
+                (long) output.length
+            );
+        }
+
+        private int invokeSortByDistanceAndCountWithinRadiusExclusive(
+            double originX,
+            double originY,
+            double originZ,
+            double radiusSquared,
+            Buffer positions,
+            Buffer output
+        ) throws Throwable {
+            return (int) runtime.exactHandle(
+                Function.SORT_BY_DISTANCE_AND_COUNT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE
+            ).invokeExact(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                positions.segment,
+                (long) positions.length,
+                output.segment,
+                (long) output.length
+            );
+        }
+
+        private int invokeSelectNearestIndicesWithinRadiusExclusive(
+            double originX,
+            double originY,
+            double originZ,
+            double radiusSquared,
+            Buffer positions,
+            int limit,
+            Buffer output
+        ) throws Throwable {
+            return (int) runtime.exactHandle(
+                Function.SELECT_NEAREST_INDICES_WITHIN_RADIUS_EXCLUSIVE_DOUBLE
+            ).invokeExact(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                positions.segment,
+                (long) positions.length,
+                limit,
+                output.segment,
+                (long) output.length
+            );
         }
 
         private void copyOutputs() throws ReflectiveOperationException {

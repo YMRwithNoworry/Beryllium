@@ -63,6 +63,18 @@ public final class FfmNativeBridgeVerifier {
                     );
                     assertEquals(2, count, "FFM concurrent filter count");
                     assertArrayEquals(new int[] {0, 1}, output, "FFM concurrent filter output");
+
+                    long[] chunkPositions = {packChunk(2, 0), packChunk(0, 1), packChunk(-3, 0)};
+                    int[] selectedChunks = {-1, -1};
+                    int selectedCount = FfmNativeBridge.selectNearestChunkIndices(
+                        0,
+                        0,
+                        chunkPositions,
+                        2,
+                        selectedChunks
+                    );
+                    assertEquals(2, selectedCount, "FFM concurrent exact-call count");
+                    assertArrayEquals(new int[] {1, 0}, selectedChunks, "FFM concurrent exact-call output");
                     return FfmNativeBridge.sessionIdForCurrentThread();
                 }));
             }
@@ -75,6 +87,10 @@ public final class FfmNativeBridgeVerifier {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    private static long packChunk(int x, int z) {
+        return (long) x & 0xFFFFFFFFL | ((long) z & 0xFFFFFFFFL) << 32;
     }
 
     private static void assertEquals(int expected, int actual, String message) {

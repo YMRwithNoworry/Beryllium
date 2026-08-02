@@ -230,3 +230,21 @@ FastUtil 8.5.12 sources JAR 显示 `LongOpenHashSet.SetSpliterator` 会先输出
 | 16,384 | 64 | 280,000 ns | 196,100 ns | 146,300 ns | 1.34x | 1.91x | 1.34x-1.40x |
 
 默认覆盖的四个组合在全部独立 JVM 中均快于旧分配 native 和原版。但 `256` 候选、配额 `9` 仍有独立轮次只达原版 `0.86x` 和 `0.91x`，所以生产 `beryllium.native.chunkSendSelectionThreshold` 严格保持 `8192`，不因大批量复用收益下调。
+
+## 2026-08-02 默认热点 FFM 精确调用
+
+旧 FFM 调度层在每次 downcall 时通过 varargs、`ArrayList` 和 `MethodHandle.invokeWithArguments` 展开参数。新路径在 native 初始化时只为已实测且默认启用的区块 Top-K、Potential 缓存、实体距离排序、最近物品融合排序与 Top-K 预适配 `Object` 地址载体和 primitive 参数签名，调用时直接使用 `invokeExact`。默认禁用或尚无稳定收益的实体过滤、AABB 和方块距离 ABI 继续使用旧通用调用，不承担该改动的风险。
+
+在 Windows x86_64、GraalVM Community JDK 21.0.2、Rust release native `OK` 上，分别运行三个旧调度层 JVM 和三个精确调用 JVM；每组预热 `100` 次、测量 `300` 次。下表先取各自三轮中位数，再计算精确调用相对旧调度层的收益；最后一列是精确调用在三个 JVM 中相对原版 Java/Guava 的完整路径范围：
+
+| 路径 | 规模 | 旧通用调用中位数 | 精确调用中位数 | 相对旧调用 | 精确调用相对原版范围 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Potential 缓存 | 512 | 10,700 ns | 8,600 ns | 1.24x | 1.27x-1.54x |
+| Potential 缓存 | 2,048 | 34,500 ns | 30,700 ns | 1.12x | 1.35x-1.44x |
+| Potential 缓存 | 8,192 | 128,600 ns | 110,700 ns | 1.16x | 1.50x-1.54x |
+| ChunkSend Top-K | 8,192 / 配额 9 | 111,200 ns | 87,600 ns | 1.27x | 1.73x-2.06x |
+| ChunkSend Top-K | 8,192 / 配额 64 | 115,400 ns | 97,400 ns | 1.18x | 1.73x-2.09x |
+| ChunkSend Top-K | 16,384 / 配额 9 | 217,500 ns | 176,100 ns | 1.24x | 1.72x-2.08x |
+| ChunkSend Top-K | 16,384 / 配额 64 | 232,600 ns | 188,200 ns | 1.24x | 1.70x-1.98x |
+
+最近物品默认覆盖的 `1,024`、`4,096`、`8,192`、`16,384` 候选在精确调用三轮中相对原版分别为 `18.15x-22.77x`、`20.43x-23.05x`、`19.74x-25.20x`、`21.33x-25.24x`。`256` 候选仍有一轮 Top-K 仅为融合排序的 `0.86x`，Potential `32/128` 也没有稳定快于 Java，因此生产阈值继续严格保持最近物品 `1024`、Potential `512`、区块发送 `8192`，不根据调用层固定成本下降而下调。
