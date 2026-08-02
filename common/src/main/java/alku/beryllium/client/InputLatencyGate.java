@@ -16,6 +16,7 @@ final class InputLatencyGate {
     private boolean attackOccurred;
     private boolean continueAttackOccurred;
     private boolean useOccurred;
+    private boolean mouseSmoothersReset;
 
     boolean shouldFlush(boolean createsClick, boolean attackInput, boolean useInput, boolean targetedInput) {
         int actions = (attackInput ? ATTACK : 0) | (useInput ? USE : 0) | (targetedInput ? TARGETED : 0);
@@ -99,6 +100,18 @@ final class InputLatencyGate {
         }
         this.useOccurred = true;
         return true;
+    }
+
+    boolean shouldRunMouseTurn(boolean smoothCamera, boolean hasMovement, boolean smoothersSettled) {
+        if (smoothCamera) {
+            this.mouseSmoothersReset = false;
+            return hasMovement || !smoothersSettled;
+        }
+        if (!this.mouseSmoothersReset) {
+            this.mouseSmoothersReset = true;
+            return true;
+        }
+        return hasMovement;
     }
 
     void reset() {

@@ -104,6 +104,10 @@ public final class ClientInputLatency {
         return !ENABLED || GATE.allowUse();
     }
 
+    public static boolean shouldRunMouseTurn(boolean smoothCamera, boolean hasMovement, boolean smoothersSettled) {
+        return !ENABLED || GATE.shouldRunMouseTurn(smoothCamera, hasMovement, smoothersSettled);
+    }
+
     private static boolean isClassPresent(String name) {
         try {
             Class.forName(name, false, ClientInputLatency.class.getClassLoader());

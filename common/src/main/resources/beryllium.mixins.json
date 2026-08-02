@@ -7,7 +7,8 @@
     "KeyboardInputLatencyMixin",
     "MinecraftInputLatencyAccess",
     "MinecraftInputLatencyMixin",
-    "MouseButtonInputLatencyMixin"
+    "MouseButtonInputLatencyMixin",
+    "SmoothDoubleAccessor"
   ],
   "mixins": [
     "BreezeAttackEntitySensorMixin",

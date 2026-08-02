@@ -1,8 +1,10 @@
 package alku.beryllium.mixin;
 
 import alku.beryllium.client.ClientInputLatency;
+import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.MouseHandler;
+import net.minecraft.util.SmoothDouble;
 import org.lwjgl.glfw.GLFWCursorPosCallbackI;
 import org.lwjgl.glfw.GLFWMouseButtonCallbackI;
 import org.lwjgl.glfw.GLFWScrollCallbackI;
@@ -27,6 +29,20 @@ public class MouseButtonInputLatencyMixin {
 
     @Shadow
     private boolean mouseGrabbed;
+
+    @Shadow
+    private double accumulatedDX;
+
+    @Shadow
+    private double accumulatedDY;
+
+    @Shadow
+    @Final
+    private SmoothDouble smoothTurnX;
+
+    @Shadow
+    @Final
+    private SmoothDouble smoothTurnY;
 
     @Unique
     private long beryllium$registeredWindow;
@@ -132,6 +148,28 @@ public class MouseButtonInputLatencyMixin {
     @Inject(method = "handleAccumulatedMovement", at = @At("HEAD"))
     private void beryllium$drainMoveBeforeConsumption(CallbackInfo ci) {
         this.beryllium$drainPendingMove();
+    }
+
+    @WrapWithCondition(
+        method = "handleAccumulatedMovement",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/client/MouseHandler;turnPlayer(D)V"
+        )
+    )
+    private boolean beryllium$shouldRunPlayerTurn(MouseHandler mouseHandler, double elapsedTime) {
+        boolean hasMovement = this.accumulatedDX != 0.0 || this.accumulatedDY != 0.0;
+        boolean smoothCamera = this.minecraft.options.smoothCamera;
+        boolean smoothersSettled = !smoothCamera || this.beryllium$isSettled(this.smoothTurnX)
+            && this.beryllium$isSettled(this.smoothTurnY);
+        return ClientInputLatency.shouldRunMouseTurn(smoothCamera, hasMovement, smoothersSettled);
+    }
+
+    @Unique
+    private boolean beryllium$isSettled(SmoothDouble smoother) {
+        SmoothDoubleAccessor accessor = (SmoothDoubleAccessor) smoother;
+        return accessor.beryllium$targetValue() == 0.0 && accessor.beryllium$remainingValue() == 0.0
+            && accessor.beryllium$lastAmount() == 0.0;
     }
 
     @Inject(method = {"setIgnoreFirstMove", "cursorEntered"}, at = @At("HEAD"))
