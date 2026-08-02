@@ -130,7 +130,7 @@ public class MouseButtonInputLatencyMixin {
     @Unique
     private boolean beryllium$prepareTargetedInput(long window, int button, int action, int modifiers) {
         if (window != this.beryllium$registeredWindow || action == 0 || !this.mouseGrabbed || !this.minecraft.isWindowActive()
-            || this.minecraft.options.smoothCamera || !ClientInputLatency.canPrepareTargetedInput(this.minecraft)) {
+            || !ClientInputLatency.canPrepareTargetedInput(this.minecraft)) {
             return false;
         }
 
@@ -141,7 +141,15 @@ public class MouseButtonInputLatencyMixin {
             return false;
         }
 
-        if (this.accumulatedDX != 0.0 || this.accumulatedDY != 0.0) {
+        boolean hasMovement = this.accumulatedDX != 0.0 || this.accumulatedDY != 0.0;
+        boolean smoothCamera = this.minecraft.options.smoothCamera;
+        boolean smoothersSettled = !smoothCamera || !hasMovement && this.beryllium$isSettled(this.smoothTurnX)
+            && this.beryllium$isSettled(this.smoothTurnY);
+        if (smoothCamera && !ClientInputLatency.canSynchronizeTargeting(true, hasMovement, smoothersSettled)) {
+            return false;
+        }
+
+        if (hasMovement) {
             ((MouseHandler) (Object) this).handleAccumulatedMovement();
         }
         return true;

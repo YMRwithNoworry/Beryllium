@@ -124,6 +124,10 @@ final class InputLatencyGate {
         return hasMovement;
     }
 
+    boolean canSynchronizeTargeting(boolean smoothCamera, boolean hasMovement, boolean smoothersSettled) {
+        return !smoothCamera || !hasMovement && smoothersSettled;
+    }
+
     void reset() {
         this.attackHandled = false;
         this.continueAttackHandled = false;

@@ -16,6 +16,15 @@ public final class InputLatencyGateVerifier {
         coalescedCursorEventsPreserveAccumulatedDelta();
         firstCursorEventRemainsUncoalesced();
         skipsOnlyResetNonSmoothIdleTurns();
+        synchronizesOnlyCurrentTargetingState();
+    }
+
+    private static void synchronizesOnlyCurrentTargetingState() {
+        InputLatencyGate gate = new InputLatencyGate();
+        check(gate.canSynchronizeTargeting(false, true, false), "non-smooth movement can be consumed immediately");
+        check(gate.canSynchronizeTargeting(true, false, true), "settled smooth targeting is already current");
+        check(!gate.canSynchronizeTargeting(true, true, true), "new smooth movement must wait for interpolation");
+        check(!gate.canSynchronizeTargeting(true, false, false), "residual smoothing must wait for interpolation");
     }
 
     private static void skipsOnlyResetNonSmoothIdleTurns() {
