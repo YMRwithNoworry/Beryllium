@@ -1,5 +1,8 @@
 package alku.beryllium.client;
 
+import alku.beryllium.mixin.MouseButtonInputLatencyMixin;
+import alku.beryllium.mixin.MouseInputLatencyAccess;
+
 public final class InputLatencyGateVerifier {
     private InputLatencyGateVerifier() {
     }
@@ -17,6 +20,14 @@ public final class InputLatencyGateVerifier {
         firstCursorEventRemainsUncoalesced();
         skipsOnlyResetNonSmoothIdleTurns();
         synchronizesOnlyCurrentTargetingState();
+        exposesSharedTargetingPreparation();
+    }
+
+    private static void exposesSharedTargetingPreparation() {
+        check(
+            MouseInputLatencyAccess.class.isAssignableFrom(MouseButtonInputLatencyMixin.class),
+            "the mouse mixin must expose shared targeting preparation"
+        );
     }
 
     private static void synchronizesOnlyCurrentTargetingState() {

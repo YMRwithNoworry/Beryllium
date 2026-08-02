@@ -1,6 +1,7 @@
 package alku.beryllium.client;
 
 import alku.beryllium.mixin.MinecraftInputLatencyAccess;
+import alku.beryllium.mixin.MouseInputLatencyAccess;
 import net.minecraft.client.Minecraft;
 
 public final class ClientInputLatency {
@@ -22,8 +23,7 @@ public final class ClientInputLatency {
         boolean createsClick,
         boolean attackInput,
         boolean useInput,
-        boolean targetedInput,
-        boolean targetedInputReady
+        boolean targetedInput
     ) {
         if (!ENABLED || flushing || !minecraft.isSameThread()) {
             return;
@@ -32,6 +32,8 @@ public final class ClientInputLatency {
             GATE.reset();
             return;
         }
+        boolean targetedInputReady = createsClick && targetedInput
+            && ((MouseInputLatencyAccess) minecraft.mouseHandler).beryllium$prepareTargetedInput();
         if (!GATE.shouldFlush(createsClick, attackInput, useInput, targetedInput, targetedInputReady)) {
             return;
         }
@@ -40,10 +42,6 @@ public final class ClientInputLatency {
             minecraft.gameRenderer.pick(1.0F);
         }
         invokeHandleKeybinds(minecraft);
-    }
-
-    public static boolean canPrepareTargetedInput(Minecraft minecraft) {
-        return ENABLED && !flushing && minecraft.isSameThread() && canHandleGameplayInput(minecraft);
     }
 
     public static void flushDeferredTargetedInput(Minecraft minecraft) {

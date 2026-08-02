@@ -19,7 +19,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
 @Mixin(MouseHandler.class)
-public class MouseButtonInputLatencyMixin {
+public class MouseButtonInputLatencyMixin implements MouseInputLatencyAccess {
     @Shadow
     @Final
     private Minecraft minecraft;
@@ -55,9 +55,6 @@ public class MouseButtonInputLatencyMixin {
 
     @Unique
     private boolean beryllium$hasPendingMove;
-
-    @Unique
-    private boolean beryllium$targetedInputReady;
 
     @Shadow
     private void onMove(long window, double x, double y) {
@@ -101,12 +98,7 @@ public class MouseButtonInputLatencyMixin {
         args.set(2, (GLFWMouseButtonCallbackI) (window, button, action, modifiers) -> {
             if (this.minecraft.isSameThread()) {
                 this.beryllium$drainPendingMove();
-                this.beryllium$targetedInputReady = this.beryllium$prepareTargetedInput(window, button, action, modifiers);
-                try {
-                    this.onPress(window, button, action, modifiers);
-                } finally {
-                    this.beryllium$targetedInputReady = false;
-                }
+                this.onPress(window, button, action, modifiers);
             } else {
                 this.minecraft.execute(() -> {
                     this.beryllium$drainPendingMove();
@@ -127,17 +119,10 @@ public class MouseButtonInputLatencyMixin {
         });
     }
 
-    @Unique
-    private boolean beryllium$prepareTargetedInput(long window, int button, int action, int modifiers) {
-        if (window != this.beryllium$registeredWindow || action == 0 || !this.mouseGrabbed || !this.minecraft.isWindowActive()
-            || !ClientInputLatency.canPrepareTargetedInput(this.minecraft)) {
-            return false;
-        }
-
-        int mappedButton = Minecraft.ON_OSX && button == 0 && (modifiers & 2) == 2 ? 1 : button;
-        if (!this.minecraft.options.keyAttack.matchesMouse(mappedButton)
-            && !this.minecraft.options.keyUse.matchesMouse(mappedButton)
-            && !this.minecraft.options.keyPickItem.matchesMouse(mappedButton)) {
+    @Override
+    public boolean beryllium$prepareTargetedInput() {
+        this.beryllium$drainPendingMove();
+        if (!this.mouseGrabbed || !this.minecraft.isWindowActive()) {
             return false;
         }
 
@@ -230,8 +215,7 @@ public class MouseButtonInputLatencyMixin {
             createsClick,
             attackInput,
             useInput,
-            targetedInput,
-            this.beryllium$targetedInputReady
+            targetedInput
         );
     }
 }
