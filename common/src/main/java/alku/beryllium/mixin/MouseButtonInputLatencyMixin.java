@@ -1,6 +1,7 @@
 package alku.beryllium.mixin;
 
 import alku.beryllium.client.ClientInputLatency;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.MouseHandler;
@@ -166,9 +167,16 @@ public class MouseButtonInputLatencyMixin implements MouseInputLatencyAccess {
         this.onMove(this.beryllium$registeredWindow, this.beryllium$pendingMoveX, this.beryllium$pendingMoveY);
     }
 
-    @Inject(method = "handleAccumulatedMovement", at = @At("HEAD"))
-    private void beryllium$drainMoveBeforeConsumption(CallbackInfo ci) {
+    @ModifyExpressionValue(
+        method = "handleAccumulatedMovement",
+        at = @At(
+            value = "INVOKE",
+            target = "Lcom/mojang/blaze3d/Blaze3D;getTime()D"
+        )
+    )
+    private double beryllium$drainMoveBeforeConsumption(double currentTime) {
         this.beryllium$drainPendingMove();
+        return currentTime;
     }
 
     @WrapWithCondition(
