@@ -32,13 +32,15 @@ public final class ClientInputLatency {
             GATE.reset();
             return;
         }
-        boolean targetedInputReady = createsClick && targetedInput
-            && ((MouseInputLatencyAccess) minecraft.mouseHandler).beryllium$prepareTargetedInput();
-        if (!GATE.shouldFlush(createsClick, attackInput, useInput, targetedInput, targetedInputReady)) {
+        MouseInputLatencyAccess targetingPreparation = createsClick && targetedInput
+            ? (MouseInputLatencyAccess) minecraft.mouseHandler
+            : null;
+        int flushPlan = GATE.planFlush(createsClick, attackInput, useInput, targetedInput, targetingPreparation);
+        if (flushPlan == InputLatencyGate.DEFER) {
             return;
         }
 
-        if (createsClick && targetedInput && targetedInputReady) {
+        if (flushPlan == InputLatencyGate.FLUSH_WITH_CURRENT_TARGET) {
             minecraft.gameRenderer.pick(1.0F);
         }
         invokeHandleKeybinds(minecraft);

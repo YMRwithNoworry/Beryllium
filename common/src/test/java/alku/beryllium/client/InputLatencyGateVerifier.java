@@ -14,6 +14,7 @@ public final class InputLatencyGateVerifier {
         defersTargetedInputUntilFrameTargetingIsCurrent();
         defersSecondAttackUntilTheNextTick();
         defersSecondUseUntilTheNextTick();
+        flushesOrdinaryClicksWithoutPreparingTargeting();
         flushesReleasesWithoutRepeatingHeldActions();
         blocksOtherFlushesWhileADeferredClickIsQueued();
         coalescedCursorEventsPreserveAccumulatedDelta();
@@ -102,7 +103,9 @@ public final class InputLatencyGateVerifier {
 
     private static void defersTargetedInputUntilFrameTargetingIsCurrent() {
         InputLatencyGate gate = new InputLatencyGate();
-        check(!gate.shouldFlush(true, true, false, true, false), "attack must wait for current-frame targeting");
+        TargetPreparation targeting = new TargetPreparation(false);
+        checkEqual(InputLatencyGate.DEFER, gate.planFlush(true, true, false, true, targeting), "stale attack plan");
+        checkEqual(1, targeting.calls, "stale attack targeting preparations");
         check(gate.takeDeferredTargetedInput(), "the first attack must flush before rendering");
         gate.beginHandling();
         check(gate.allowAttack(), "the frame-aligned attack must run");
@@ -111,13 +114,21 @@ public final class InputLatencyGateVerifier {
 
     private static void flushesTargetedInputWhenTargetingIsCurrent() {
         InputLatencyGate gate = new InputLatencyGate();
-        check(gate.shouldFlush(true, true, false, true, true), "a current targeted attack must flush immediately");
+        TargetPreparation targeting = new TargetPreparation(true);
+        checkEqual(
+            InputLatencyGate.FLUSH_WITH_CURRENT_TARGET,
+            gate.planFlush(true, true, false, true, targeting),
+            "current attack plan"
+        );
+        checkEqual(1, targeting.calls, "current attack targeting preparations");
         check(!gate.takeDeferredTargetedInput(), "an immediate targeted attack must not remain queued");
     }
 
     private static void defersSecondAttackUntilTheNextTick() {
         InputLatencyGate gate = handledAttackGate();
-        check(!gate.shouldFlush(true, true, false, true, true), "a current second attack must remain queued");
+        TargetPreparation targeting = new TargetPreparation(true);
+        checkEqual(InputLatencyGate.DEFER, gate.planFlush(true, true, false, true, targeting), "second attack plan");
+        checkEqual(0, targeting.calls, "blocked attacks must not prepare targeting");
         check(!gate.takeDeferredTargetedInput(), "a second attack must not bypass the vanilla tick rate");
         gate.prepareTickHandling();
         gate.beginHandling();
@@ -125,7 +136,9 @@ public final class InputLatencyGateVerifier {
         check(gate.allowContinueAttack(), "block breaking must resume on the next vanilla tick");
         gate.endHandling();
         gate.finishTickHandling();
-        check(!gate.shouldFlush(true, true, false, true, false), "the following attack must wait for frame targeting");
+        TargetPreparation staleTargeting = new TargetPreparation(false);
+        checkEqual(InputLatencyGate.DEFER, gate.planFlush(true, true, false, true, staleTargeting), "following attack plan");
+        checkEqual(1, staleTargeting.calls, "the following attack must prepare targeting once");
         check(gate.takeDeferredTargetedInput(), "the following tick interval must accept a new attack");
     }
 
@@ -134,7 +147,9 @@ public final class InputLatencyGateVerifier {
         gate.beginHandling();
         check(gate.allowUse(), "first use must run immediately");
         gate.endHandling();
-        check(!gate.shouldFlush(true, false, true, true, true), "a current second use must remain queued");
+        TargetPreparation targeting = new TargetPreparation(true);
+        checkEqual(InputLatencyGate.DEFER, gate.planFlush(true, false, true, true, targeting), "second use plan");
+        checkEqual(0, targeting.calls, "blocked uses must not prepare targeting");
         check(!gate.takeDeferredTargetedInput(), "a second use must not bypass the vanilla tick rate");
         gate.prepareTickHandling();
         gate.beginHandling();
@@ -144,16 +159,25 @@ public final class InputLatencyGateVerifier {
 
     private static void flushesReleasesWithoutRepeatingHeldActions() {
         InputLatencyGate gate = handledAttackGate();
-        check(gate.shouldFlush(false, false, false, false, false), "a release must flush immediately");
+        checkEqual(InputLatencyGate.FLUSH, gate.planFlush(false, false, false, false, null), "release plan");
         gate.beginHandling();
         check(!gate.allowContinueAttack(), "an extra held attack must remain blocked");
         gate.endHandling();
     }
 
+    private static void flushesOrdinaryClicksWithoutPreparingTargeting() {
+        InputLatencyGate gate = new InputLatencyGate();
+        TargetPreparation targeting = new TargetPreparation(true);
+        checkEqual(InputLatencyGate.FLUSH, gate.planFlush(true, false, false, false, targeting), "ordinary click plan");
+        checkEqual(0, targeting.calls, "ordinary clicks must not prepare targeting");
+    }
+
     private static void blocksOtherFlushesWhileADeferredClickIsQueued() {
         InputLatencyGate gate = handledAttackGate();
-        check(!gate.shouldFlush(true, true, false, true, false), "the repeated attack must be deferred");
-        check(!gate.shouldFlush(true, false, false, false, false), "other input must not consume the queued attack");
+        TargetPreparation targeting = new TargetPreparation(true);
+        checkEqual(InputLatencyGate.DEFER, gate.planFlush(true, true, false, true, targeting), "repeated attack plan");
+        checkEqual(InputLatencyGate.DEFER, gate.planFlush(true, false, false, false, null), "queued other input plan");
+        checkEqual(0, targeting.calls, "queued input must not prepare targeting");
         gate.prepareTickHandling();
         gate.beginHandling();
         check(gate.allowAttack(), "the deferred attack must still be available to vanilla");
@@ -178,6 +202,21 @@ public final class InputLatencyGateVerifier {
     private static void checkEqual(double expected, double actual, String message) {
         if (Double.compare(expected, actual) != 0) {
             throw new AssertionError(message + ": expected " + expected + ", got " + actual);
+        }
+    }
+
+    private static final class TargetPreparation implements MouseInputLatencyAccess {
+        private final boolean ready;
+        private int calls;
+
+        private TargetPreparation(boolean ready) {
+            this.ready = ready;
+        }
+
+        @Override
+        public boolean beryllium$prepareTargetedInput() {
+            this.calls++;
+            return this.ready;
         }
     }
 }

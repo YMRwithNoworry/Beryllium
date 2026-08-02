@@ -1,6 +1,12 @@
 package alku.beryllium.client;
 
+import alku.beryllium.mixin.MouseInputLatencyAccess;
+
 final class InputLatencyGate {
+    static final int DEFER = 0;
+    static final int FLUSH = 1;
+    static final int FLUSH_WITH_CURRENT_TARGET = 2;
+
     private static final int ATTACK = 1;
     private static final int USE = 1 << 1;
     private static final int TARGETED = 1 << 2;
@@ -18,30 +24,31 @@ final class InputLatencyGate {
     private boolean useOccurred;
     private boolean mouseSmoothersReset;
 
-    boolean shouldFlush(
+    int planFlush(
         boolean createsClick,
         boolean attackInput,
         boolean useInput,
         boolean targetedInput,
-        boolean targetedInputReady
+        MouseInputLatencyAccess targetingPreparation
     ) {
         int actions = (attackInput ? ATTACK : 0) | (useInput ? USE : 0) | (targetedInput ? TARGETED : 0);
         if (this.deferredActions != 0) {
             if (createsClick) {
                 this.deferredActions |= actions;
             }
-            return false;
+            return DEFER;
         }
 
         if (createsClick && targetedInput) {
             boolean actionAlreadyHandled = (actions & ATTACK) != 0 && (this.attackHandled || this.continueAttackHandled)
                 || (actions & USE) != 0 && this.useHandled;
-            if (!targetedInputReady || actionAlreadyHandled) {
+            if (actionAlreadyHandled || !targetingPreparation.beryllium$prepareTargetedInput()) {
                 this.deferredActions = actions;
-                return false;
+                return DEFER;
             }
+            return FLUSH_WITH_CURRENT_TARGET;
         }
-        return true;
+        return FLUSH;
     }
 
     boolean takeDeferredTargetedInput() {
