@@ -98,6 +98,14 @@ tasks.register('ffmReuseTest', JavaExec) {
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
+tasks.register('inputLatencyStateTest', JavaExec) {
+    description = 'Verifies immediate input flushing preserves vanilla per-tick action semantics.'
+    group = 'verification'
+    dependsOn tasks.named('testClasses')
+    mainClass = 'alku.beryllium.client.InputLatencyGateVerifier'
+    classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
+}
+
 tasks.register('performanceBenchmark', JavaExec) {
     description = 'Measures nearest-item, chunk, potential, and native entity-filter paths.'
     group = 'verification'
@@ -110,3 +118,4 @@ tasks.register('performanceBenchmark', JavaExec) {
 check.dependsOn tasks.named('javaParityTest')
 check.dependsOn tasks.named('nativeRuntimeTest')
 check.dependsOn tasks.named('ffmReuseTest')
+check.dependsOn tasks.named('inputLatencyStateTest')
