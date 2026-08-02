@@ -23,7 +23,7 @@ Run `gradle :common:performanceBenchmark` only for measured performance work; do
 
 ## Coding Style & Naming Conventions
 
-Use four-space indentation in Java and follow the existing brace and import layout. Java packages remain lowercase under `alku.beryllium`; classes use `PascalCase`, methods and fields use `camelCase`, and mixins end in `Mixin` or `Accessor`. Use Rust 2021 conventions: `snake_case` functions/modules and `CamelCase` types. Prefer small, allocation-aware batch helpers over object-heavy FFI calls.
+Use four-space indentation in Java and follow the existing brace and import layout. Java packages remain lowercase under `alku.beryllium`; classes use `PascalCase`, methods and fields use `camelCase`, and mixins end in `Mixin` or `Accessor`. Use Rust 2024 conventions: `snake_case` functions/modules and `CamelCase` types. Prefer small, allocation-aware batch helpers over object-heavy FFI calls.
 
 ## Testing Guidelines
 

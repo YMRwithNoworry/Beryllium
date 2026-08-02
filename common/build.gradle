@@ -3,28 +3,48 @@ architectury {
 }
 
 def nativeLibraryName = System.mapLibraryName('beryllium_native')
+def cubeclLibraryName = System.mapLibraryName('beryllium_cubecl')
 def nativeOsName = System.getProperty('os.name').toLowerCase()
 def nativeArchName = System.getProperty('os.arch').toLowerCase()
 def nativeResourceOs = nativeOsName.contains('win') ? 'windows' : (nativeOsName.contains('mac') || nativeOsName.contains('darwin') ? 'macos' : 'linux')
 def nativeResourceArch = (nativeArchName == 'amd64' || nativeArchName == 'x86_64') ? 'x86_64' : (nativeArchName == 'aarch64' || nativeArchName == 'arm64' ? 'aarch64' : nativeArchName)
 def nativeGeneratedResources = file("$buildDir/generated/nativeResources")
+def cubeclPreviewEnabled = providers.gradleProperty('berylliumCubeclPreview')
+        .map { it.toBoolean() }
+        .getOrElse(false)
 
 tasks.register('cargoBuildNative', Exec) {
     workingDir rootProject.file('native')
-    commandLine 'cargo', 'build', '--release'
+    def cargoArguments = ['build', '--release', '--locked', '--package', 'beryllium-native']
+    if (cubeclPreviewEnabled) {
+        cargoArguments.addAll([
+            '--package', 'beryllium-cubecl',
+            '--features', 'beryllium-native/cubecl-preview'
+        ])
+    }
+    commandLine 'cargo', *cargoArguments
 
     inputs.files fileTree(rootProject.file('native')) {
         include 'Cargo.toml'
+        include 'Cargo.lock'
         include 'crates/**'
         exclude 'target/**'
     }
+    inputs.file rootProject.file('rust-toolchain.toml')
+    inputs.property 'cubeclPreviewEnabled', cubeclPreviewEnabled
     outputs.file rootProject.file("native/target/release/${nativeLibraryName}")
+    if (cubeclPreviewEnabled) {
+        outputs.file rootProject.file("native/target/release/${cubeclLibraryName}")
+    }
 }
 
-tasks.register('copyNativeLibrary', Copy) {
+tasks.register('copyNativeLibrary', Sync) {
     dependsOn tasks.named('cargoBuildNative')
     from(rootProject.file('native/target/release')) {
         include nativeLibraryName
+        if (cubeclPreviewEnabled) {
+            include cubeclLibraryName
+        }
     }
     into file("${nativeGeneratedResources}/assets/beryllium/native/${nativeResourceOs}/${nativeResourceArch}")
 }

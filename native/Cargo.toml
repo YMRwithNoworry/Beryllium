@@ -1,5 +1,7 @@
 [workspace]
 members = [
     "crates/beryllium-native",
+    "crates/beryllium-cubecl",
 ]
-resolver = "2"
+default-members = ["crates/beryllium-native"]
+resolver = "3"

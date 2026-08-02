@@ -1,12 +1,18 @@
 [package]
 name = "beryllium-native"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.97.1"
 publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+cubecl-preview = ["dep:libloading"]
+
 [dependencies]
+libloading = { version = "0.9", optional = true }
 rayon = "1.10"
 thiserror = "1"

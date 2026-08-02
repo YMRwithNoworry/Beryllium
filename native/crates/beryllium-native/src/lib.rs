@@ -1,3 +1,5 @@
+#[cfg(feature = "cubecl-preview")]
+mod cubecl_preview;
 mod error;
 mod ffi;
 mod kernel;
@@ -5,7 +7,7 @@ mod simd;
 
 pub use error::NativeError;
 pub use ffi::{
-    beryllium_compute_potential_energy_change, beryllium_compute_squared_distances,
+    NativeStatus, beryllium_compute_potential_energy_change, beryllium_compute_squared_distances,
     beryllium_compute_squared_distances_double, beryllium_count_within_radius,
     beryllium_filter_intersecting_aabb_double, beryllium_filter_within_aabb_double,
     beryllium_filter_within_exclusive_chunk_distance, beryllium_filter_within_radii_double,
@@ -17,12 +19,12 @@ pub use ffi::{
     beryllium_find_nearest_packed_block_corner_index,
     beryllium_find_nearest_packed_block_corner_index_within_radius,
     beryllium_has_any_within_radius_exclusive_double, beryllium_potential_clear_cache,
-    beryllium_potential_compute_cached, beryllium_potential_set_charges,
-    beryllium_select_nearest_chunk_indices,
+    beryllium_potential_compute_cached, beryllium_potential_cubecl_status,
+    beryllium_potential_set_charges, beryllium_select_nearest_chunk_indices,
     beryllium_select_nearest_indices_within_radius_exclusive_double,
     beryllium_sort_by_block_distance, beryllium_sort_by_distance,
     beryllium_sort_by_distance_and_count_within_radius_exclusive_double,
-    beryllium_sort_by_distance_double, beryllium_sort_within_radius_exclusive_double, NativeStatus,
+    beryllium_sort_by_distance_double, beryllium_sort_within_radius_exclusive_double,
 };
 pub use kernel::{
     clear_cached_potential_charges, compute_cached_potential_energy_change,

@@ -1,12 +1,22 @@
 use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
+#[cfg(feature = "cubecl-preview")]
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Mutex;
+#[cfg(feature = "cubecl-preview")]
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+#[cfg(feature = "cubecl-preview")]
+use std::sync::{Arc, OnceLock, mpsc};
+#[cfg(feature = "cubecl-preview")]
+use std::thread;
 
+use crate::NativeError;
+#[cfg(feature = "cubecl-preview")]
+use crate::cubecl_preview::{CubePotentialCache, MIN_CHARGE_COUNT as CUBECL_MIN_CHARGE_COUNT};
 use crate::simd;
 use crate::simd::has_avx2;
 use crate::simd::{batch_4_aabb_intersections, batch_4_distances};
-use crate::NativeError;
 
 const PARALLEL_THRESHOLD: usize = 2048;
 const FILTER_PARALLEL_THRESHOLD: usize = 16_384;
@@ -107,6 +117,10 @@ pub(crate) fn select_nearest_chunk_indices_with_scratch(
 }
 
 /// Computes squared Euclidean distances from one origin to packed x/y/z triples.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the SIMD tail uses one packed position index for input and output"
+)]
 pub fn compute_squared_distances_f64(
     origin_x: f64,
     origin_y: f64,
@@ -194,6 +208,10 @@ pub fn potential_energy_change(
     Ok(energy * charge_multiplier)
 }
 
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the SIMD tail must preserve the exact scalar accumulation order"
+)]
 fn potential_energy_change_simd(
     origin_x: i32,
     origin_y: i32,
@@ -223,11 +241,56 @@ fn potential_energy_change_simd(
 // Potential energy charge cache for repeated FFM calls.
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "cubecl-preview")]
+enum CachedPotentialBackend {
+    Disabled,
+    Calibrating,
+    CubeCl(Box<CubePotentialCache>),
+}
+
+#[cfg(feature = "cubecl-preview")]
+struct CachedPotentialCharges {
+    generation: u64,
+    positions: Arc<Vec<i32>>,
+    charges: Arc<Vec<f64>>,
+    backend: CachedPotentialBackend,
+}
+
+#[cfg(feature = "cubecl-preview")]
+struct PotentialCalibrationRequest {
+    generation: u64,
+    positions: Arc<Vec<i32>>,
+    charges: Arc<Vec<f64>>,
+}
+
+#[cfg(not(feature = "cubecl-preview"))]
 static POTENTIAL_CACHE: Mutex<Option<(Vec<i32>, Vec<f64>)>> = Mutex::new(None);
+#[cfg(feature = "cubecl-preview")]
+static POTENTIAL_CACHE: Mutex<Option<CachedPotentialCharges>> = Mutex::new(None);
+#[cfg(feature = "cubecl-preview")]
+static POTENTIAL_NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
+#[cfg(feature = "cubecl-preview")]
+static POTENTIAL_ACTIVE_GENERATION: AtomicU64 = AtomicU64::new(0);
+#[cfg(feature = "cubecl-preview")]
+static POTENTIAL_CALIBRATION_SENDER: OnceLock<Option<mpsc::Sender<PotentialCalibrationRequest>>> =
+    OnceLock::new();
 
 /// Caches one packed positions + charges snapshot.
 /// Subsequent `compute_cached_potential_energy_change` calls only transmit the
 /// origin coordinates.
+#[cfg(not(feature = "cubecl-preview"))]
+pub fn set_cached_potential_charges(
+    positions: Vec<i32>,
+    charges: Vec<f64>,
+) -> Result<(), NativeError> {
+    charge_multiplier_preconditions(&positions, &charges)?;
+    *POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((positions, charges));
+    Ok(())
+}
+
+/// Caches one packed positions + charges snapshot and schedules conservative
+/// CubeCL calibration when the preview feature is explicitly enabled.
+#[cfg(feature = "cubecl-preview")]
 pub fn set_cached_potential_charges(
     positions: Vec<i32>,
     charges: Vec<f64>,
@@ -235,12 +298,45 @@ pub fn set_cached_potential_charges(
     if charge_multiplier_preconditions(&positions, &charges).is_err() {
         return Err(NativeError::InvalidInput);
     }
-    *POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((positions, charges));
+
+    let generation = POTENTIAL_NEXT_GENERATION.fetch_add(1, AtomicOrdering::Relaxed);
+    let positions = Arc::new(positions);
+    let charges = Arc::new(charges);
+    let should_calibrate = charges.len() >= CUBECL_MIN_CHARGE_COUNT
+        && std::thread::available_parallelism().is_ok_and(|count| count.get() >= 2);
+    if should_calibrate {
+        crate::cubecl_preview::reset_diagnostic();
+    }
+    let request = should_calibrate.then(|| PotentialCalibrationRequest {
+        generation,
+        positions: Arc::clone(&positions),
+        charges: Arc::clone(&charges),
+    });
+
+    *POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some(CachedPotentialCharges {
+        generation,
+        positions,
+        charges,
+        backend: if should_calibrate {
+            CachedPotentialBackend::Calibrating
+        } else {
+            CachedPotentialBackend::Disabled
+        },
+    });
+    POTENTIAL_ACTIVE_GENERATION.store(generation, AtomicOrdering::Release);
+
+    if let Some(request) = request
+        && !schedule_potential_calibration(request)
+    {
+        crate::cubecl_preview::mark_runtime_failure();
+        disable_cubecl_for_generation(generation);
+    }
     Ok(())
 }
 
 /// Computes potential energy change using previously cached charges.
 /// Returns `InvalidInput` when no cache has been set.
+#[cfg(not(feature = "cubecl-preview"))]
 pub fn compute_cached_potential_energy_change(
     origin_x: i32,
     origin_y: i32,
@@ -262,9 +358,140 @@ pub fn compute_cached_potential_energy_change(
     )
 }
 
+/// Computes potential energy change using the preview backend only after its
+/// background calibration proves exact parity and a wide performance margin.
+#[cfg(feature = "cubecl-preview")]
+pub fn compute_cached_potential_energy_change(
+    origin_x: i32,
+    origin_y: i32,
+    origin_z: i32,
+    charge_multiplier: f64,
+) -> Result<f64, NativeError> {
+    if charge_multiplier == 0.0 {
+        return Ok(0.0);
+    }
+    let mut cache = POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let cache = cache.as_mut().ok_or(NativeError::InvalidInput)?;
+    let cubecl_result = match &cache.backend {
+        CachedPotentialBackend::CubeCl(cubecl) => Some(catch_unwind(AssertUnwindSafe(|| {
+            cubecl.compute(origin_x, origin_y, origin_z, charge_multiplier)
+        }))),
+        CachedPotentialBackend::Disabled | CachedPotentialBackend::Calibrating => None,
+    };
+    if let Some(result) = cubecl_result {
+        if let Ok(Ok(value)) = result {
+            return Ok(value);
+        }
+        crate::cubecl_preview::mark_runtime_failure();
+        cache.backend = CachedPotentialBackend::Disabled;
+    }
+
+    potential_energy_change(
+        origin_x,
+        origin_y,
+        origin_z,
+        cache.positions.as_slice(),
+        cache.charges.as_slice(),
+        charge_multiplier,
+    )
+}
+
 /// Clears the cached charges so the next compute call falls through to an error.
+#[cfg(not(feature = "cubecl-preview"))]
 pub fn clear_cached_potential_charges() {
     *POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// Clears the cached charges and cancels any preview calibration in flight.
+#[cfg(feature = "cubecl-preview")]
+pub fn clear_cached_potential_charges() {
+    POTENTIAL_ACTIVE_GENERATION.store(0, AtomicOrdering::Release);
+    *POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+#[cfg(feature = "cubecl-preview")]
+fn schedule_potential_calibration(request: PotentialCalibrationRequest) -> bool {
+    POTENTIAL_CALIBRATION_SENDER
+        .get_or_init(|| {
+            let (sender, receiver) = mpsc::channel();
+            thread::Builder::new()
+                .name("beryllium-cubecl-calibration".to_owned())
+                .spawn(move || potential_calibration_worker(receiver))
+                .ok()
+                .map(|_| sender)
+        })
+        .as_ref()
+        .is_some_and(|sender| sender.send(request).is_ok())
+}
+
+#[cfg(feature = "cubecl-preview")]
+fn potential_calibration_worker(receiver: mpsc::Receiver<PotentialCalibrationRequest>) {
+    while let Ok(mut request) = receiver.recv() {
+        while let Ok(newer_request) = receiver.try_recv() {
+            request = newer_request;
+        }
+        if POTENTIAL_ACTIVE_GENERATION.load(AtomicOrdering::Acquire) != request.generation {
+            continue;
+        }
+
+        let generation = request.generation;
+        let calibrated = catch_unwind(AssertUnwindSafe(|| {
+            CubePotentialCache::calibrate(
+                request.positions.as_slice(),
+                request.charges.as_slice(),
+                generation,
+                || POTENTIAL_ACTIVE_GENERATION.load(AtomicOrdering::Acquire) == generation,
+            )
+        }))
+        .ok()
+        .flatten();
+
+        finish_potential_calibration(generation, calibrated);
+    }
+}
+
+#[cfg(feature = "cubecl-preview")]
+fn finish_potential_calibration(generation: u64, calibrated: Option<CubePotentialCache>) {
+    let mut cache = POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(cache) = cache.as_mut()
+        && cache.generation == generation
+        && POTENTIAL_ACTIVE_GENERATION.load(AtomicOrdering::Acquire) == generation
+    {
+        cache.backend = calibrated.map_or(CachedPotentialBackend::Disabled, |cubecl| {
+            CachedPotentialBackend::CubeCl(Box::new(cubecl))
+        });
+    }
+}
+
+#[cfg(feature = "cubecl-preview")]
+fn disable_cubecl_for_generation(generation: u64) {
+    let mut cache = POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(cache) = cache.as_mut()
+        && cache.generation == generation
+    {
+        cache.backend = CachedPotentialBackend::Disabled;
+    }
+}
+
+#[cfg(feature = "cubecl-preview")]
+pub(crate) fn is_potential_generation_current(generation: u64) -> bool {
+    POTENTIAL_ACTIVE_GENERATION.load(AtomicOrdering::Acquire) == generation
+}
+
+#[cfg(feature = "cubecl-preview")]
+pub(crate) fn cubecl_preview_status() -> i32 {
+    let cache = POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    match cache.as_ref().map(|cache| &cache.backend) {
+        Some(CachedPotentialBackend::Calibrating) => 1,
+        Some(CachedPotentialBackend::CubeCl(_)) => 2,
+        Some(CachedPotentialBackend::Disabled) => crate::cubecl_preview::diagnostic_status(),
+        None => 0,
+    }
+}
+
+#[cfg(not(feature = "cubecl-preview"))]
+pub(crate) fn cubecl_preview_status() -> i32 {
+    0
 }
 
 fn charge_multiplier_preconditions(positions: &[i32], charges: &[f64]) -> Result<(), NativeError> {
@@ -380,7 +607,7 @@ pub fn find_nearest_block_center_index(
     origin_z: f64,
     positions: &[i32],
 ) -> Result<Option<usize>, NativeError> {
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -430,7 +657,7 @@ pub fn find_nearest_block_corner_index(
     origin_z: i32,
     positions: &[i32],
 ) -> Result<Option<usize>, NativeError> {
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -634,7 +861,7 @@ fn find_nearest_index_f64_by_limit(
     positions: &[f64],
     within_limit: fn(f64, f64) -> bool,
 ) -> Result<Option<usize>, NativeError> {
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -726,7 +953,7 @@ pub fn filter_within_radius_f64(
         return Err(NativeError::InvalidInput);
     }
 
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -813,7 +1040,7 @@ pub fn filter_within_radius_f64_exclusive(
         return Err(NativeError::InvalidInput);
     }
 
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -895,7 +1122,7 @@ pub fn filter_within_exclusive_chunk_distance(
     positions: &[f64],
     output: &mut [i32],
 ) -> Result<usize, NativeError> {
-    if radius_squared < 0.0 || positions.len() % 2 != 0 {
+    if radius_squared < 0.0 || !positions.len().is_multiple_of(2) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -970,7 +1197,7 @@ pub(crate) fn sort_within_radius_f64_exclusive_with_scratch(
         return Err(NativeError::InvalidInput);
     }
 
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -1028,7 +1255,7 @@ pub fn filter_within_radii_f64(
     radii_squared: &[f64],
     output: &mut [i32],
 ) -> Result<usize, NativeError> {
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -1116,6 +1343,10 @@ pub fn filter_within_radii_f64(
 }
 
 /// Filters packed f64 x/y/z triples by AABB containment and returns the matching indices.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the flat bounds avoid hot-path allocation"
+)]
 pub fn filter_within_aabb_f64(
     min_x: f64,
     min_y: f64,
@@ -1126,7 +1357,7 @@ pub fn filter_within_aabb_f64(
     positions: &[f64],
     output: &mut [i32],
 ) -> Result<usize, NativeError> {
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -1175,6 +1406,10 @@ pub fn filter_within_aabb_f64(
 }
 
 /// Filters packed f64 AABB min/max sextuples by intersection with one query AABB.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the flat bounds avoid hot-path allocation"
+)]
 pub fn filter_intersecting_aabb_f64(
     query_min_x: f64,
     query_min_y: f64,
@@ -1185,7 +1420,7 @@ pub fn filter_intersecting_aabb_f64(
     boxes: &[f64],
     output: &mut [i32],
 ) -> Result<usize, NativeError> {
-    if boxes.len() % 6 != 0 {
+    if !boxes.len().is_multiple_of(6) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -1304,7 +1539,7 @@ pub fn filter_within_radius(
         return Err(NativeError::InvalidInput);
     }
 
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -1387,7 +1622,7 @@ pub fn sort_by_distance(
     positions: &[i32],
     output: &mut [i32],
 ) -> Result<(), NativeError> {
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -1425,7 +1660,7 @@ pub fn sort_by_block_distance(
     positions: &[i32],
     output: &mut [i32],
 ) -> Result<(), NativeError> {
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -1509,7 +1744,7 @@ pub(crate) fn sort_by_distance_f64_with_scratch(
     output: &mut [i32],
     scratch: &mut DistanceSortScratch,
 ) -> Result<(), NativeError> {
-    if positions.len() % 3 != 0 {
+    if !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -1536,10 +1771,12 @@ pub(crate) fn sort_by_distance_f64_with_scratch(
     Ok(())
 }
 
-/// Sorts packed f64 x/y/z triples by squared distance and returns the strict radius prefix length.
-
-/// SIMD-batched distance pair builder — computes 4 distances at a time via AVX2
+/// SIMD-batched distance pair builder - computes 4 distances at a time via AVX2
 /// when available, falling back to scalar otherwise. Returns (index, distance) pairs.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "fixed four-lane loops are kept explicit for predictable unrolling"
+)]
 fn build_simd_pairs_into(
     origin_x: f64,
     origin_y: f64,
@@ -1586,6 +1823,7 @@ fn build_simd_pairs_into(
     }
 }
 
+/// Sorts packed f64 x/y/z triples by squared distance and returns the strict radius prefix length.
 pub fn sort_by_distance_and_count_within_radius_f64_exclusive(
     origin_x: f64,
     origin_y: f64,
@@ -1614,7 +1852,7 @@ pub(crate) fn sort_by_distance_and_count_within_radius_f64_exclusive_with_scratc
     output: &mut [i32],
     scratch: &mut DistanceSortScratch,
 ) -> Result<usize, NativeError> {
-    if radius_squared < 0.0 || positions.len() % 3 != 0 {
+    if radius_squared < 0.0 || !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -1671,6 +1909,10 @@ pub fn select_nearest_indices_within_radius_f64_exclusive(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "scratch is passed explicitly to keep the hot FFI path allocation-free"
+)]
 pub(crate) fn select_nearest_indices_within_radius_f64_exclusive_with_scratch(
     origin_x: f64,
     origin_y: f64,
@@ -1681,7 +1923,7 @@ pub(crate) fn select_nearest_indices_within_radius_f64_exclusive_with_scratch(
     output: &mut [i32],
     scratch: &mut NearestSelectionScratch,
 ) -> Result<usize, NativeError> {
-    if radius_squared < 0.0 || positions.len() % 3 != 0 {
+    if radius_squared < 0.0 || !positions.len().is_multiple_of(3) {
         return Err(NativeError::InvalidInput);
     }
 
@@ -2060,6 +2302,10 @@ fn contains_aabb_position(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "scalar bounds avoid temporary AABB objects"
+)]
 fn contains_aabb(
     min_x: f64,
     min_y: f64,
@@ -2099,6 +2345,10 @@ fn intersects_aabb_box(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "scalar bounds avoid temporary AABB objects"
+)]
 fn intersects_aabb(
     query_min_x: f64,
     query_min_y: f64,
@@ -2235,6 +2485,8 @@ fn compare_java_double(left: f64, right: f64) -> Ordering {
 mod tests {
     use super::*;
 
+    static POTENTIAL_CACHE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn compute_squared_distances_should_match_reference_values() {
         let positions = [0, 64, 0, 3, 68, 4, -1, 63, -2];
@@ -2330,9 +2582,7 @@ mod tests {
 
     #[test]
     fn compute_squared_distances_should_match_parallel_reference_values() {
-        let positions: Vec<i32> = (0..5000)
-            .flat_map(|index| [(4999 - index) as i32, 0, 0])
-            .collect();
+        let positions: Vec<i32> = (0..5000).flat_map(|index| [4999 - index, 0, 0]).collect();
         let mut output = vec![0; 5000];
 
         compute_squared_distances(0, 0, 0, &positions, &mut output).unwrap();
@@ -2395,6 +2645,60 @@ mod tests {
         let charges = [1.0];
         let result = potential_energy_change(0, 0, 0, &positions, &charges, 1.0);
         assert_eq!(result, Err(NativeError::InvalidInput));
+    }
+
+    #[test]
+    fn cached_potential_should_preserve_reference_result_for_small_input() {
+        let _test_guard = POTENTIAL_CACHE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        clear_cached_potential_charges();
+
+        let positions = vec![3, 0, 4, 0, 0, 2, -6, 0, 8];
+        let charges = vec![10.0, -4.0, 2.5];
+        let expected = potential_energy_change(0, 0, 0, &positions, &charges, -3.0).unwrap();
+        set_cached_potential_charges(positions, charges).unwrap();
+
+        #[cfg(feature = "cubecl-preview")]
+        {
+            let cache = POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+            assert!(matches!(
+                cache.as_ref().map(|cache| &cache.backend),
+                Some(CachedPotentialBackend::Disabled)
+            ));
+        }
+
+        let actual = compute_cached_potential_energy_change(0, 0, 0, -3.0).unwrap();
+        assert_eq!(expected.to_bits(), actual.to_bits());
+        clear_cached_potential_charges();
+    }
+
+    #[cfg(feature = "cubecl-preview")]
+    #[test]
+    fn stale_cubecl_calibration_should_not_replace_current_generation() {
+        let _test_guard = POTENTIAL_CACHE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        clear_cached_potential_charges();
+
+        let generation = POTENTIAL_NEXT_GENERATION.fetch_add(1, AtomicOrdering::Relaxed);
+        *POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some(CachedPotentialCharges {
+            generation,
+            positions: Arc::new(vec![0, 0, 0]),
+            charges: Arc::new(vec![1.0]),
+            backend: CachedPotentialBackend::Calibrating,
+        });
+        POTENTIAL_ACTIVE_GENERATION.store(generation, AtomicOrdering::Release);
+
+        finish_potential_calibration(generation.wrapping_sub(1), None);
+        {
+            let cache = POTENTIAL_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+            assert!(matches!(
+                cache.as_ref().map(|cache| &cache.backend),
+                Some(CachedPotentialBackend::Calibrating)
+            ));
+        }
+        clear_cached_potential_charges();
     }
 
     #[test]
@@ -2951,9 +3255,7 @@ mod tests {
 
     #[test]
     fn filter_within_radius_should_match_parallel_reference_indices() {
-        let positions: Vec<i32> = (0..5000)
-            .flat_map(|index| [(4999 - index) as i32, 0, 0])
-            .collect();
+        let positions: Vec<i32> = (0..5000).flat_map(|index| [4999 - index, 0, 0]).collect();
         let mut output = vec![0; 5000];
 
         let count = filter_within_radius(0, 0, 0, 1024, &positions, &mut output).unwrap();
@@ -2970,9 +3272,7 @@ mod tests {
 
     #[test]
     fn count_within_radius_should_match_parallel_reference_count() {
-        let positions: Vec<i32> = (0..5000)
-            .flat_map(|index| [(4999 - index) as i32, 0, 0])
-            .collect();
+        let positions: Vec<i32> = (0..5000).flat_map(|index| [4999 - index, 0, 0]).collect();
 
         let count = count_within_radius(0, 0, 0, 1024, &positions).unwrap();
         assert_eq!(count, 33);
@@ -2988,13 +3288,11 @@ mod tests {
 
     #[test]
     fn sort_by_distance_should_match_parallel_reference_order() {
-        let positions: Vec<i32> = (0..5000)
-            .flat_map(|index| [(4999 - index) as i32, 0, 0])
-            .collect();
+        let positions: Vec<i32> = (0..5000).flat_map(|index| [4999 - index, 0, 0]).collect();
         let mut output = vec![0; 5000];
 
         sort_by_distance(0, 0, 0, &positions, &mut output).unwrap();
-        let expected: Vec<i32> = (0..5000).rev().map(|index| index as i32).collect();
+        let expected: Vec<i32> = (0..5000).rev().collect();
         assert_eq!(output, expected);
     }
 
@@ -3016,13 +3314,11 @@ mod tests {
 
     #[test]
     fn sort_by_block_distance_should_match_parallel_reference_order() {
-        let positions: Vec<i32> = (0..5000)
-            .flat_map(|index| [(4999 - index) as i32, 0, 0])
-            .collect();
+        let positions: Vec<i32> = (0..5000).flat_map(|index| [4999 - index, 0, 0]).collect();
         let mut output = vec![0; 5000];
 
         sort_by_block_distance(0, 0, 0, &positions, &mut output).unwrap();
-        let expected: Vec<i32> = (0..5000).rev().map(|index| index as i32).collect();
+        let expected: Vec<i32> = (0..5000).rev().collect();
         assert_eq!(output, expected);
     }
 
@@ -3108,8 +3404,8 @@ mod tests {
     }
 
     #[test]
-    fn sort_by_distance_and_count_within_radius_f64_exclusive_should_preserve_special_radius_semantics(
-    ) {
+    fn sort_by_distance_and_count_within_radius_f64_exclusive_should_preserve_special_radius_semantics()
+     {
         let positions = [2.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 4.0, 0.0, 0.0];
         let mut output = [0; 4];
 
@@ -3148,8 +3444,8 @@ mod tests {
     }
 
     #[test]
-    fn sort_by_distance_and_count_within_radius_f64_exclusive_should_match_parallel_reference_order(
-    ) {
+    fn sort_by_distance_and_count_within_radius_f64_exclusive_should_match_parallel_reference_order()
+     {
         let positions: Vec<f64> = (0..5000)
             .flat_map(|index| [(4999 - index) as f64, 0.0, 0.0])
             .collect();
@@ -3233,7 +3529,9 @@ mod tests {
         assert_eq!(scratch.nearest.capacity(), capacity);
         assert_eq!(
             output,
-            [123, 122, 124, 121, 125, 120, 126, 119, 127, 118, 117, 116, 115, 114, 113, 112,]
+            [
+                123, 122, 124, 121, 125, 120, 126, 119, 127, 118, 117, 116, 115, 114, 113, 112,
+            ]
         );
     }
 
@@ -3271,8 +3569,8 @@ mod tests {
     }
 
     #[test]
-    fn select_nearest_indices_within_radius_f64_exclusive_should_match_full_sort_for_parallel_input(
-    ) {
+    fn select_nearest_indices_within_radius_f64_exclusive_should_match_full_sort_for_parallel_input()
+     {
         const POSITION_COUNT: usize = NEAREST_SELECTION_PARALLEL_THRESHOLD;
         let positions: Vec<f64> = (0..POSITION_COUNT)
             .flat_map(|index| {
@@ -3316,24 +3614,24 @@ mod tests {
 
         sort_by_distance_f64(0.0, 0.0, 0.0, &positions, &mut output).unwrap();
 
-        let expected: Vec<i32> = (0..5000).rev().map(|index| index as i32).collect();
+        let expected: Vec<i32> = (0..5000).rev().collect();
         assert_eq!(output, expected);
     }
 
     #[test]
     fn potential_energy_change_should_preserve_sequential_sum_at_large_batch() {
         let positions: Vec<i32> = (0..5000)
-            .flat_map(|index| [index as i32 - 2500, 64, (index % 17) as i32 - 8])
+            .flat_map(|index| [index - 2500, 64, index % 17 - 8])
             .collect();
         let charges: Vec<f64> = (0..5000).map(|index| (index % 11) as f64 - 5.0).collect();
 
         let mut expected_energy = 0.0;
-        for index in 0..charges.len() {
+        for (index, charge) in charges.iter().enumerate() {
             let distance = block_corner_distance_at(0, 64, 0, &positions, index);
             expected_energy += if distance == 0.0 {
                 f64::INFINITY
             } else {
-                charges[index] / distance.sqrt()
+                *charge / distance.sqrt()
             };
         }
         expected_energy *= 0.75;

@@ -8,6 +8,7 @@ Java 与 Rust 之间使用 Java 21 FFM downcall，不依赖 JNI、`jni` 或 `jni
 
 - Minecraft：`1.21.1`
 - Java：`21`
+- Rust：`1.97.1`（Rust 2024 edition）
 - 构建系统：Gradle + Cargo
 - 共享逻辑放在 `common`，平台入口分别放在 `fabric` 和 `neoforge`
 - Rust 原生计算层放在 `native`
@@ -78,6 +79,19 @@ gradle :common:test --tests 'fully.qualified.TestClass'
 cargo test --manifest-path native/Cargo.toml
 cargo build --manifest-path native/Cargo.toml --release
 ```
+
+根目录 `rust-toolchain.toml` 使用最小化 `stable` 工具链，并安装 `rustfmt` 与 `clippy`；当前验证版本为 Rust/Cargo `1.97.1`，native crate 使用 Rust 2024 edition。执行 `rustup update stable` 后，进入仓库会自动使用最新稳定版。
+
+CubeCL CPU/MLIR 后端固定为预览版 `0.11.0-pre.1`。LLVM sidecar 约 `83 MB`，且中等批量存在明显性能波动，因此不会进入默认产物；主 `beryllium_native` 始终保持轻量，sidecar 加载失败也不会禁用 AVX2。只有明确接受预览成本时才启用：
+
+```bash
+cargo test --manifest-path native/Cargo.toml --workspace
+cargo test --manifest-path native/Cargo.toml --package beryllium-native --features cubecl-preview
+cargo build --manifest-path native/Cargo.toml --release --package beryllium-native --package beryllium-cubecl --features beryllium-native/cubecl-preview
+gradle -PberylliumCubeclPreview=true :common:build :fabric:build :neoforge:build
+```
+
+预览后端也不会直接接管计算：仅对至少 `262,144` 个已缓存点电荷异步加载 sidecar 并启动单一后台校准线程，逐次验证结果位级一致。41 次交替测量不仅要求中位数至少快 `2x`，还要求 CubeCL `P90` 不慢于 AVX2 `P10`。校准中、取消、异常、结果不一致或未达到安全门时始终使用原 AVX2 路径；一次性 Potential 调用从不承担 CubeCL 上传和 JIT 成本。当前 CubeCL/LLVM 预览 DLL 与 GraalVM 21 的加载初始化不兼容，该情况会被隔离为 sidecar 不可用，主 native 后端继续正常工作；OpenJDK 21 已验证可加载并接管。
 
 ## 构建与入口概览
 

@@ -1,14 +1,27 @@
+//! Stable C ABI surface for the Java FFM bridge.
+//!
+//! # Safety
+//! Every exported unsafe function accepts raw buffers. A pointer may be null only when its
+//! declared length is zero; otherwise it must be valid for that many elements for the duration
+//! of the call. Writable buffers must not alias readable inputs.
+#![allow(
+    clippy::missing_safety_doc,
+    reason = "all exported functions share the module-level C ABI safety contract"
+)]
+
 use std::cell::RefCell;
 
 use crate::{
-    kernel::compute_squared_distances, kernel::compute_squared_distances_f64,
-    kernel::count_within_radius, kernel::filter_intersecting_aabb_f64,
-    kernel::filter_within_aabb_f64, kernel::filter_within_exclusive_chunk_distance,
-    kernel::filter_within_radii_f64, kernel::filter_within_radius,
-    kernel::filter_within_radius_f64, kernel::filter_within_radius_f64_exclusive,
-    kernel::find_nearest_block_center_index, kernel::find_nearest_block_corner_index,
-    kernel::find_nearest_block_corner_index_within_radius, kernel::find_nearest_index_f64,
-    kernel::find_nearest_index_f64_exclusive, kernel::find_nearest_packed_block_corner_index,
+    NativeError, kernel::ChunkSelectionScratch, kernel::DistanceSortScratch,
+    kernel::NearestSelectionScratch, kernel::compute_squared_distances,
+    kernel::compute_squared_distances_f64, kernel::count_within_radius,
+    kernel::filter_intersecting_aabb_f64, kernel::filter_within_aabb_f64,
+    kernel::filter_within_exclusive_chunk_distance, kernel::filter_within_radii_f64,
+    kernel::filter_within_radius, kernel::filter_within_radius_f64,
+    kernel::filter_within_radius_f64_exclusive, kernel::find_nearest_block_center_index,
+    kernel::find_nearest_block_corner_index, kernel::find_nearest_block_corner_index_within_radius,
+    kernel::find_nearest_index_f64, kernel::find_nearest_index_f64_exclusive,
+    kernel::find_nearest_packed_block_corner_index,
     kernel::find_nearest_packed_block_corner_index_within_radius,
     kernel::has_any_within_radius_f64_exclusive, kernel::potential_energy_change,
     kernel::select_nearest_chunk_indices_with_scratch,
@@ -16,8 +29,7 @@ use crate::{
     kernel::sort_by_block_distance, kernel::sort_by_distance,
     kernel::sort_by_distance_and_count_within_radius_f64_exclusive_with_scratch,
     kernel::sort_by_distance_f64_with_scratch,
-    kernel::sort_within_radius_f64_exclusive_with_scratch, kernel::ChunkSelectionScratch,
-    kernel::DistanceSortScratch, kernel::NearestSelectionScratch, NativeError,
+    kernel::sort_within_radius_f64_exclusive_with_scratch,
 };
 
 thread_local! {
@@ -103,7 +115,7 @@ fn boolean_result(result: Result<bool, NativeError>) -> i32 {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_compute_squared_distances(
     origin_x: i32,
     origin_y: i32,
@@ -127,7 +139,7 @@ pub unsafe extern "C" fn beryllium_compute_squared_distances(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 /// Selects packed chunk indices through the stable C ABI.
 ///
 /// # Safety
@@ -165,7 +177,7 @@ pub unsafe extern "C" fn beryllium_select_nearest_chunk_indices(
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_compute_squared_distances_double(
     origin_x: f64,
     origin_y: f64,
@@ -189,7 +201,7 @@ pub unsafe extern "C" fn beryllium_compute_squared_distances_double(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_compute_potential_energy_change(
     origin_x: i32,
     origin_y: i32,
@@ -234,7 +246,7 @@ pub unsafe extern "C" fn beryllium_compute_potential_energy_change(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_filter_within_radius(
     origin_x: i32,
     origin_y: i32,
@@ -263,7 +275,7 @@ pub unsafe extern "C" fn beryllium_filter_within_radius(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_count_within_radius(
     origin_x: i32,
     origin_y: i32,
@@ -285,7 +297,7 @@ pub unsafe extern "C" fn beryllium_count_within_radius(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_filter_within_radius_double(
     origin_x: f64,
     origin_y: f64,
@@ -314,7 +326,7 @@ pub unsafe extern "C" fn beryllium_filter_within_radius_double(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_filter_within_radius_exclusive_double(
     origin_x: f64,
     origin_y: f64,
@@ -343,7 +355,7 @@ pub unsafe extern "C" fn beryllium_filter_within_radius_exclusive_double(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_filter_within_exclusive_chunk_distance(
     origin_x: f64,
     origin_z: f64,
@@ -370,7 +382,7 @@ pub unsafe extern "C" fn beryllium_filter_within_exclusive_chunk_distance(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_filter_within_radii_double(
     origin_x: f64,
     origin_y: f64,
@@ -404,7 +416,7 @@ pub unsafe extern "C" fn beryllium_filter_within_radii_double(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_find_nearest_index_double(
     origin_x: f64,
     origin_y: f64,
@@ -426,7 +438,7 @@ pub unsafe extern "C" fn beryllium_find_nearest_index_double(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_find_nearest_index_exclusive_double(
     origin_x: f64,
     origin_y: f64,
@@ -448,7 +460,7 @@ pub unsafe extern "C" fn beryllium_find_nearest_index_exclusive_double(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_has_any_within_radius_exclusive_double(
     origin_x: f64,
     origin_y: f64,
@@ -470,7 +482,7 @@ pub unsafe extern "C" fn beryllium_has_any_within_radius_exclusive_double(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_find_nearest_block_center_index(
     origin_x: f64,
     origin_y: f64,
@@ -487,7 +499,7 @@ pub unsafe extern "C" fn beryllium_find_nearest_block_center_index(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_find_nearest_block_center_index_prefix(
     origin_x: f64,
     origin_y: f64,
@@ -513,7 +525,7 @@ pub unsafe extern "C" fn beryllium_find_nearest_block_center_index_prefix(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_find_nearest_block_corner_index(
     origin_x: i32,
     origin_y: i32,
@@ -530,7 +542,7 @@ pub unsafe extern "C" fn beryllium_find_nearest_block_corner_index(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_find_nearest_packed_block_corner_index(
     origin_x: i32,
     origin_y: i32,
@@ -550,7 +562,7 @@ pub unsafe extern "C" fn beryllium_find_nearest_packed_block_corner_index(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_find_nearest_block_corner_index_within_radius(
     origin_x: i32,
     origin_y: i32,
@@ -572,7 +584,7 @@ pub unsafe extern "C" fn beryllium_find_nearest_block_corner_index_within_radius
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_find_nearest_packed_block_corner_index_within_radius(
     origin_x: i32,
     origin_y: i32,
@@ -594,7 +606,7 @@ pub unsafe extern "C" fn beryllium_find_nearest_packed_block_corner_index_within
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_filter_within_aabb_double(
     min_x: f64,
     min_y: f64,
@@ -620,7 +632,7 @@ pub unsafe extern "C" fn beryllium_filter_within_aabb_double(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_filter_intersecting_aabb_double(
     query_min_x: f64,
     query_min_y: f64,
@@ -653,7 +665,7 @@ pub unsafe extern "C" fn beryllium_filter_intersecting_aabb_double(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_sort_by_distance(
     origin_x: i32,
     origin_y: i32,
@@ -676,7 +688,7 @@ pub unsafe extern "C" fn beryllium_sort_by_distance(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_sort_by_block_distance(
     origin_x: i32,
     origin_y: i32,
@@ -699,7 +711,7 @@ pub unsafe extern "C" fn beryllium_sort_by_block_distance(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_sort_by_distance_double(
     origin_x: f64,
     origin_y: f64,
@@ -729,7 +741,7 @@ pub unsafe extern "C" fn beryllium_sort_by_distance_double(
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_sort_by_distance_and_count_within_radius_exclusive_double(
     origin_x: f64,
     origin_y: f64,
@@ -763,7 +775,7 @@ pub unsafe extern "C" fn beryllium_sort_by_distance_and_count_within_radius_excl
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_select_nearest_indices_within_radius_exclusive_double(
     origin_x: f64,
     origin_y: f64,
@@ -802,7 +814,7 @@ pub unsafe extern "C" fn beryllium_select_nearest_indices_within_radius_exclusiv
     })
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_sort_within_radius_exclusive_double(
     origin_x: f64,
     origin_y: f64,
@@ -838,7 +850,7 @@ pub unsafe extern "C" fn beryllium_sort_within_radius_exclusive_double(
 // Potential energy cache FFM exports
 // ---------------------------------------------------------------------------
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_potential_set_charges(
     positions: *const i32,
     positions_length: usize,
@@ -859,7 +871,7 @@ pub unsafe extern "C" fn beryllium_potential_set_charges(
     ))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_potential_compute_cached(
     origin_x: i32,
     origin_y: i32,
@@ -889,7 +901,12 @@ pub unsafe extern "C" fn beryllium_potential_compute_cached(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
+pub extern "C" fn beryllium_potential_cubecl_status() -> i32 {
+    crate::kernel::cubecl_preview_status()
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_potential_clear_cache() {
     crate::kernel::clear_cached_potential_charges();
 }
@@ -1000,7 +1017,11 @@ mod tests {
                             )
                         };
                         assert_eq!(count, output.len() as i32);
-                        assert!(output.iter().all(|index| *index >= 0 && *index < positions.len() as i32));
+                        assert!(
+                            output
+                                .iter()
+                                .all(|index| *index >= 0 && *index < positions.len() as i32)
+                        );
                     }
                 })
             })

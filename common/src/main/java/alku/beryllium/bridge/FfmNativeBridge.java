@@ -1,6 +1,7 @@
 package alku.beryllium.bridge;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
@@ -19,7 +20,10 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 final class FfmNativeBridge {
     private static final int FFM_ERROR = NativeStatus.FFM_ERROR.code();
+    private static final int CUBECL_MIN_CHARGE_COUNT = 262_144;
+    private static final Object POTENTIAL_CACHE_UPDATE_LOCK = new Object();
     private static final AtomicLong NEXT_SESSION_ID = new AtomicLong();
+    private static final AtomicLong POTENTIAL_CACHE_GENERATION = new AtomicLong();
     private static volatile Runtime runtime;
 
     private FfmNativeBridge() {
@@ -99,7 +103,7 @@ final class FfmNativeBridge {
     ) {
         return withSession(session -> {
             Buffer positionsBuffer = session.input(packedChunkPositions, Kind.LONG, positionsLength);
-            Buffer outputBuffer = session.output(output, Kind.INT, outputLength);
+            Buffer outputBuffer = session.uninitializedOutput(output, Kind.INT, outputLength);
             int result = session.invokeSelectNearestChunkIndices(
                 originX,
                 originZ,
@@ -109,7 +113,7 @@ final class FfmNativeBridge {
             );
             int expectedCount = Math.min(limit, positionsLength);
             if (result == expectedCount) {
-                session.copyOutputs();
+                session.copyOutput(outputBuffer, result);
             }
             return result;
         });
@@ -152,7 +156,7 @@ final class FfmNativeBridge {
         return withStatusSession(session -> {
             Buffer positionsBuffer = session.input(positions, Kind.INT);
             Buffer chargesBuffer = session.input(charges, Kind.DOUBLE);
-            Buffer outputBuffer = session.output(output, Kind.DOUBLE);
+            Buffer outputBuffer = session.uninitializedOutput(output, Kind.DOUBLE, 1);
             int result = session.invokeComputePotentialEnergyChange(
                 originX,
                 originY,
@@ -163,13 +167,34 @@ final class FfmNativeBridge {
                 outputBuffer
             );
             if (result == NativeStatus.OK.code()) {
-                session.copyOutputs();
+                session.copyOutput(outputBuffer, 1);
             }
             return result;
         });
     }
 
     static int setPotentialCharges(int[] positions, double[] charges) {
+        long generation;
+        int status;
+        synchronized (POTENTIAL_CACHE_UPDATE_LOCK) {
+            generation = POTENTIAL_CACHE_GENERATION.incrementAndGet();
+            status = setPotentialChargesNative(positions, charges);
+        }
+
+        if (status == NativeStatus.OK.code()
+            && charges.length >= CUBECL_MIN_CHARGE_COUNT
+            && !NativeLibraryLoader.isCubeclPreviewLoaded()
+            && NativeLibraryLoader.hasCubeclPreviewCandidate()) {
+            scheduleCubeclPreviewLoad(generation, positions.clone(), charges.clone());
+        }
+        return status;
+    }
+
+    static int cubeclPreviewStatus() {
+        return withSession(session -> session.invoke(Function.POTENTIAL_CUBECL_STATUS));
+    }
+
+    private static int setPotentialChargesNative(int[] positions, double[] charges) {
         return withStatusSession(session -> {
             Buffer posBuf = session.input(positions, Kind.INT);
             Buffer chgBuf = session.input(charges, Kind.DOUBLE);
@@ -177,16 +202,31 @@ final class FfmNativeBridge {
         });
     }
 
+    private static void scheduleCubeclPreviewLoad(long generation, int[] positions, double[] charges) {
+        Thread loader = new Thread(() -> {
+            if (!NativeLibraryLoader.tryLoadCubeclPreview()) {
+                return;
+            }
+            synchronized (POTENTIAL_CACHE_UPDATE_LOCK) {
+                if (POTENTIAL_CACHE_GENERATION.get() == generation && runtime != null) {
+                    setPotentialChargesNative(positions, charges);
+                }
+            }
+        }, "beryllium-cubecl-loader");
+        loader.setDaemon(true);
+        loader.start();
+    }
+
     static int computePotentialEnergyChangeCached(
         int originX, int originY, int originZ, double chargeMultiplier, double[] output
     ) {
         return withStatusSession(session -> {
-            Buffer outputBuffer = session.output(output, Kind.DOUBLE);
+            Buffer outputBuffer = session.uninitializedOutput(output, Kind.DOUBLE, 1);
             int result = session.invokeComputePotentialEnergyChangeCached(
                 originX, originY, originZ, chargeMultiplier, outputBuffer
             );
             if (result == NativeStatus.OK.code()) {
-                session.copyOutputs();
+                session.copyOutput(outputBuffer, 1);
             }
             return result;
         });
@@ -584,7 +624,7 @@ final class FfmNativeBridge {
     static int sortByDistance(double originX, double originY, double originZ, double[] positions, int[] output) {
         return withStatusSession(session -> {
             Buffer positionsBuffer = session.input(positions, Kind.DOUBLE);
-            Buffer outputBuffer = session.output(output, Kind.INT);
+            Buffer outputBuffer = session.uninitializedOutput(output, Kind.INT);
             int result = session.invokeSortByDistance(
                 originX,
                 originY,
@@ -593,7 +633,7 @@ final class FfmNativeBridge {
                 outputBuffer
             );
             if (result == NativeStatus.OK.code()) {
-                session.copyOutputs();
+                session.copyOutput(outputBuffer, outputBuffer.length);
             }
             return result;
         });
@@ -631,7 +671,7 @@ final class FfmNativeBridge {
     ) {
         return withSession(session -> {
             Buffer positionsBuffer = session.input(positions, Kind.DOUBLE, positionsLength);
-            Buffer outputBuffer = session.output(output, Kind.INT, outputLength);
+            Buffer outputBuffer = session.uninitializedOutput(output, Kind.INT, outputLength);
             int result = session.invokeSortByDistanceAndCountWithinRadiusExclusive(
                 originX,
                 originY,
@@ -640,8 +680,8 @@ final class FfmNativeBridge {
                 positionsBuffer,
                 outputBuffer
             );
-            if (isValidCount(result, output.length)) {
-                session.copyOutputs();
+            if (isValidCount(result, outputBuffer.length)) {
+                session.copyOutput(outputBuffer, outputBuffer.length);
             }
             return result;
         });
@@ -682,7 +722,7 @@ final class FfmNativeBridge {
     ) {
         return withSession(session -> {
             Buffer positionsBuffer = session.input(positions, Kind.DOUBLE, positionsLength);
-            Buffer outputBuffer = session.output(output, Kind.INT, outputLength);
+            Buffer outputBuffer = session.uninitializedOutput(output, Kind.INT, outputLength);
             int result = session.invokeSelectNearestIndicesWithinRadiusExclusive(
                 originX,
                 originY,
@@ -692,8 +732,8 @@ final class FfmNativeBridge {
                 limit,
                 outputBuffer
             );
-            if (isValidCount(result, output.length)) {
-                session.copyOutputs();
+            if (isValidCount(result, outputBuffer.length)) {
+                session.copyOutput(outputBuffer, result);
             }
             return result;
         });
@@ -795,6 +835,7 @@ final class FfmNativeBridge {
         COMPUTE_SQUARED_DISTANCES_DOUBLE("beryllium_compute_squared_distances_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         POTENTIAL_SET_CHARGES("beryllium_potential_set_charges", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         POTENTIAL_COMPUTE_CACHED("beryllium_potential_compute_cached", Kind.INT, Kind.INT, Kind.INT, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG),
+        POTENTIAL_CUBECL_STATUS("beryllium_potential_cubecl_status"),
         COMPUTE_POTENTIAL_ENERGY_CHANGE("beryllium_compute_potential_energy_change", Kind.INT, Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG),
         FILTER_WITHIN_RADIUS("beryllium_filter_within_radius", Kind.INT, Kind.INT, Kind.INT, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         COUNT_WITHIN_RADIUS("beryllium_count_within_radius", Kind.INT, Kind.INT, Kind.INT, Kind.LONG, Kind.ADDRESS, Kind.LONG),
@@ -845,8 +886,8 @@ final class FfmNativeBridge {
     private static final class Runtime {
         private final Method arenaOfShared;
         private final Method arenaAllocate;
-        private final Method copyArrayToSegment;
-        private final Method copySegmentToArray;
+        private final MethodHandle copyArrayToSegment;
+        private final MethodHandle copySegmentToArray;
         private final ThreadLocal<Session> sessions;
         private final EnumMap<Kind, Object> layouts = new EnumMap<>(Kind.class);
         private final EnumMap<Function, MethodHandle> handles = new EnumMap<>(Function.class);
@@ -864,7 +905,7 @@ final class FfmNativeBridge {
 
             arenaOfShared = arenaClass.getMethod("ofShared");
             arenaAllocate = arenaClass.getMethod("allocate", long.class, long.class);
-            copyArrayToSegment = memorySegmentClass.getMethod(
+            Method copyArrayToSegmentMethod = memorySegmentClass.getMethod(
                 "copy",
                 Object.class,
                 int.class,
@@ -873,7 +914,18 @@ final class FfmNativeBridge {
                 long.class,
                 int.class
             );
-            copySegmentToArray = memorySegmentClass.getMethod(
+            copyArrayToSegment = MethodHandles.publicLookup().unreflect(copyArrayToSegmentMethod).asType(
+                MethodType.methodType(
+                    void.class,
+                    Object.class,
+                    int.class,
+                    Object.class,
+                    Object.class,
+                    long.class,
+                    int.class
+                )
+            );
+            Method copySegmentToArrayMethod = memorySegmentClass.getMethod(
                 "copy",
                 memorySegmentClass,
                 valueLayoutClass,
@@ -881,6 +933,17 @@ final class FfmNativeBridge {
                 Object.class,
                 int.class,
                 int.class
+            );
+            copySegmentToArray = MethodHandles.publicLookup().unreflect(copySegmentToArrayMethod).asType(
+                MethodType.methodType(
+                    void.class,
+                    Object.class,
+                    Object.class,
+                    long.class,
+                    Object.class,
+                    int.class,
+                    int.class
+                )
             );
 
             layouts.put(Kind.ADDRESS, valueLayoutClass.getField("ADDRESS").get(null));
@@ -999,6 +1062,14 @@ final class FfmNativeBridge {
             copyToNative(array, buffer.segment, kind, length);
             outputs.add(buffer);
             return buffer;
+        }
+
+        private Buffer uninitializedOutput(Object array, Kind kind) throws Throwable {
+            return uninitializedOutput(array, kind, java.lang.reflect.Array.getLength(array));
+        }
+
+        private Buffer uninitializedOutput(Object array, Kind kind, int length) throws Throwable {
+            return nextBuffer(array, kind, length);
         }
 
         private Buffer nextBuffer(Object array, Kind kind, int length) throws Throwable {
@@ -1165,27 +1236,31 @@ final class FfmNativeBridge {
             );
         }
 
-        private void copyOutputs() throws ReflectiveOperationException {
+        private void copyOutputs() throws Throwable {
             for (Buffer output : outputs) {
-                int length = output.length;
-                if (length > 0) {
-                    runtime.copySegmentToArray.invoke(
-                        null,
-                        output.segment,
-                        runtime.layout(output.kind),
-                        0L,
-                        output.array,
-                        0,
-                        length
-                    );
-                }
+                copyOutput(output, output.length);
             }
         }
 
-        private void copyToNative(Object array, Object segment, Kind kind, int length) throws ReflectiveOperationException {
+        private void copyOutput(Buffer output, int length) throws Throwable {
+            if (length < 0 || length > output.length) {
+                throw new IllegalArgumentException("output copy length must be within the native buffer bounds");
+            }
             if (length > 0) {
-                runtime.copyArrayToSegment.invoke(
-                    null,
+                runtime.copySegmentToArray.invokeExact(
+                    output.segment,
+                    runtime.layout(output.kind),
+                    0L,
+                    output.array,
+                    0,
+                    length
+                );
+            }
+        }
+
+        private void copyToNative(Object array, Object segment, Kind kind, int length) throws Throwable {
+            if (length > 0) {
+                runtime.copyArrayToSegment.invokeExact(
                     array,
                     0,
                     segment,
