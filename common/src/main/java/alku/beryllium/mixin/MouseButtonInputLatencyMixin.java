@@ -181,7 +181,7 @@ public class MouseButtonInputLatencyMixin implements MouseInputLatencyAccess {
     private boolean beryllium$shouldRunPlayerTurn(MouseHandler mouseHandler, double elapsedTime) {
         boolean hasMovement = this.accumulatedDX != 0.0 || this.accumulatedDY != 0.0;
         boolean smoothCamera = this.minecraft.options.smoothCamera;
-        boolean smoothersSettled = !smoothCamera || this.beryllium$isSettled(this.smoothTurnX)
+        boolean smoothersSettled = !smoothCamera || !hasMovement && this.beryllium$isSettled(this.smoothTurnX)
             && this.beryllium$isSettled(this.smoothTurnY);
         return ClientInputLatency.shouldRunMouseTurn(smoothCamera, hasMovement, smoothersSettled);
     }

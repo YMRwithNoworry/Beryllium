@@ -47,7 +47,7 @@ public final class InputLatencyGateVerifier {
         check(!gate.shouldRunMouseTurn(false, false, true), "movement must leave smoothers in the reset state");
         check(!gate.shouldRunMouseTurn(true, false, true), "settled smooth camera input must be skipped");
         check(gate.shouldRunMouseTurn(true, false, false), "residual smoothing must advance without new input");
-        check(gate.shouldRunMouseTurn(true, true, true), "new smooth-camera movement must always run");
+        check(gate.shouldRunMouseTurn(true, true, false), "new smooth-camera movement must ignore smoother state");
         check(gate.shouldRunMouseTurn(false, false, true), "disabling smooth camera must run one reset pass");
         check(!gate.shouldRunMouseTurn(false, false, true), "idle turns after the reset pass must be skipped");
     }
