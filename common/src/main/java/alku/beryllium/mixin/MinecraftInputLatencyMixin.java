@@ -9,6 +9,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -22,12 +23,13 @@ public class MinecraftInputLatencyMixin {
     @Unique
     private boolean beryllium$handledMouseMovementEarly;
 
-    @Inject(method = "runTick(Z)V", at = @At("HEAD"))
-    private void beryllium$handleGameplayMouseMovementEarly(boolean renderLevel, CallbackInfo ci) {
+    @ModifyVariable(method = "runTick(Z)V", at = @At("HEAD"), argsOnly = true)
+    private boolean beryllium$handleGameplayMouseMovementEarly(boolean renderLevel) {
         this.beryllium$handledMouseMovementEarly = ClientInputLatency.isEnabled() && this.mouseHandler.isMouseGrabbed();
         if (this.beryllium$handledMouseMovementEarly) {
             this.mouseHandler.handleAccumulatedMovement();
         }
+        return renderLevel;
     }
 
     @Redirect(
