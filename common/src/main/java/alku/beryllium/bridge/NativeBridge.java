@@ -988,6 +988,39 @@ public final class NativeBridge {
         return nativeCount;
     }
 
+    public static int sortWithinRadiusExclusivePrefixOutput(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        JavaComputeKernels.validatePositions(positions);
+        if (radiusSquared < 0.0) {
+            throw new IllegalArgumentException("radiusSquared must be non-negative");
+        }
+        JavaComputeKernels.validateOutputCapacity(positions.length / 3, output);
+
+        if (!isLoaded()) {
+            return JavaComputeKernels.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, output);
+        }
+
+        int nativeCount = sortWithinRadiusExclusivePrefixOutputDoubleNative(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            output
+        );
+        if (nativeCount < 0) {
+            return JavaComputeKernels.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, output);
+        }
+
+        return nativeCount;
+    }
+
     public static int selectNearestIndicesWithinRadiusExclusive(
         double originX,
         double originY,
@@ -1432,5 +1465,23 @@ public final class NativeBridge {
         int[] output
     ) {
         return FfmNativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, output);
+    }
+
+    private static int sortWithinRadiusExclusivePrefixOutputDoubleNative(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        return FfmNativeBridge.sortWithinRadiusExclusivePrefixOutput(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            output
+        );
     }
 }

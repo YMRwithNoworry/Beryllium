@@ -85,7 +85,14 @@ public final class EntityDistanceSort {
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
         int[] order = new int[values.size()];
-        int orderCount = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, order);
+        int orderCount = NativeBridge.sortWithinRadiusExclusivePrefixOutput(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            order
+        );
         List<T> matches = new ArrayList<>(orderCount);
         for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
             matches.add(values.get(order[orderIndex]));
@@ -130,7 +137,14 @@ public final class EntityDistanceSort {
 
         double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
         int[] order = new int[values.size()];
-        int orderCount = NativeBridge.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, order);
+        int orderCount = NativeBridge.sortWithinRadiusExclusivePrefixOutput(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            order
+        );
         for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
             int index = order[orderIndex];
             T value = values.get(index);

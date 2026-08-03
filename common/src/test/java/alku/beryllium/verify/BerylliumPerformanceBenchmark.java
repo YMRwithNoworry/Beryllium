@@ -31,15 +31,19 @@ public final class BerylliumPerformanceBenchmark {
     private static final Field LONG_SET_KEY_TABLE_FIELD = longSetField("key");
     private static final Field LONG_SET_CONTAINS_NULL_FIELD = longSetField("containsNull");
     private static final int[] CANDIDATE_COUNTS = {256, 1024, 4096, 8192, 16384};
+    private static final int[] RADIUS_SORT_CANDIDATE_COUNTS = {256, 512, 1024, 2047, 2048, 4096, 8192, 16384};
     private static final int[] NEAREST_ENTITY_CANDIDATE_COUNTS = {32, 64, 128, 256, 512, 1024, 4096, 8192};
     private static final int[] BLOCK_DISTANCE_CANDIDATE_COUNTS = {256, 1024, 4096, 8192, 16384, 65_536};
     private static final int[] CHUNK_SEND_CANDIDATE_COUNTS = {128, 256, 512, 2048, 4096, 8192, 16384};
     private static final int[] CHUNK_SEND_LIMITS = {9, 64};
     private static final int WARMUP_ITERATIONS = 100;
     private static final int MEASUREMENT_ITERATIONS = 300;
+    private static final int FOCUSED_WARMUP_ITERATIONS = 2000;
+    private static final int FOCUSED_MEASUREMENT_ITERATIONS = 2000;
     private static final int[] POTENTIAL_CHARGE_COUNTS = {32, 128, 512, 2048, 8192};
     private static final double RADIUS = 32.0;
     private static final int NEAREST_ITEM_TOP_K_LIMIT = 16;
+    private static final double RADIUS_FILTERED_SORT_RADIUS = 256.0;
     private static long blackHole;
 
     private BerylliumPerformanceBenchmark() {
@@ -49,6 +53,11 @@ public final class BerylliumPerformanceBenchmark {
         NativeStatus status = NativeBridge.initialize();
         if (status != NativeStatus.OK) {
             throw new AssertionError("Expected bundled native backend to load, got " + status);
+        }
+
+        if ("radius-distance-sort".equals(System.getenv("BERYLLIUM_BENCHMARK_FOCUS"))) {
+            benchmarkRadiusFilteredDistanceSort();
+            return;
         }
 
         System.out.printf(
@@ -91,6 +100,7 @@ public final class BerylliumPerformanceBenchmark {
         benchmarkNearestEntityIndex();
         benchmarkBlockDistanceSearch();
         benchmarkChunkSendSelection();
+        benchmarkRadiusFilteredDistanceSort();
         benchmarkNativeFilters();
 
         if (blackHole == Long.MIN_VALUE) {
@@ -120,6 +130,112 @@ public final class BerylliumPerformanceBenchmark {
         for (int chargeCount : POTENTIAL_CHARGE_COUNTS) {
             benchmarkPotentialEnergy(chargeCount);
         }
+    }
+
+    private static void benchmarkRadiusFilteredDistanceSort() {
+        double radiusSquared = RADIUS_FILTERED_SORT_RADIUS * RADIUS_FILTERED_SORT_RADIUS;
+        System.out.printf(
+            Locale.ROOT,
+            "benchmark=radius-filtered-distance-sort radius=%.1f%n",
+            RADIUS_FILTERED_SORT_RADIUS
+        );
+        for (int candidateCount : RADIUS_SORT_CANDIDATE_COUNTS) {
+            double[] positions = createFilterPositions(candidateCount);
+            int[] expected = new int[candidateCount];
+            int[] generic = new int[candidateCount];
+            int[] actual = new int[candidateCount];
+            Arrays.fill(expected, -1);
+            Arrays.fill(generic, -1);
+            Arrays.fill(actual, -1);
+            int expectedCount = JavaComputeKernels.sortWithinRadiusExclusive(
+                0.25,
+                -0.5,
+                0.75,
+                radiusSquared,
+                positions,
+                expected
+            );
+            int genericCount = NativeBridge.sortWithinRadiusExclusive(
+                0.25,
+                -0.5,
+                0.75,
+                radiusSquared,
+                positions,
+                generic
+            );
+            int actualCount = radiusFilteredDistanceSort(
+                0.25,
+                -0.5,
+                0.75,
+                radiusSquared,
+                positions,
+                actual
+            );
+            assertFilterParity(
+                "Generic radius-filtered distance sort",
+                expected,
+                expectedCount,
+                generic,
+                genericCount
+            );
+            assertFilterParity(
+                "Prefix-output radius-filtered distance sort",
+                expected,
+                expectedCount,
+                actual,
+                actualCount
+            );
+
+            long[] medians = measureLongPair(
+                "generic_native_radius_distance_sort",
+                () -> NativeBridge.sortWithinRadiusExclusive(
+                    0.25,
+                    -0.5,
+                    0.75,
+                    radiusSquared,
+                    positions,
+                    generic
+                ),
+                "prefix_output_native_radius_distance_sort",
+                () -> radiusFilteredDistanceSort(
+                    0.25,
+                    -0.5,
+                    0.75,
+                    radiusSquared,
+                    positions,
+                    actual
+                ),
+                FOCUSED_WARMUP_ITERATIONS,
+                FOCUSED_MEASUREMENT_ITERATIONS
+            );
+            System.out.printf(
+                Locale.ROOT,
+                "radius_sort_result=candidates:%d matches:%d generic_median_ns:%d prefix_output_median_ns:%d speedup:%.2fx%n",
+                candidateCount,
+                actualCount,
+                medians[0],
+                medians[1],
+                speedup(medians[0], medians[1])
+            );
+        }
+    }
+
+    private static int radiusFilteredDistanceSort(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        return NativeBridge.sortWithinRadiusExclusivePrefixOutput(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            output
+        );
     }
 
     private static void benchmarkNearestEntityIndex() {
@@ -579,6 +695,51 @@ public final class BerylliumPerformanceBenchmark {
         long median = samples[samples.length / 2];
         System.out.printf(Locale.ROOT, "sample=%s median_ns=%d%n", name, median);
         return median;
+    }
+
+    private static long[] measureLongPair(
+        String firstName,
+        LongSupplier first,
+        String secondName,
+        LongSupplier second,
+        int warmupIterations,
+        int measurementIterations
+    ) {
+        for (int iteration = 0; iteration < warmupIterations; iteration++) {
+            if ((iteration & 1) == 0) {
+                consume(first.getAsLong());
+                consume(second.getAsLong());
+            } else {
+                consume(second.getAsLong());
+                consume(first.getAsLong());
+            }
+        }
+
+        long[] firstSamples = new long[measurementIterations];
+        long[] secondSamples = new long[measurementIterations];
+        for (int iteration = 0; iteration < measurementIterations; iteration++) {
+            if ((iteration & 1) == 0) {
+                firstSamples[iteration] = measureLongSample(first);
+                secondSamples[iteration] = measureLongSample(second);
+            } else {
+                secondSamples[iteration] = measureLongSample(second);
+                firstSamples[iteration] = measureLongSample(first);
+            }
+        }
+
+        Arrays.sort(firstSamples);
+        Arrays.sort(secondSamples);
+        long firstMedian = firstSamples[firstSamples.length / 2];
+        long secondMedian = secondSamples[secondSamples.length / 2];
+        System.out.printf(Locale.ROOT, "sample=%s median_ns=%d%n", firstName, firstMedian);
+        System.out.printf(Locale.ROOT, "sample=%s median_ns=%d%n", secondName, secondMedian);
+        return new long[] {firstMedian, secondMedian};
+    }
+
+    private static long measureLongSample(LongSupplier calculation) {
+        long start = System.nanoTime();
+        consume(calculation.getAsLong());
+        return System.nanoTime() - start;
     }
 
     private static List<BlockPos> createBlockPositions(int count) {

@@ -259,6 +259,16 @@ public final class BerylliumNativeRuntimeVerifier {
         assertEquals(2, sortedExclusiveCount, "native sorted exclusive double radius count");
         assertArrayEquals(new int[] {1, 2, -1}, sortedExclusiveOutput, "native sorted exclusive double radius output prefix");
 
+        int[] prefixOutput = new int[3];
+        Arrays.fill(prefixOutput, -1);
+        int prefixCount = NativeBridge.sortWithinRadiusExclusivePrefixOutput(0.0, 0.0, 0.0, 4.0, new double[] {
+            2.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            -1.0, 0.0, 0.0
+        }, prefixOutput);
+        assertEquals(2, prefixCount, "native prefix-only sorted exclusive double radius count");
+        assertArrayEquals(new int[] {1, 2, -1}, prefixOutput, "native prefix-only sorted exclusive double radius output prefix");
+
         int[] variableMatches = NativeBridge.filterWithinRadii(0.0, 0.0, 0.0, new double[] {
             0.0, 8.0, 0.0,
             10.0, 0.0, 0.0,

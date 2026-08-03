@@ -766,6 +766,32 @@ final class FfmNativeBridge {
         });
     }
 
+    static int sortWithinRadiusExclusivePrefixOutput(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int[] output
+    ) {
+        return withSession(session -> {
+            Buffer positionsBuffer = session.input(positions, Kind.DOUBLE);
+            Buffer outputBuffer = session.uninitializedOutput(output, Kind.INT);
+            int result = session.invokeSortWithinRadiusExclusive(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                positionsBuffer,
+                outputBuffer
+            );
+            if (isValidCount(result, output.length)) {
+                session.copyOutput(outputBuffer, result);
+            }
+            return result;
+        });
+    }
+
     private static boolean isValidCount(int result, int capacity) {
         return result >= 0 && result <= capacity;
     }
@@ -877,7 +903,8 @@ final class FfmNativeBridge {
                     COMPUTE_POTENTIAL_ENERGY_CHANGE,
                     SORT_BY_DISTANCE_DOUBLE,
                     SORT_BY_DISTANCE_AND_COUNT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
-                    SELECT_NEAREST_INDICES_WITHIN_RADIUS_EXCLUSIVE_DOUBLE -> true;
+                    SELECT_NEAREST_INDICES_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
+                    SORT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE -> true;
                 default -> false;
             };
         }
@@ -1231,6 +1258,26 @@ final class FfmNativeBridge {
                 positions.segment,
                 (long) positions.length,
                 limit,
+                output.segment,
+                (long) output.length
+            );
+        }
+
+        private int invokeSortWithinRadiusExclusive(
+            double originX,
+            double originY,
+            double originZ,
+            double radiusSquared,
+            Buffer positions,
+            Buffer output
+        ) throws Throwable {
+            return (int) runtime.exactHandle(Function.SORT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE).invokeExact(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                positions.segment,
+                (long) positions.length,
                 output.segment,
                 (long) output.length
             );
