@@ -1982,7 +1982,7 @@ pub(crate) fn select_nearest_indices_within_radius_f64_exclusive_with_scratch(
     for index in 0..position_count {
         let distance = squared_distance_at_f64(origin_x, origin_y, origin_z, positions, index);
         if distance < radius_squared {
-            retain_nearest_distance_index(
+            retain_nearest_later_distance_index(
                 &mut scratch.nearest,
                 selected_capacity,
                 DistanceIndex::new(index as i32, distance),
@@ -2014,6 +2014,20 @@ fn retain_nearest_distance_index(
     if nearest.len() < capacity {
         nearest.push(candidate);
     } else if candidate < *nearest.peek().expect("non-empty heap at capacity") {
+        nearest.pop();
+        nearest.push(candidate);
+    }
+}
+
+fn retain_nearest_later_distance_index(
+    nearest: &mut BinaryHeap<DistanceIndex>,
+    capacity: usize,
+    candidate: DistanceIndex,
+) {
+    debug_assert!(capacity > 0);
+    if nearest.len() < capacity {
+        nearest.push(candidate);
+    } else if candidate.distance < nearest.peek().expect("non-empty heap at capacity").distance {
         nearest.pop();
         nearest.push(candidate);
     }
@@ -3566,6 +3580,43 @@ mod tests {
         .unwrap();
         assert_eq!(nan_radius_count, 0);
         assert_eq!(output, [2, 88, 99]);
+    }
+
+    #[test]
+    fn select_nearest_indices_within_radius_f64_exclusive_should_match_full_sort_after_replacements()
+     {
+        const POSITION_COUNT: usize = 8_192;
+        let positions: Vec<f64> = (0..POSITION_COUNT)
+            .flat_map(|index| {
+                let distance = (POSITION_COUNT - 1 - index) % 257;
+                [distance as f64, 0.0, 0.0]
+            })
+            .collect();
+        let mut selected = [-1; 16];
+        let mut full_order = vec![-1; POSITION_COUNT];
+
+        let selected_count = select_nearest_indices_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            f64::INFINITY,
+            &positions,
+            selected.len(),
+            &mut selected,
+        )
+        .unwrap();
+        sort_by_distance_and_count_within_radius_f64_exclusive(
+            0.0,
+            0.0,
+            0.0,
+            f64::INFINITY,
+            &positions,
+            &mut full_order,
+        )
+        .unwrap();
+
+        assert_eq!(selected_count, selected.len());
+        assert_eq!(selected.as_slice(), &full_order[..selected_count]);
     }
 
     #[test]
