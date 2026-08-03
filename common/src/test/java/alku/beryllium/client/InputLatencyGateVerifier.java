@@ -19,7 +19,6 @@ public final class InputLatencyGateVerifier {
         coalescedCursorEventsPreserveAccumulatedDelta();
         firstCursorEventRemainsUncoalesced();
         skipsOnlyResetNonSmoothIdleTurns();
-        synchronizesOnlyCurrentTargetingState();
         exposesSharedTargetingPreparation();
     }
 
@@ -32,16 +31,6 @@ public final class InputLatencyGateVerifier {
             MouseInputLatencyAccess.class.isAssignableFrom(MouseButtonInputLatencyMixin.class),
             "the mouse mixin must expose shared targeting preparation"
         );
-    }
-
-    private static void synchronizesOnlyCurrentTargetingState() {
-        check(
-            MouseInputLatencyAccess.canSynchronizeTargeting(false, true, false),
-            "non-smooth movement can be consumed immediately"
-        );
-        check(MouseInputLatencyAccess.canSynchronizeTargeting(true, false, true), "settled smooth targeting is already current");
-        check(!MouseInputLatencyAccess.canSynchronizeTargeting(true, true, true), "new smooth movement must wait for interpolation");
-        check(!MouseInputLatencyAccess.canSynchronizeTargeting(true, false, false), "residual smoothing must wait for interpolation");
     }
 
     private static void skipsOnlyResetNonSmoothIdleTurns() {

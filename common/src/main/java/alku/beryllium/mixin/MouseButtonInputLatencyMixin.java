@@ -129,10 +129,9 @@ public class MouseButtonInputLatencyMixin implements MouseInputLatencyAccess {
         }
 
         boolean hasMovement = this.accumulatedDX != 0.0 || this.accumulatedDY != 0.0;
-        boolean smoothCamera = this.minecraft.options.smoothCamera;
-        boolean smoothersSettled = !smoothCamera || !hasMovement && this.beryllium$isSettled(this.smoothTurnX)
-            && this.beryllium$isSettled(this.smoothTurnY);
-        if (smoothCamera && !MouseInputLatencyAccess.canSynchronizeTargeting(true, hasMovement, smoothersSettled)) {
+        if (this.minecraft.options.smoothCamera
+            && (hasMovement || !this.beryllium$isSettled(this.smoothTurnX)
+                || !this.beryllium$isSettled(this.smoothTurnY))) {
             return false;
         }
 
