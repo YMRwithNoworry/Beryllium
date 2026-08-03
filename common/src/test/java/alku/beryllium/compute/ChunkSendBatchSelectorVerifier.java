@@ -183,6 +183,7 @@ public final class ChunkSendBatchSelectorVerifier {
         ChunkSendBatchSelector.Scratch outer = ChunkSendBatchSelector.acquireScratch(8192, 64);
         try {
             outer.packedChunkPositions()[0] = pack(17, -29);
+            verifyCrossThreadReleaseFails(outer);
             ChunkSendBatchSelector.Scratch nested = ChunkSendBatchSelector.acquireScratch(8192, 64);
             ChunkSendBatchSelector.Scratch deepNested;
             try {
@@ -253,6 +254,27 @@ public final class ChunkSendBatchSelectorVerifier {
         }
         if (!unmatchedReleaseFailed) {
             throw new AssertionError("scratch release without a matching acquire must fail");
+        }
+    }
+
+    private static void verifyCrossThreadReleaseFails(ChunkSendBatchSelector.Scratch scratch) {
+        Throwable[] failure = {null};
+        Thread thread = new Thread(() -> {
+            try {
+                ChunkSendBatchSelector.releaseScratch(scratch);
+            } catch (Throwable thrown) {
+                failure[0] = thrown;
+            }
+        }, "beryllium-scratch-release-verifier");
+        thread.start();
+        try {
+            thread.join();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("interrupted while verifying cross-thread scratch release", interrupted);
+        }
+        if (!(failure[0] instanceof IllegalStateException)) {
+            throw new AssertionError("cross-thread scratch release must fail with IllegalStateException", failure[0]);
         }
     }
 

@@ -88,14 +88,20 @@ public final class ChunkSendBatchSelector {
     }
 
     public static void releaseScratch(Scratch scratch) {
-        SCRATCH_POOL.get().release(scratch);
+        if (scratch == null) {
+            SCRATCH_POOL.get().release(null);
+        } else {
+            scratch.release();
+        }
     }
 
     public static final class Scratch {
+        private final ScratchPool owner;
         private long[] packedChunkPositions = new long[0];
         private int[] selectedIndices = new int[0];
 
-        private Scratch() {
+        private Scratch(ScratchPool owner) {
+            this.owner = owner;
         }
 
         private void prepare(int candidateCount, int selectedCount) {
@@ -132,10 +138,15 @@ public final class ChunkSendBatchSelector {
         public int[] selectedIndices() {
             return this.selectedIndices;
         }
+
+        private void release() {
+            this.owner.release(this);
+        }
     }
 
     private static final class ScratchPool {
-        private final Scratch primary = new Scratch();
+        private final Thread ownerThread = Thread.currentThread();
+        private final Scratch primary = new Scratch(this);
         private List<Scratch> nested;
         private int depth;
 
@@ -149,7 +160,7 @@ public final class ChunkSendBatchSelector {
                     this.nested = new ArrayList<>();
                 }
                 if (nestedIndex == this.nested.size()) {
-                    this.nested.add(new Scratch());
+                    this.nested.add(new Scratch(this));
                 }
                 scratch = this.nested.get(nestedIndex);
             }
@@ -159,7 +170,7 @@ public final class ChunkSendBatchSelector {
         }
 
         private void release(Scratch scratch) {
-            if (this.depth <= 0) {
+            if (Thread.currentThread() != this.ownerThread || this.depth <= 0) {
                 throw new IllegalStateException("chunk send scratch must be released in reverse acquisition order");
             }
             Scratch expected = this.depth == 1 ? this.primary : this.nested.get(this.depth - 2);
