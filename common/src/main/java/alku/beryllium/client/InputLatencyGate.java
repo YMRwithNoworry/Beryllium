@@ -1,7 +1,5 @@
 package alku.beryllium.client;
 
-import alku.beryllium.mixin.MouseInputLatencyAccess;
-
 final class InputLatencyGate {
     static final int DEFER = 0;
     static final int FLUSH = 1;
@@ -129,10 +127,6 @@ final class InputLatencyGate {
             return true;
         }
         return hasMovement;
-    }
-
-    boolean canSynchronizeTargeting(boolean smoothCamera, boolean hasMovement, boolean smoothersSettled) {
-        return !smoothCamera || !hasMovement && smoothersSettled;
     }
 
     void reset() {

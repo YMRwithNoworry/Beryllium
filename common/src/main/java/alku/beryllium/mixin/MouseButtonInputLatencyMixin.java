@@ -1,6 +1,7 @@
 package alku.beryllium.mixin;
 
 import alku.beryllium.client.ClientInputLatency;
+import alku.beryllium.client.MouseInputLatencyAccess;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import net.minecraft.client.Minecraft;
@@ -131,7 +132,7 @@ public class MouseButtonInputLatencyMixin implements MouseInputLatencyAccess {
         boolean smoothCamera = this.minecraft.options.smoothCamera;
         boolean smoothersSettled = !smoothCamera || !hasMovement && this.beryllium$isSettled(this.smoothTurnX)
             && this.beryllium$isSettled(this.smoothTurnY);
-        if (smoothCamera && !ClientInputLatency.canSynchronizeTargeting(true, hasMovement, smoothersSettled)) {
+        if (smoothCamera && !MouseInputLatencyAccess.canSynchronizeTargeting(true, hasMovement, smoothersSettled)) {
             return false;
         }
 

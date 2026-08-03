@@ -1,7 +1,6 @@
 package alku.beryllium.client;
 
 import alku.beryllium.mixin.MouseButtonInputLatencyMixin;
-import alku.beryllium.mixin.MouseInputLatencyAccess;
 
 public final class InputLatencyGateVerifier {
     private InputLatencyGateVerifier() {
@@ -26,17 +25,23 @@ public final class InputLatencyGateVerifier {
 
     private static void exposesSharedTargetingPreparation() {
         check(
+            !MouseInputLatencyAccess.class.getPackageName().startsWith("alku.beryllium.mixin"),
+            "directly loaded access interfaces must remain outside the defined mixin package"
+        );
+        check(
             MouseInputLatencyAccess.class.isAssignableFrom(MouseButtonInputLatencyMixin.class),
             "the mouse mixin must expose shared targeting preparation"
         );
     }
 
     private static void synchronizesOnlyCurrentTargetingState() {
-        InputLatencyGate gate = new InputLatencyGate();
-        check(gate.canSynchronizeTargeting(false, true, false), "non-smooth movement can be consumed immediately");
-        check(gate.canSynchronizeTargeting(true, false, true), "settled smooth targeting is already current");
-        check(!gate.canSynchronizeTargeting(true, true, true), "new smooth movement must wait for interpolation");
-        check(!gate.canSynchronizeTargeting(true, false, false), "residual smoothing must wait for interpolation");
+        check(
+            MouseInputLatencyAccess.canSynchronizeTargeting(false, true, false),
+            "non-smooth movement can be consumed immediately"
+        );
+        check(MouseInputLatencyAccess.canSynchronizeTargeting(true, false, true), "settled smooth targeting is already current");
+        check(!MouseInputLatencyAccess.canSynchronizeTargeting(true, true, true), "new smooth movement must wait for interpolation");
+        check(!MouseInputLatencyAccess.canSynchronizeTargeting(true, false, false), "residual smoothing must wait for interpolation");
     }
 
     private static void skipsOnlyResetNonSmoothIdleTurns() {

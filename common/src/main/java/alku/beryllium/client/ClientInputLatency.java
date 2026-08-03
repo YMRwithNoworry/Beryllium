@@ -1,7 +1,6 @@
 package alku.beryllium.client;
 
 import alku.beryllium.mixin.MinecraftInputLatencyAccess;
-import alku.beryllium.mixin.MouseInputLatencyAccess;
 import net.minecraft.client.Minecraft;
 
 public final class ClientInputLatency {
@@ -114,10 +113,6 @@ public final class ClientInputLatency {
 
     public static boolean shouldRunMouseTurn(boolean smoothCamera, boolean hasMovement, boolean smoothersSettled) {
         return !ENABLED || GATE.shouldRunMouseTurn(smoothCamera, hasMovement, smoothersSettled);
-    }
-
-    public static boolean canSynchronizeTargeting(boolean smoothCamera, boolean hasMovement, boolean smoothersSettled) {
-        return ENABLED && GATE.canSynchronizeTargeting(smoothCamera, hasMovement, smoothersSettled);
     }
 
     private static boolean isClassPresent(String name) {
