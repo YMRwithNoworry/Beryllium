@@ -184,13 +184,49 @@ public final class ChunkSendBatchSelectorVerifier {
         try {
             outer.packedChunkPositions()[0] = pack(17, -29);
             ChunkSendBatchSelector.Scratch nested = ChunkSendBatchSelector.acquireScratch(8192, 64);
+            ChunkSendBatchSelector.Scratch deepNested;
             try {
                 if (nested == outer) {
                     throw new AssertionError("nested chunk send selection reused the active outer scratch");
                 }
                 nested.packedChunkPositions()[0] = pack(-91, 37);
+                deepNested = ChunkSendBatchSelector.acquireScratch(8192, 64);
+                try {
+                    if (deepNested == outer || deepNested == nested) {
+                        throw new AssertionError("deeply nested chunk send selection reused an active scratch");
+                    }
+                } finally {
+                    ChunkSendBatchSelector.releaseScratch(deepNested);
+                }
+
+                boolean outOfOrderReleaseFailed = false;
+                try {
+                    ChunkSendBatchSelector.releaseScratch(outer);
+                } catch (IllegalStateException expected) {
+                    outOfOrderReleaseFailed = true;
+                }
+                if (!outOfOrderReleaseFailed) {
+                    throw new AssertionError("out-of-order scratch release must fail");
+                }
             } finally {
                 ChunkSendBatchSelector.releaseScratch(nested);
+            }
+
+            ChunkSendBatchSelector.Scratch reusedNested = ChunkSendBatchSelector.acquireScratch(8192, 64);
+            try {
+                if (reusedNested != nested) {
+                    throw new AssertionError("released nested chunk send scratch was not reused");
+                }
+                ChunkSendBatchSelector.Scratch reusedDeepNested = ChunkSendBatchSelector.acquireScratch(8192, 64);
+                try {
+                    if (reusedDeepNested != deepNested) {
+                        throw new AssertionError("released deeply nested chunk send scratch was not reused");
+                    }
+                } finally {
+                    ChunkSendBatchSelector.releaseScratch(reusedDeepNested);
+                }
+            } finally {
+                ChunkSendBatchSelector.releaseScratch(reusedNested);
             }
 
             if (outer.packedChunkPositions()[0] != pack(17, -29)) {
@@ -198,6 +234,25 @@ public final class ChunkSendBatchSelectorVerifier {
             }
         } finally {
             ChunkSendBatchSelector.releaseScratch(outer);
+        }
+
+        ChunkSendBatchSelector.Scratch reusedOuter = ChunkSendBatchSelector.acquireScratch(8192, 64);
+        try {
+            if (reusedOuter != outer) {
+                throw new AssertionError("released primary chunk send scratch was not reused");
+            }
+        } finally {
+            ChunkSendBatchSelector.releaseScratch(reusedOuter);
+        }
+
+        boolean unmatchedReleaseFailed = false;
+        try {
+            ChunkSendBatchSelector.releaseScratch(null);
+        } catch (IllegalStateException expected) {
+            unmatchedReleaseFailed = true;
+        }
+        if (!unmatchedReleaseFailed) {
+            throw new AssertionError("scratch release without a matching acquire must fail");
         }
     }
 

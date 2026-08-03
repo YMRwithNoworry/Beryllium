@@ -135,21 +135,35 @@ public final class ChunkSendBatchSelector {
     }
 
     private static final class ScratchPool {
-        private final List<Scratch> entries = new ArrayList<>();
+        private final Scratch primary = new Scratch();
+        private List<Scratch> nested;
         private int depth;
 
         private Scratch acquire(int candidateCount, int selectedCount) {
-            if (this.depth == this.entries.size()) {
-                this.entries.add(new Scratch());
+            Scratch scratch;
+            if (this.depth == 0) {
+                scratch = this.primary;
+            } else {
+                int nestedIndex = this.depth - 1;
+                if (this.nested == null) {
+                    this.nested = new ArrayList<>();
+                }
+                if (nestedIndex == this.nested.size()) {
+                    this.nested.add(new Scratch());
+                }
+                scratch = this.nested.get(nestedIndex);
             }
-            Scratch scratch = this.entries.get(this.depth);
             scratch.prepare(candidateCount, selectedCount);
             this.depth++;
             return scratch;
         }
 
         private void release(Scratch scratch) {
-            if (this.depth <= 0 || this.entries.get(this.depth - 1) != scratch) {
+            if (this.depth <= 0) {
+                throw new IllegalStateException("chunk send scratch must be released in reverse acquisition order");
+            }
+            Scratch expected = this.depth == 1 ? this.primary : this.nested.get(this.depth - 2);
+            if (expected != scratch) {
                 throw new IllegalStateException("chunk send scratch must be released in reverse acquisition order");
             }
             this.depth--;

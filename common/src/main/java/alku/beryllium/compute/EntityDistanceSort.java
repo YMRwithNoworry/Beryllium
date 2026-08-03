@@ -542,14 +542,24 @@ public final class EntityDistanceSort {
     }
 
     private static final class DistanceScratchPool {
-        private final List<DistanceScratch> entries = new ArrayList<>();
+        private final DistanceScratch primary = new DistanceScratch();
+        private List<DistanceScratch> nested;
         private int depth;
 
         private DistanceScratch acquire(int candidateCount) {
-            if (this.depth == this.entries.size()) {
-                this.entries.add(new DistanceScratch());
+            DistanceScratch scratch;
+            if (this.depth == 0) {
+                scratch = this.primary;
+            } else {
+                int nestedIndex = this.depth - 1;
+                if (this.nested == null) {
+                    this.nested = new ArrayList<>();
+                }
+                if (nestedIndex == this.nested.size()) {
+                    this.nested.add(new DistanceScratch());
+                }
+                scratch = this.nested.get(nestedIndex);
             }
-            DistanceScratch scratch = this.entries.get(this.depth);
             scratch.ensureCapacity(candidateCount);
             this.depth++;
             return scratch;
