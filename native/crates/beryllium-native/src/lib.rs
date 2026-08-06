@@ -1,12 +1,12 @@
 #[cfg(feature = "cubecl-preview")]
 mod cubecl_preview;
 mod async_worker;
-mod biome;
+pub mod biome;
 mod error;
 mod ffi;
 mod kernel;
-mod noise;
-mod octave_noise;
+pub mod noise;
+pub mod octave_noise;
 mod simd;
 
 pub use error::NativeError;
