@@ -1,5 +1,7 @@
 package alku.beryllium.mixin;
 
+import alku.beryllium.api.NoiseChunkInterpolationAccess;
+import alku.beryllium.api.NoiseInterpolatorAccess;
 import alku.beryllium.bridge.NativeBridge;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import org.spongepowered.asm.mixin.Final;

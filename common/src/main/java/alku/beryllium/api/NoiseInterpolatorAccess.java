@@ -1,5 +1,9 @@
-package alku.beryllium.mixin;
+package alku.beryllium.api;
 
+/**
+ * Accessor interface for NoiseInterpolator optimization.
+ * Implemented by NoiseChunk.NoiseInterpolator via Mixin.
+ */
 public interface NoiseInterpolatorAccess {
     void beryllium$writeSlabCorners(
         double[] output,
