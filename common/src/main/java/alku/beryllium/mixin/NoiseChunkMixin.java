@@ -19,6 +19,10 @@ public abstract class NoiseChunkMixin implements NoiseChunkInterpolationAccess {
     private static final ThreadLocal<InterpolationScratch> BERYLLIUM$SCRATCH =
         ThreadLocal.withInitial(InterpolationScratch::new);
 
+    @Unique
+    private static final ThreadLocal<SlabCache> BERYLLIUM$SLAB_CACHE =
+        ThreadLocal.withInitial(SlabCache::new);
+
     @Shadow
     @Final
     private List<NoiseChunk.NoiseInterpolator> interpolators;
@@ -69,6 +73,9 @@ public abstract class NoiseChunkMixin implements NoiseChunkInterpolationAccess {
     @Unique
     private int beryllium$nativeCellIndex;
 
+    @Unique
+    private long beryllium$slabCacheKey;
+
     @Override
     public int beryllium$nativeCellIndex() {
         return this.beryllium$nativeCellIndex;
@@ -98,35 +105,59 @@ public abstract class NoiseChunkMixin implements NoiseChunkInterpolationAccess {
             return;
         }
 
-        int cellCount = Math.multiplyExact(this.cellCountY, this.cellCountXZ);
-        int interpolationCount = Math.multiplyExact(interpolatorCount, cellCount);
-        int cornersLength = Math.multiplyExact(interpolationCount, 8);
-        int cellVolume = Math.multiplyExact(Math.multiplyExact(this.cellWidth, this.cellWidth), this.cellHeight);
-        int outputLength = Math.multiplyExact(interpolationCount, cellVolume);
-        InterpolationScratch scratch = BERYLLIUM$SCRATCH.get();
-        double[] corners = scratch.corners(cornersLength);
-        double[] values = scratch.values(outputLength);
-        for (int index = 0; index < interpolatorCount; index++) {
-            ((NoiseInterpolatorAccess) (Object) this.interpolators.get(index)).beryllium$writeSlabCorners(
+        try {
+            // 计算当前 slab 的缓存键（基于 interpolationCounter 和位置）
+            long cacheKey = this.interpolationCounter ^ ((long) this.cellStartBlockX << 32);
+
+            SlabCache cache = BERYLLIUM$SLAB_CACHE.get();
+            if (cache.isValid(cacheKey, interpolatorCount, this.cellCountY, this.cellCountXZ, this.cellWidth, this.cellHeight)) {
+                // 缓存命中，直接使用缓存的结果
+                this.beryllium$slabCacheKey = cacheKey;
+                this.beryllium$nativeSlabReady = true;
+                return;
+            }
+
+            // 批量处理整个 slab，而不是逐个 cell
+            int cellCount = Math.multiplyExact(this.cellCountY, this.cellCountXZ);
+            int interpolationCount = Math.multiplyExact(interpolatorCount, cellCount);
+            int cornersLength = Math.multiplyExact(interpolationCount, 8);
+            int cellVolume = Math.multiplyExact(Math.multiplyExact(this.cellWidth, this.cellWidth), this.cellHeight);
+            int outputLength = Math.multiplyExact(interpolationCount, cellVolume);
+
+            InterpolationScratch scratch = BERYLLIUM$SCRATCH.get();
+            double[] corners = scratch.corners(cornersLength);
+            double[] values = scratch.values(outputLength);
+
+            // 批量写入所有 interpolator 的 corners
+            for (int index = 0; index < interpolatorCount; index++) {
+                ((NoiseInterpolatorAccess) (Object) this.interpolators.get(index)).beryllium$writeSlabCorners(
+                    corners,
+                    index,
+                    interpolatorCount,
+                    this.cellCountY,
+                    this.cellCountXZ
+                );
+            }
+
+            // 一次性插值整个 slab 的所有 cells
+            if (!NativeBridge.tryInterpolateDensityCells(
                 corners,
-                index,
-                interpolatorCount,
-                this.cellCountY,
-                this.cellCountXZ
-            );
-        }
+                interpolationCount,
+                this.cellWidth,
+                this.cellHeight,
+                values
+            )) {
+                return;
+            }
 
-        if (!NativeBridge.tryInterpolateDensityCells(
-            corners,
-            interpolationCount,
-            this.cellWidth,
-            this.cellHeight,
-            values
-        )) {
-            return;
+            // 更新缓存
+            cache.update(cacheKey, interpolatorCount, this.cellCountY, this.cellCountXZ,
+                        this.cellWidth, this.cellHeight, values);
+            this.beryllium$slabCacheKey = cacheKey;
+            this.beryllium$nativeSlabReady = true;
+        } catch (ArithmeticException ignored) {
+            // 溢出时回退到 vanilla 逻辑
         }
-
-        this.beryllium$nativeSlabReady = true;
     }
 
     @Inject(method = "selectCellYZ", at = @At("RETURN"))
@@ -138,7 +169,13 @@ public abstract class NoiseChunkMixin implements NoiseChunkInterpolationAccess {
         int interpolatorCount = this.interpolators.size();
         int cellVolume = Math.multiplyExact(Math.multiplyExact(this.cellWidth, this.cellWidth), this.cellHeight);
         int cellIndex = y * this.cellCountXZ + z;
-        double[] values = BERYLLIUM$SCRATCH.get().values;
+
+        // 优先使用缓存的数据
+        SlabCache cache = BERYLLIUM$SLAB_CACHE.get();
+        double[] values = cache.isValid(this.beryllium$slabCacheKey, interpolatorCount, this.cellCountY, this.cellCountXZ, this.cellWidth, this.cellHeight)
+            ? cache.values
+            : BERYLLIUM$SCRATCH.get().values;
+
         for (int index = 0; index < interpolatorCount; index++) {
             ((NoiseInterpolatorAccess) (Object) this.interpolators.get(index)).beryllium$useNativeCell(
                 values,
@@ -201,6 +238,41 @@ public abstract class NoiseChunkMixin implements NoiseChunkInterpolationAccess {
                 grown = Math.multiplyExact(grown, 2);
             }
             return grown;
+        }
+    }
+
+    @Unique
+    private static final class SlabCache {
+        private long cacheKey = -1;
+        private int interpolatorCount;
+        private int cellCountY;
+        private int cellCountXZ;
+        private int cellWidth;
+        private int cellHeight;
+        private double[] values = new double[0];
+
+        private boolean isValid(long key, int interpolators, int countY, int countXZ, int width, int height) {
+            return this.cacheKey == key
+                && this.interpolatorCount == interpolators
+                && this.cellCountY == countY
+                && this.cellCountXZ == countXZ
+                && this.cellWidth == width
+                && this.cellHeight == height;
+        }
+
+        private void update(long key, int interpolators, int countY, int countXZ, int width, int height, double[] source) {
+            this.cacheKey = key;
+            this.interpolatorCount = interpolators;
+            this.cellCountY = countY;
+            this.cellCountXZ = countXZ;
+            this.cellWidth = width;
+            this.cellHeight = height;
+
+            int requiredLength = source.length;
+            if (this.values.length < requiredLength) {
+                this.values = new double[requiredLength];
+            }
+            System.arraycopy(source, 0, this.values, 0, requiredLength);
         }
     }
 }

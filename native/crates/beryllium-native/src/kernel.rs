@@ -26,9 +26,11 @@ const CHUNK_SELECTION_PARALLEL_THRESHOLD: usize = 32768;
 const NEAREST_SELECTION_PARALLEL_THRESHOLD: usize = 1_048_576;
 const BLOCK_NEAREST_PARALLEL_THRESHOLD: usize = 65_536;
 const NEAREST_SELECTION_INITIAL_CAPACITY: usize = 64;
+const INTERPOLATION_PARALLEL_THRESHOLD: usize = 128;
+const INTERPOLATION_SIMD_MIN_CELLS: usize = 4;
 
 /// Expands packed trilinear-interpolation corners into one dense Minecraft noise cell per
-/// interpolator. Work remains sequential because Minecraft already parallelizes chunk generation.
+/// interpolator. Uses SIMD and aggressive parallelization for batch processing.
 pub fn interpolate_density_cells(
     corners: &[f64],
     cell_width: usize,
@@ -43,37 +45,149 @@ pub fn interpolate_density_cells(
         .checked_mul(cell_width)
         .and_then(|area| area.checked_mul(cell_height))
         .ok_or(NativeError::InvalidInput)?;
-    let expected_output_length = (corners.len() / 8)
+    let interpolator_count = corners.len() / 8;
+    let expected_output_length = interpolator_count
         .checked_mul(cell_volume)
         .ok_or(NativeError::InvalidInput)?;
     if output.len() != expected_output_length {
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    for (interpolator_index, packed_corners) in corners.chunks_exact(8).enumerate() {
-        let output_start = interpolator_index * cell_volume;
-        let cell_output = &mut output[output_start..output_start + cell_volume];
+    // 使用并行处理多个 cell，阈值更低以便小批量也能受益
+    if interpolator_count >= INTERPOLATION_PARALLEL_THRESHOLD {
+        output
+            .par_chunks_exact_mut(cell_volume)
+            .zip(corners.par_chunks_exact(8))
+            .for_each(|(cell_output, packed_corners)| {
+                interpolate_single_cell(packed_corners, cell_width, cell_height, cell_output);
+            });
+    } else if has_avx2() && interpolator_count >= INTERPOLATION_SIMD_MIN_CELLS {
+        // SIMD 优化路径用于中等批量
+        for (interpolator_index, packed_corners) in corners.chunks_exact(8).enumerate() {
+            let output_start = interpolator_index * cell_volume;
+            let cell_output = &mut output[output_start..output_start + cell_volume];
+            interpolate_single_cell_simd(packed_corners, cell_width, cell_height, cell_output);
+        }
+    } else {
+        // 标量路径用于小批量
+        for (interpolator_index, packed_corners) in corners.chunks_exact(8).enumerate() {
+            let output_start = interpolator_index * cell_volume;
+            let cell_output = &mut output[output_start..output_start + cell_volume];
+            interpolate_single_cell(packed_corners, cell_width, cell_height, cell_output);
+        }
+    }
+
+    Ok(())
+}
+
+/// 插值单个 cell（标量版本）
+#[inline]
+fn interpolate_single_cell(
+    packed_corners: &[f64],
+    cell_width: usize,
+    cell_height: usize,
+    cell_output: &mut [f64],
+) {
+    let width_f64 = cell_width as f64;
+    let height_f64 = cell_height as f64;
+
+    for y in 0..cell_height {
+        let delta_y = y as f64 / height_f64;
+        let value_xz00 = lerp(delta_y, packed_corners[0], packed_corners[2]);
+        let value_xz10 = lerp(delta_y, packed_corners[1], packed_corners[3]);
+        let value_xz01 = lerp(delta_y, packed_corners[4], packed_corners[6]);
+        let value_xz11 = lerp(delta_y, packed_corners[5], packed_corners[7]);
+
+        let row_base = y * cell_width * cell_width;
+        for x in 0..cell_width {
+            let delta_x = x as f64 / width_f64;
+            let value_z0 = lerp(delta_x, value_xz00, value_xz10);
+            let value_z1 = lerp(delta_x, value_xz01, value_xz11);
+
+            let row_start = row_base + x * cell_width;
+            // 向量化 z 轴插值
+            for z in 0..cell_width {
+                let delta_z = z as f64 / width_f64;
+                cell_output[row_start + z] = lerp(delta_z, value_z0, value_z1);
+            }
+        }
+    }
+}
+
+/// 插值单个 cell（SIMD 优化版本）
+#[cfg(target_arch = "x86_64")]
+fn interpolate_single_cell_simd(
+    packed_corners: &[f64],
+    cell_width: usize,
+    cell_height: usize,
+    cell_output: &mut [f64],
+) {
+    use std::arch::x86_64::*;
+
+    let width_f64 = cell_width as f64;
+    let height_f64 = cell_height as f64;
+
+    unsafe {
         for y in 0..cell_height {
-            let delta_y = y as f64 / cell_height as f64;
+            let delta_y = y as f64 / height_f64;
             let value_xz00 = lerp(delta_y, packed_corners[0], packed_corners[2]);
             let value_xz10 = lerp(delta_y, packed_corners[1], packed_corners[3]);
             let value_xz01 = lerp(delta_y, packed_corners[4], packed_corners[6]);
             let value_xz11 = lerp(delta_y, packed_corners[5], packed_corners[7]);
 
+            let row_base = y * cell_width * cell_width;
             for x in 0..cell_width {
-                let delta_x = x as f64 / cell_width as f64;
+                let delta_x = x as f64 / width_f64;
                 let value_z0 = lerp(delta_x, value_xz00, value_xz10);
                 let value_z1 = lerp(delta_x, value_xz01, value_xz11);
-                let row_start = (y * cell_width + x) * cell_width;
-                for z in 0..cell_width {
-                    let delta_z = z as f64 / cell_width as f64;
+
+                let row_start = row_base + x * cell_width;
+
+                // SIMD 处理 z 轴插值 - 每次处理 4 个元素
+                let v_z0 = _mm256_set1_pd(value_z0);
+                let v_z1 = _mm256_set1_pd(value_z1);
+                let v_width = _mm256_set1_pd(width_f64);
+
+                let simd_chunks = cell_width / 4;
+                for chunk in 0..simd_chunks {
+                    let z_base = chunk * 4;
+                    let v_z_indices = _mm256_set_pd(
+                        (z_base + 3) as f64,
+                        (z_base + 2) as f64,
+                        (z_base + 1) as f64,
+                        z_base as f64,
+                    );
+                    let v_delta_z = _mm256_div_pd(v_z_indices, v_width);
+
+                    // lerp: start + delta * (end - start)
+                    let v_diff = _mm256_sub_pd(v_z1, v_z0);
+                    let v_scaled = _mm256_mul_pd(v_delta_z, v_diff);
+                    let v_result = _mm256_add_pd(v_z0, v_scaled);
+
+                    _mm256_storeu_pd(
+                        cell_output.as_mut_ptr().add(row_start + z_base),
+                        v_result,
+                    );
+                }
+
+                // 处理剩余元素
+                for z in (simd_chunks * 4)..cell_width {
+                    let delta_z = z as f64 / width_f64;
                     cell_output[row_start + z] = lerp(delta_z, value_z0, value_z1);
                 }
             }
         }
     }
+}
 
-    Ok(())
+#[cfg(not(target_arch = "x86_64"))]
+fn interpolate_single_cell_simd(
+    packed_corners: &[f64],
+    cell_width: usize,
+    cell_height: usize,
+    cell_output: &mut [f64],
+) {
+    interpolate_single_cell(packed_corners, cell_width, cell_height, cell_output);
 }
 
 #[inline(always)]
