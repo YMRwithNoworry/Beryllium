@@ -12,7 +12,6 @@
   ],
   "mixins": [
     "BreezeAttackEntitySensorMixin",
-    "ChunkStatusMixin",
     "ClassInstanceMultiMapAccessor",
     "ChunkMapMixin",
     "EntitySectionMixin",
@@ -27,7 +26,6 @@
     "PotentialCalculatorMixin",
     "PotentialCalculatorPointChargeAccessor",
     "PrepareRamNearestTargetMixin",
-    "ServerChunkCacheMixin",
     "TemptingSensorMixin",
     "WardenEntitySensorMixin"
   ],
