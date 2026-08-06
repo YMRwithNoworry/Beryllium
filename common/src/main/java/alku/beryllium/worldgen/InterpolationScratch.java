@@ -7,8 +7,8 @@ import java.util.Arrays;
  * Reuses arrays to avoid repeated allocations during density computation.
  */
 public final class InterpolationScratch {
-    private double[] corners = new double[0];
-    private double[] values = new double[0];
+    public double[] corners = new double[0];
+    public double[] values = new double[0];
 
     public double[] corners(int requiredLength) {
         if (this.corners.length < requiredLength) {

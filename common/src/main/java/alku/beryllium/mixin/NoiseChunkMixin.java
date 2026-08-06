@@ -215,9 +215,4 @@ public abstract class NoiseChunkMixin implements NoiseChunkInterpolationAccess {
             callback.cancel();
         }
     }
-
-    @Override
-    public int beryllium$nativeCellIndex() {
-        return this.beryllium$nativeCellIndex;
-    }
 }
