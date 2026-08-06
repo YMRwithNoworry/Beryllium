@@ -4,6 +4,7 @@ import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.compute.NativeBatching;
 import alku.beryllium.config.BerylliumConfig;
 import alku.beryllium.worldgen.AsyncChunkGenerator;
+import alku.beryllium.worldgen.ChunkGenerationCache;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -32,6 +33,10 @@ public final class BerylliumCommands {
                 .executes(context -> showAsyncStatus(context.getSource()))
                 .then(Commands.argument("enabled", BoolArgumentType.bool())
                     .executes(context -> toggleAsync(context.getSource(), BoolArgumentType.getBool(context, "enabled")))))
+            .then(Commands.literal("cache")
+                .executes(context -> showCacheStats(context.getSource()))
+                .then(Commands.literal("clear")
+                    .executes(context -> clearCache(context.getSource()))))
             .then(Commands.literal("config")
                 .executes(context -> showConfig(context.getSource()))
                 .then(Commands.literal("syncRadius")
@@ -78,45 +83,68 @@ public final class BerylliumCommands {
         }
         return builder.toString();
     }
-    
+
     private static int showAsyncStatus(CommandSourceStack source) {
         AsyncChunkGenerator asyncGen = AsyncChunkGenerator.getInstance();
         boolean enabled = asyncGen.isEnabled();
         int pendingTasks = asyncGen.getPendingTaskCount();
-        
+
         source.sendSuccess(() -> Component.literal(
             "异步区块生成: " + (enabled ? "§a已启用" : "§c已禁用") +
             ", 待处理任务: §e" + pendingTasks
         ), false);
-        
+
         return 1;
     }
-    
+
     private static int toggleAsync(CommandSourceStack source, boolean enabled) {
         AsyncChunkGenerator.getInstance().setEnabled(enabled);
         BerylliumConfig.setAsyncChunkGenEnabled(enabled);
-        
+
         source.sendSuccess(() -> Component.literal(
             "异步区块生成已" + (enabled ? "§a启用" : "§c禁用")
         ), true);
-        
+
         return 1;
     }
-    
+
+    private static int showCacheStats(CommandSourceStack source) {
+        ChunkGenerationCache.CacheStats stats = AsyncChunkGenerator.getInstance().getCacheStats();
+
+        source.sendSuccess(() -> Component.literal("§6=== 区块生成缓存统计 ==="), false);
+        source.sendSuccess(() -> Component.literal(
+            "缓存大小: §e" + stats.getCurrentSize() + "§7/§e" + stats.getMaxSize()
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+            "缓存命中: §a" + stats.getHits() + " §7| 未命中: §c" + stats.getMisses()
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+            "命中率: §e" + String.format("%.2f%%", stats.getHitRate() * 100)
+        ), false);
+
+        return 1;
+    }
+
+    private static int clearCache(CommandSourceStack source) {
+        AsyncChunkGenerator.getInstance().clearCache();
+        source.sendSuccess(() -> Component.literal("§a区块生成缓存已清空"), true);
+        return 1;
+    }
+
     private static int showConfig(CommandSourceStack source) {
         source.sendSuccess(() -> Component.literal("§6=== Beryllium 配置 ==="), false);
-        source.sendSuccess(() -> Component.literal("异步生成: " + 
+        source.sendSuccess(() -> Component.literal("异步生成: " +
             (BerylliumConfig.isAsyncChunkGenEnabled() ? "§a启用" : "§c禁用")), false);
-        source.sendSuccess(() -> Component.literal("同步半径: §e" + 
+        source.sendSuccess(() -> Component.literal("同步半径: §e" +
             BerylliumConfig.getSyncGenerationRadius() + " §7区块"), false);
-        source.sendSuccess(() -> Component.literal("最大任务数: §e" + 
+        source.sendSuccess(() -> Component.literal("最大任务数: §e" +
             BerylliumConfig.getMaxPendingTasks()), false);
-        source.sendSuccess(() -> Component.literal("工作线程: §e" + 
+        source.sendSuccess(() -> Component.literal("工作线程: §e" +
             BerylliumConfig.getWorkerThreads()), false);
-        
+
         return 1;
     }
-    
+
     private static int setSyncRadius(CommandSourceStack source, int radius) {
         BerylliumConfig.setSyncGenerationRadius(radius);
         source.sendSuccess(() -> Component.literal(
@@ -124,7 +152,7 @@ public final class BerylliumCommands {
         ), true);
         return 1;
     }
-    
+
     private static int setMaxTasks(CommandSourceStack source, int tasks) {
         BerylliumConfig.setMaxPendingTasks(tasks);
         source.sendSuccess(() -> Component.literal(

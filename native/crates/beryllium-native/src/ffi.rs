@@ -999,6 +999,42 @@ pub unsafe extern "C" fn beryllium_batch_sample_noise_3d(
     ))
 }
 
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_batch_precompute_chunk_noise(
+    generator_id: i32,
+    chunk_positions: *const i32,
+    chunk_positions_length: usize,
+    samples_per_chunk: i32,
+    sample_positions_template: *const f64,
+    sample_positions_template_length: usize,
+    output: *mut f64,
+    output_length: usize,
+) -> i32 {
+    if generator_id < 0 || samples_per_chunk < 0 {
+        return NativeStatus::InvalidInput.code();
+    }
+    let chunk_positions = match unsafe { read_slice(chunk_positions, chunk_positions_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let sample_positions_template = match unsafe { read_slice(sample_positions_template, sample_positions_template_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+
+    status_result(crate::kernel::batch_precompute_chunk_noise(
+        generator_id as usize,
+        chunk_positions,
+        samples_per_chunk as usize,
+        sample_positions_template,
+        output,
+    ))
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BiomeWeightPair {

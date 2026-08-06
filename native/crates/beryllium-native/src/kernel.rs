@@ -677,6 +677,80 @@ pub fn batch_sample_noise_3d(
     batch_sample_noise_3d_parallel(generator, positions, output)
 }
 
+/// 批量生成多个区块的噪声数据
+/// chunk_positions: 区块坐标数组 [x1, z1, x2, z2, ...]
+/// samples_per_chunk: 每个区块的采样点数量
+/// sample_positions_template: 单个区块内的相对采样位置 [x1, y1, z1, ...]
+/// output: 输出数组，大小应为 chunk_count * samples_per_chunk
+pub fn batch_precompute_chunk_noise(
+    generator_id: usize,
+    chunk_positions: &[i32],
+    samples_per_chunk: usize,
+    sample_positions_template: &[f64],
+    output: &mut [f64],
+) -> Result<(), NativeError> {
+    if chunk_positions.len() % 2 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+    if sample_positions_template.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+    if sample_positions_template.len() / 3 != samples_per_chunk {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let chunk_count = chunk_positions.len() / 2;
+    let expected_output_length = chunk_count * samples_per_chunk;
+    if output.len() != expected_output_length {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    let generators = NOISE_GENERATORS.lock().unwrap();
+    if generator_id >= generators.len() {
+        return Err(NativeError::InvalidInput);
+    }
+    let generator = &*generators[generator_id];
+
+    // 使用并行处理每个区块
+    const CHUNK_PARALLEL_THRESHOLD: usize = 4;
+
+    if chunk_count >= CHUNK_PARALLEL_THRESHOLD {
+        output
+            .par_chunks_exact_mut(samples_per_chunk)
+            .enumerate()
+            .for_each(|(chunk_index, chunk_output)| {
+                let chunk_x = chunk_positions[chunk_index * 2] as f64 * 16.0;
+                let chunk_z = chunk_positions[chunk_index * 2 + 1] as f64 * 16.0;
+
+                for sample_index in 0..samples_per_chunk {
+                    let template_offset = sample_index * 3;
+                    let world_x = chunk_x + sample_positions_template[template_offset];
+                    let world_y = sample_positions_template[template_offset + 1];
+                    let world_z = chunk_z + sample_positions_template[template_offset + 2];
+
+                    chunk_output[sample_index] = generator.sample_3d(world_x, world_y, world_z);
+                }
+            });
+    } else {
+        for chunk_index in 0..chunk_count {
+            let chunk_x = chunk_positions[chunk_index * 2] as f64 * 16.0;
+            let chunk_z = chunk_positions[chunk_index * 2 + 1] as f64 * 16.0;
+            let output_offset = chunk_index * samples_per_chunk;
+
+            for sample_index in 0..samples_per_chunk {
+                let template_offset = sample_index * 3;
+                let world_x = chunk_x + sample_positions_template[template_offset];
+                let world_y = sample_positions_template[template_offset + 1];
+                let world_z = chunk_z + sample_positions_template[template_offset + 2];
+
+                output[output_offset + sample_index] = generator.sample_3d(world_x, world_y, world_z);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn compute_biome_weights_3d(
     sample_positions: &[f64],
     biome_centers: &[f64],

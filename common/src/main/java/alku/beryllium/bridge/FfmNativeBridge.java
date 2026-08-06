@@ -880,6 +880,32 @@ final class FfmNativeBridge {
         });
     }
 
+    static int batchPrecomputeChunkNoise(
+        int generatorId,
+        int[] chunkPositions,
+        int samplesPerChunk,
+        double[] samplePositionsTemplate,
+        double[] output
+    ) {
+        return withStatusSession(session -> {
+            Buffer chunkPosBuffer = session.input(chunkPositions, Kind.INT);
+            Buffer templateBuffer = session.input(samplePositionsTemplate, Kind.DOUBLE);
+            Buffer outputBuffer = session.output(output, Kind.DOUBLE);
+            int result = session.invoke(
+                Function.BATCH_PRECOMPUTE_CHUNK_NOISE,
+                generatorId,
+                chunkPosBuffer,
+                samplesPerChunk,
+                templateBuffer,
+                outputBuffer
+            );
+            if (result == NativeStatus.OK.code()) {
+                session.copyOutputs();
+            }
+            return result;
+        });
+    }
+
     static int computeBiomeWeights3D(
         double[] samplePositions,
         double[] biomeCenters,
@@ -1029,6 +1055,7 @@ final class FfmNativeBridge {
         CREATE_OPENSIMPLEX2_NOISE("beryllium_create_opensimplex2_noise", Kind.LONG),
         DESTROY_NOISE_GENERATOR("beryllium_destroy_noise_generator", Kind.INT),
         BATCH_SAMPLE_NOISE_3D("beryllium_batch_sample_noise_3d", Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
+        BATCH_PRECOMPUTE_CHUNK_NOISE("beryllium_batch_precompute_chunk_noise", Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         COMPUTE_BIOME_WEIGHTS_3D("beryllium_compute_biome_weights_3d", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.INT),
         INTERPOLATE_BIOME_VALUES("beryllium_interpolate_biome_values", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG);
 

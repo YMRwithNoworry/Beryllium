@@ -1284,6 +1284,52 @@ public final class NativeBridge {
         return status.isSuccess();
     }
 
+    /**
+     * 批量预计算多个区块的噪声数据
+     *
+     * @param generatorId 噪声生成器 ID
+     * @param chunkPositions 区块坐标数组 [x1, z1, x2, z2, ...]
+     * @param samplesPerChunk 每个区块的采样点数量
+     * @param samplePositionsTemplate 单个区块内的相对采样位置模板 [x1, y1, z1, ...]
+     * @param output 输出数组，大小应为 chunkCount * samplesPerChunk
+     * @return 是否成功
+     */
+    public static boolean batchPrecomputeChunkNoise(
+        int generatorId,
+        int[] chunkPositions,
+        int samplesPerChunk,
+        double[] samplePositionsTemplate,
+        double[] output
+    ) {
+        if (!isLoaded()) {
+            return false;
+        }
+        if (chunkPositions.length % 2 != 0) {
+            throw new IllegalArgumentException("chunkPositions must contain x/z pairs");
+        }
+        if (samplePositionsTemplate.length % 3 != 0) {
+            throw new IllegalArgumentException("samplePositionsTemplate must contain x/y/z triples");
+        }
+        if (samplePositionsTemplate.length / 3 != samplesPerChunk) {
+            throw new IllegalArgumentException("samplePositionsTemplate length must match samplesPerChunk");
+        }
+
+        int chunkCount = chunkPositions.length / 2;
+        int expectedOutputLength = chunkCount * samplesPerChunk;
+        if (output.length != expectedOutputLength) {
+            throw new IllegalArgumentException("output length must be chunkCount * samplesPerChunk");
+        }
+
+        NativeStatus status = NativeStatus.fromCode(FfmNativeBridge.batchPrecomputeChunkNoise(
+            generatorId,
+            chunkPositions,
+            samplesPerChunk,
+            samplePositionsTemplate,
+            output
+        ));
+        return status.isSuccess();
+    }
+
     private static int computeSquaredDistancesNative(
         int originX,
         int originY,
