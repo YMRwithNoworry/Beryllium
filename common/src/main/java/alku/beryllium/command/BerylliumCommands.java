@@ -2,7 +2,11 @@ package alku.beryllium.command;
 
 import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.compute.NativeBatching;
+import alku.beryllium.config.BerylliumConfig;
+import alku.beryllium.worldgen.AsyncChunkGenerator;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -23,7 +27,19 @@ public final class BerylliumCommands {
             .then(Commands.literal("native")
                 .executes(context -> showNativeStatus(context.getSource())))
             .then(Commands.literal("distance")
-                .executes(context -> runDistanceKernel(context.getSource()))));
+                .executes(context -> runDistanceKernel(context.getSource())))
+            .then(Commands.literal("async")
+                .executes(context -> showAsyncStatus(context.getSource()))
+                .then(Commands.argument("enabled", BoolArgumentType.bool())
+                    .executes(context -> toggleAsync(context.getSource(), BoolArgumentType.getBool(context, "enabled")))))
+            .then(Commands.literal("config")
+                .executes(context -> showConfig(context.getSource()))
+                .then(Commands.literal("syncRadius")
+                    .then(Commands.argument("radius", IntegerArgumentType.integer(1, 10))
+                        .executes(context -> setSyncRadius(context.getSource(), IntegerArgumentType.getInteger(context, "radius")))))
+                .then(Commands.literal("maxTasks")
+                    .then(Commands.argument("tasks", IntegerArgumentType.integer(64, 1024))
+                        .executes(context -> setMaxTasks(context.getSource(), IntegerArgumentType.getInteger(context, "tasks")))))));
     }
 
     private static int showNativeStatus(CommandSourceStack source) {
@@ -61,5 +77,59 @@ public final class BerylliumCommands {
             builder.append(values[index]);
         }
         return builder.toString();
+    }
+    
+    private static int showAsyncStatus(CommandSourceStack source) {
+        AsyncChunkGenerator asyncGen = AsyncChunkGenerator.getInstance();
+        boolean enabled = asyncGen.isEnabled();
+        int pendingTasks = asyncGen.getPendingTaskCount();
+        
+        source.sendSuccess(() -> Component.literal(
+            "异步区块生成: " + (enabled ? "§a已启用" : "§c已禁用") +
+            ", 待处理任务: §e" + pendingTasks
+        ), false);
+        
+        return 1;
+    }
+    
+    private static int toggleAsync(CommandSourceStack source, boolean enabled) {
+        AsyncChunkGenerator.getInstance().setEnabled(enabled);
+        BerylliumConfig.setAsyncChunkGenEnabled(enabled);
+        
+        source.sendSuccess(() -> Component.literal(
+            "异步区块生成已" + (enabled ? "§a启用" : "§c禁用")
+        ), true);
+        
+        return 1;
+    }
+    
+    private static int showConfig(CommandSourceStack source) {
+        source.sendSuccess(() -> Component.literal("§6=== Beryllium 配置 ==="), false);
+        source.sendSuccess(() -> Component.literal("异步生成: " + 
+            (BerylliumConfig.isAsyncChunkGenEnabled() ? "§a启用" : "§c禁用")), false);
+        source.sendSuccess(() -> Component.literal("同步半径: §e" + 
+            BerylliumConfig.getSyncGenerationRadius() + " §7区块"), false);
+        source.sendSuccess(() -> Component.literal("最大任务数: §e" + 
+            BerylliumConfig.getMaxPendingTasks()), false);
+        source.sendSuccess(() -> Component.literal("工作线程: §e" + 
+            BerylliumConfig.getWorkerThreads()), false);
+        
+        return 1;
+    }
+    
+    private static int setSyncRadius(CommandSourceStack source, int radius) {
+        BerylliumConfig.setSyncGenerationRadius(radius);
+        source.sendSuccess(() -> Component.literal(
+            "同步生成半径已设置为: §e" + radius + " §7区块"
+        ), true);
+        return 1;
+    }
+    
+    private static int setMaxTasks(CommandSourceStack source, int tasks) {
+        BerylliumConfig.setMaxPendingTasks(tasks);
+        source.sendSuccess(() -> Component.literal(
+            "最大任务数已设置为: §e" + tasks
+        ), true);
+        return 1;
     }
 }

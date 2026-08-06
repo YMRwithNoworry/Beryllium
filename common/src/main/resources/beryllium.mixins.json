@@ -13,6 +13,7 @@
   "mixins": [
     "BreezeAttackEntitySensorMixin",
     "ClassInstanceMultiMapAccessor",
+    "ChunkMapMixin",
     "EntitySectionMixin",
     "FrogAttackablesSensorMixin",
     "LongOpenHashSetMixin",
