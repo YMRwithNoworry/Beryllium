@@ -23,8 +23,8 @@ use crate::{
     kernel::find_nearest_index_f64, kernel::find_nearest_index_f64_exclusive,
     kernel::find_nearest_packed_block_corner_index,
     kernel::find_nearest_packed_block_corner_index_within_radius,
-    kernel::has_any_within_radius_f64_exclusive, kernel::potential_energy_change,
-    kernel::select_nearest_chunk_indices_with_scratch,
+    kernel::has_any_within_radius_f64_exclusive, kernel::interpolate_density_cells,
+    kernel::potential_energy_change, kernel::select_nearest_chunk_indices_with_scratch,
     kernel::select_nearest_indices_within_radius_f64_exclusive_with_scratch,
     kernel::sort_by_block_distance, kernel::sort_by_distance,
     kernel::sort_by_distance_and_count_within_radius_f64_exclusive_with_scratch,
@@ -36,6 +36,35 @@ thread_local! {
     static CHUNK_SELECTION_SCRATCH: RefCell<ChunkSelectionScratch> = RefCell::new(ChunkSelectionScratch::default());
     static NEAREST_SELECTION_SCRATCH: RefCell<NearestSelectionScratch> = RefCell::new(NearestSelectionScratch::default());
     static DISTANCE_SORT_SCRATCH: RefCell<DistanceSortScratch> = RefCell::new(DistanceSortScratch::default());
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_interpolate_density_cells(
+    corners: *const f64,
+    corners_length: usize,
+    cell_width: i32,
+    cell_height: i32,
+    output: *mut f64,
+    output_length: usize,
+) -> i32 {
+    if cell_width <= 0 || cell_height <= 0 {
+        return NativeStatus::InvalidInput.code();
+    }
+    let corners = match unsafe { read_slice(corners, corners_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+
+    status_result(interpolate_density_cells(
+        corners,
+        cell_width as usize,
+        cell_height as usize,
+        output,
+    ))
 }
 
 /// Result code returned by the stable C ABI.

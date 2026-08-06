@@ -40,6 +40,36 @@ public final class NativeBridge {
         return isLoaded() && FfmNativeBridge.isAvailable();
     }
 
+    public static boolean tryInterpolateDensityCells(
+        double[] corners,
+        int interpolatorCount,
+        int cellWidth,
+        int cellHeight,
+        double[] output
+    ) {
+        int outputLength = JavaComputeKernels.validateDensityInterpolation(
+            corners,
+            interpolatorCount,
+            cellWidth,
+            cellHeight,
+            output
+        );
+        if (!isLoaded()) {
+            return false;
+        }
+
+        int cornersLength = Math.multiplyExact(interpolatorCount, 8);
+        NativeStatus nativeStatus = NativeStatus.fromCode(FfmNativeBridge.interpolateDensityCells(
+            corners,
+            cornersLength,
+            cellWidth,
+            cellHeight,
+            output,
+            outputLength
+        ));
+        return nativeStatus.isSuccess();
+    }
+
     public static long[] computeSquaredDistances(int originX, int originY, int originZ, int[] positions) {
         JavaComputeKernels.validatePositions(positions);
 

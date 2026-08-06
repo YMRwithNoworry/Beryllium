@@ -9,6 +9,71 @@ public final class JavaComputeKernels {
     private JavaComputeKernels() {
     }
 
+    public static void interpolateDensityCells(
+        double[] corners,
+        int interpolatorCount,
+        int cellWidth,
+        int cellHeight,
+        double[] output
+    ) {
+        int outputLength = validateDensityInterpolation(
+            corners,
+            interpolatorCount,
+            cellWidth,
+            cellHeight,
+            output
+        );
+        int cellVolume = outputLength / Math.max(interpolatorCount, 1);
+        for (int interpolatorIndex = 0; interpolatorIndex < interpolatorCount; interpolatorIndex++) {
+            int cornerOffset = interpolatorIndex * 8;
+            int outputOffset = interpolatorIndex * cellVolume;
+            for (int y = 0; y < cellHeight; y++) {
+                double deltaY = (double) y / (double) cellHeight;
+                double valueXZ00 = lerp(deltaY, corners[cornerOffset], corners[cornerOffset + 2]);
+                double valueXZ10 = lerp(deltaY, corners[cornerOffset + 1], corners[cornerOffset + 3]);
+                double valueXZ01 = lerp(deltaY, corners[cornerOffset + 4], corners[cornerOffset + 6]);
+                double valueXZ11 = lerp(deltaY, corners[cornerOffset + 5], corners[cornerOffset + 7]);
+
+                for (int x = 0; x < cellWidth; x++) {
+                    double deltaX = (double) x / (double) cellWidth;
+                    double valueZ0 = lerp(deltaX, valueXZ00, valueXZ10);
+                    double valueZ1 = lerp(deltaX, valueXZ01, valueXZ11);
+                    int rowOffset = outputOffset + (y * cellWidth + x) * cellWidth;
+                    for (int z = 0; z < cellWidth; z++) {
+                        double deltaZ = (double) z / (double) cellWidth;
+                        output[rowOffset + z] = lerp(deltaZ, valueZ0, valueZ1);
+                    }
+                }
+            }
+        }
+    }
+
+    public static int validateDensityInterpolation(
+        double[] corners,
+        int interpolatorCount,
+        int cellWidth,
+        int cellHeight,
+        double[] output
+    ) {
+        if (corners == null || output == null) {
+            throw new IllegalArgumentException("density interpolation buffers must not be null");
+        }
+        if (interpolatorCount < 0 || cellWidth <= 0 || cellHeight <= 0) {
+            throw new IllegalArgumentException("density interpolation dimensions must be positive");
+        }
+        int cornersLength = Math.multiplyExact(interpolatorCount, 8);
+        int cellVolume = Math.multiplyExact(Math.multiplyExact(cellWidth, cellWidth), cellHeight);
+        int outputLength = Math.multiplyExact(interpolatorCount, cellVolume);
+        if (cornersLength > corners.length || outputLength > output.length) {
+            throw new IllegalArgumentException("density interpolation buffers are smaller than the active batch");
+        }
+        return outputLength;
+    }
+
+    private static double lerp(double delta, double start, double end) {
+        return start + delta * (end - start);
+    }
+
     public static long[] squaredDistances(int originX, int originY, int originZ, int[] positions) {
         validatePositions(positions);
 

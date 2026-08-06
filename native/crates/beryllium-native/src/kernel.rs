@@ -25,6 +25,60 @@ const NEAREST_SELECTION_PARALLEL_THRESHOLD: usize = 1_048_576;
 const BLOCK_NEAREST_PARALLEL_THRESHOLD: usize = 65_536;
 const NEAREST_SELECTION_INITIAL_CAPACITY: usize = 64;
 
+/// Expands packed trilinear-interpolation corners into one dense Minecraft noise cell per
+/// interpolator. Work remains sequential because Minecraft already parallelizes chunk generation.
+pub fn interpolate_density_cells(
+    corners: &[f64],
+    cell_width: usize,
+    cell_height: usize,
+    output: &mut [f64],
+) -> Result<(), NativeError> {
+    if corners.len() % 8 != 0 || cell_width == 0 || cell_height == 0 {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let cell_volume = cell_width
+        .checked_mul(cell_width)
+        .and_then(|area| area.checked_mul(cell_height))
+        .ok_or(NativeError::InvalidInput)?;
+    let expected_output_length = (corners.len() / 8)
+        .checked_mul(cell_volume)
+        .ok_or(NativeError::InvalidInput)?;
+    if output.len() != expected_output_length {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    for (interpolator_index, packed_corners) in corners.chunks_exact(8).enumerate() {
+        let output_start = interpolator_index * cell_volume;
+        let cell_output = &mut output[output_start..output_start + cell_volume];
+        for y in 0..cell_height {
+            let delta_y = y as f64 / cell_height as f64;
+            let value_xz00 = lerp(delta_y, packed_corners[0], packed_corners[2]);
+            let value_xz10 = lerp(delta_y, packed_corners[1], packed_corners[3]);
+            let value_xz01 = lerp(delta_y, packed_corners[4], packed_corners[6]);
+            let value_xz11 = lerp(delta_y, packed_corners[5], packed_corners[7]);
+
+            for x in 0..cell_width {
+                let delta_x = x as f64 / cell_width as f64;
+                let value_z0 = lerp(delta_x, value_xz00, value_xz10);
+                let value_z1 = lerp(delta_x, value_xz01, value_xz11);
+                let row_start = (y * cell_width + x) * cell_width;
+                for z in 0..cell_width {
+                    let delta_z = z as f64 / cell_width as f64;
+                    cell_output[row_start + z] = lerp(delta_z, value_z0, value_z1);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[inline(always)]
+fn lerp(delta: f64, start: f64, end: f64) -> f64 {
+    start + delta * (end - start)
+}
+
 #[derive(Default)]
 pub(crate) struct ChunkSelectionScratch {
     distances: Vec<i32>,
@@ -3689,6 +3743,69 @@ mod tests {
         assert_eq!(
             potential_energy_change(0, 64, 0, &positions, &charges, 0.75).unwrap(),
             expected_energy
+        );
+    }
+
+    #[test]
+    fn interpolate_density_cells_should_match_staged_vanilla_order() {
+        let corners = [
+            -1.25, 3.5, 7.75, -9.0, 0.125, -4.25, 16.0, 2.0, 1000.0, -0.0, -17.0, 31.0, 0.5, 8.0,
+            -2.0, 64.0,
+        ];
+        let mut output = [0.0; 2 * 4 * 4 * 8];
+        let mut expected = [0.0; 2 * 4 * 4 * 8];
+
+        interpolate_density_cells(&corners, 4, 8, &mut output).unwrap();
+        for interpolator in 0..2 {
+            let corner_offset = interpolator * 8;
+            let output_offset = interpolator * 4 * 4 * 8;
+            for y in 0..8 {
+                let delta_y = y as f64 / 8.0;
+                let xz00 = lerp(delta_y, corners[corner_offset], corners[corner_offset + 2]);
+                let xz10 = lerp(
+                    delta_y,
+                    corners[corner_offset + 1],
+                    corners[corner_offset + 3],
+                );
+                let xz01 = lerp(
+                    delta_y,
+                    corners[corner_offset + 4],
+                    corners[corner_offset + 6],
+                );
+                let xz11 = lerp(
+                    delta_y,
+                    corners[corner_offset + 5],
+                    corners[corner_offset + 7],
+                );
+                for x in 0..4 {
+                    let delta_x = x as f64 / 4.0;
+                    let z0 = lerp(delta_x, xz00, xz10);
+                    let z1 = lerp(delta_x, xz01, xz11);
+                    for z in 0..4 {
+                        expected[output_offset + (y * 4 + x) * 4 + z] =
+                            lerp(z as f64 / 4.0, z0, z1);
+                    }
+                }
+            }
+        }
+
+        assert!(
+            expected
+                .iter()
+                .zip(output.iter())
+                .all(|(left, right)| left.to_bits() == right.to_bits())
+        );
+    }
+
+    #[test]
+    fn interpolate_density_cells_should_validate_packed_lengths() {
+        assert_eq!(
+            interpolate_density_cells(&[0.0; 7], 4, 8, &mut [0.0; 128]),
+            Err(NativeError::InvalidInput)
+        );
+        assert_eq!(
+            interpolate_density_cells(&[0.0; 8], 4, 8, &mut [0.0; 127]),
+            Err(NativeError::OutputLengthMismatch)
         );
     }
 }

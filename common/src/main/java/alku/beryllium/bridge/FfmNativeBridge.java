@@ -202,6 +202,31 @@ final class FfmNativeBridge {
         });
     }
 
+    static int interpolateDensityCells(
+        double[] corners,
+        int cornersLength,
+        int cellWidth,
+        int cellHeight,
+        double[] output,
+        int outputLength
+    ) {
+        return withStatusSession(session -> {
+            Buffer cornersBuffer = session.input(corners, Kind.DOUBLE, cornersLength);
+            Buffer outputBuffer = session.uninitializedOutput(output, Kind.DOUBLE, outputLength);
+            int result = session.invoke(
+                Function.INTERPOLATE_DENSITY_CELLS,
+                cornersBuffer,
+                cellWidth,
+                cellHeight,
+                outputBuffer
+            );
+            if (result == NativeStatus.OK.code()) {
+                session.copyOutput(outputBuffer, outputLength);
+            }
+            return result;
+        });
+    }
+
     private static void scheduleCubeclPreviewLoad(long generation, int[] positions, double[] charges) {
         Thread loader = new Thread(() -> {
             if (!NativeLibraryLoader.tryLoadCubeclPreview()) {
@@ -857,6 +882,7 @@ final class FfmNativeBridge {
 
     private enum Function {
         COMPUTE_SQUARED_DISTANCES("beryllium_compute_squared_distances", Kind.INT, Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
+        INTERPOLATE_DENSITY_CELLS("beryllium_interpolate_density_cells", Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG),
         SELECT_NEAREST_CHUNK_INDICES("beryllium_select_nearest_chunk_indices", Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG),
         COMPUTE_SQUARED_DISTANCES_DOUBLE("beryllium_compute_squared_distances_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         POTENTIAL_SET_CHARGES("beryllium_potential_set_charges", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
