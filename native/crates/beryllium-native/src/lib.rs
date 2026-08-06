@@ -5,6 +5,7 @@ mod error;
 mod ffi;
 mod kernel;
 mod noise;
+mod octave_noise;
 mod simd;
 
 pub use error::NativeError;
