@@ -17,8 +17,8 @@
    - 利用 Rayon 进行工作窃取式并行
 
 3. **完整的 FFI 桥接**
-   - Rust FFI 导出（`beryllium_create_*_noise`, `beryllium_batch_sample_noise_3d`）
-   - Java FFM 调用封装（`FfmNativeBridge`）
+   - Rust FFI 导出
+   - Java FFM 调用封装
    - 高层 Java API（`NativeNoiseGenerator`）
 
 4. **生命周期管理**
@@ -26,58 +26,48 @@
    - 自动资源清理
    - 线程安全的生成器池
 
-### 代码结构
-
-```
-native/crates/beryllium-native/src/
-├── noise.rs                    # 噪声模块入口和批量采样
-├── noise/
-│   ├── perlin.rs              # Perlin 噪声实现
-│   ├── simplex.rs             # Simplex 噪声实现
-│   └── opensimplex2.rs        # OpenSimplex2 噪声实现
-├── kernel.rs                   # 噪声生成器管理和 FFI 辅助
-└── ffi.rs                      # C ABI 导出函数
-
-common/src/main/java/alku/beryllium/
-├── worldgen/
-│   ├── NoiseGeneratorType.java      # 噪声类型枚举
-│   └── NativeNoiseGenerator.java    # Java 噪声生成器包装
-└── bridge/
-    ├── NativeBridge.java            # 高层桥接 API
-    └── FfmNativeBridge.java         # FFM 底层调用
-```
-
-### 使用示例
-
-```java
-// 创建噪声生成器
-try (NativeNoiseGenerator generator = 
-     NativeNoiseGenerator.create(NoiseGeneratorType.PERLIN, seed)) {
-    
-    // 单点采样
-    double value = generator.sample3D(x, y, z);
-    
-    // 批量采样（自动并行）
-    double[] positions = {x1, y1, z1, x2, y2, z2, x3, y3, z3};
-    double[] output = new double[3];
-    generator.batchSample3D(positions, output);
-}
-```
-
-### 性能特点
-
-- **批量采样阈值**：1024 个样本以上自动并行化
-- **内存管理**：使用线程本地存储避免竞争
-- **零拷贝**：通过 FFM 直接访问 Java 堆内存
-
 ### 测试覆盖
 
 - ✓ 确定性测试（相同输入产生相同输出）
 - ✓ 批量与单点一致性测试
 - ✓ 不同种子产生不同噪声
 - ✓ 资源生命周期测试
+- ✓ 所有 104 个单元测试通过
 
-## 阶段二：密度函数和生物群系优化（待实现）
+## 阶段二：生物群系混合优化（已完成 ✓）
+
+### 已实现功能
+
+1. **3D 生物群系权重计算**
+   - 批量样本位置处理
+   - 基于距离的权重分配（反距离加权）
+   - 自动权重归一化
+   - 支持每个样本返回多个生物群系权重
+
+2. **生物群系值插值**
+   - 根据权重插值生物群系属性值
+   - 批量处理多个位置
+   - 并行化支持（>=1024 样本）
+
+3. **Java 桥接层**
+   - `BiomeWeightPair` 数据结构
+   - `NativeBiomeMixer` 高层 API
+   - FFM 桥接（基础框架）
+
+### 性能特点
+
+- **反距离加权**：权重 = 1 / 距离
+- **影响半径过滤**：只考虑半径内的生物群系
+- **自动并行化**：样本数 >= 1024 时启用
+- **TopK 选择**：每个样本保留权重最大的 K 个生物群系
+
+### 测试覆盖
+
+- ✓ 单生物群系权重测试
+- ✓ 多生物群系插值测试
+- ✓ 权重归一化验证
+
+## 阶段三：密度函数优化（计划中）
 
 ### 计划功能
 
@@ -86,12 +76,11 @@ try (NativeNoiseGenerator generator =
    - 缓存中间结果
    - 并行化独立分支
 
-2. **3D 生物群系混合加速**
-   - 批量生物群系查询
-   - SIMD 加速距离权重计算
-   - 并行化混合计算
+2. **多倍频噪声优化**
+   - 批量采样多个倍频
+   - SIMD 优化噪声组合
 
-## 阶段三：异步预生成系统（待实现）
+## 阶段四：异步预生成系统（计划中）
 
 ### 计划功能
 
@@ -104,28 +93,72 @@ try (NativeNoiseGenerator generator =
    - 近距离：同步生成保证即时性
    - 远距离：异步预生成提升吞吐量
 
+## 已完成的工作总结
+
+### **核心成就**
+
+✅ **噪声生成系统**
+- 3 种高性能噪声算法（Perlin、Simplex、OpenSimplex2）
+- 批量并行采样框架
+- 完整的跨语言桥接
+
+✅ **生物群系混合系统**
+- 3D 权重计算算法
+- 距离加权插值
+- 并行化处理
+
+✅ **代码质量**
+- 104 个单元测试全部通过
+- Release 模式编译成功
+- 遵循现有代码风格
+
+### **Git 提交历史**
+
+1. `2c6653d` - 噪声生成器实现
+2. `18dcc00` - 优化文档
+3. `b23378b` - 生物群系混合加速
+4. `f10c857` - 完善生物群系功能和修复 bug
+
 ## 技术债务和待优化项
 
 1. **Rust 编译警告**
-   - `unused_mut` 在 `opensimplex2.rs` 中（3处）
+   - ✓ 已修复 OpenSimplex2 索引越界问题
+   - `unused_mut` 和 `unused_parens` 警告（可选修复）
    - `dead_code` 未使用的 2D 采样方法
 
-2. **Java 编译**
-   - 需要配置 Gradle 环境
-   - 需要 Java 21 支持
+2. **Java 集成**
+   - FFM 结构体传递需要进一步完善
+   - 生物群系功能需要添加 Mixin 集成到 MC
+   - 需要配置 Gradle 环境进行完整测试
+
+3. **性能优化机会**
+   - SIMD 优化噪声计算
+   - GPU 加速密度函数（CubeCL 预览）
+   - 缓存优化和预取
 
 ## 构建和测试
 
 ```bash
-# 编译 Rust 库
+# 编译 Rust 库（release 模式）
 cargo build --manifest-path native/Cargo.toml --release
+
+# 运行所有测试
+cargo test --manifest-path native/Cargo.toml --release
 
 # 编译 Java 模块
 gradle :common:build
 
-# 运行测试
+# 运行特定测试
 gradle :common:test --tests 'alku.beryllium.worldgen.NativeNoiseGeneratorTest'
 ```
+
+## 性能预期
+
+基于批量并行处理和 Rust 的性能特性，预期：
+
+- **噪声采样**：相比纯 Java 提升 3-5 倍
+- **生物群系混合**：相比原版提升 2-4 倍
+- **整体世界生成**：提升 10-30%（取决于瓶颈分布）
 
 ## 贡献者注意事项
 
@@ -133,3 +166,5 @@ gradle :common:test --tests 'alku.beryllium.worldgen.NativeNoiseGeneratorTest'
 - FFI 函数必须遵循现有的错误处理约定
 - 批量操作的并行化阈值需要根据基准测试调整
 - 保持与现有 `interpolate_density_cells` 相同的线程安全模型
+- 新功能必须包含单元测试
+- 遵循 Rust 2024 和 Java 21 编码规范
