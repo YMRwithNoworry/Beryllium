@@ -19,8 +19,6 @@
     "LongOpenHashSetMixin",
     "NearestItemSensorMixin",
     "NearestLivingEntitySensorMixin",
-    "NoiseChunkMixin",
-    "NoiseInterpolatorMixin",
     "PlayerSensorMixin",
     "PlayerChunkSenderMixin",
     "PotentialCalculatorMixin",
