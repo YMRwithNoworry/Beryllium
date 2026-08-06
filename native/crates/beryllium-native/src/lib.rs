@@ -1,5 +1,6 @@
 #[cfg(feature = "cubecl-preview")]
 mod cubecl_preview;
+mod async_worker;
 mod biome;
 mod error;
 mod ffi;
