@@ -13,6 +13,7 @@ use std::thread;
 
 use crate::NativeError;
 use crate::noise::{NoiseGenerator, batch_sample_noise_3d_parallel, perlin::PerlinNoise, simplex::SimplexNoise, opensimplex2::OpenSimplex2Noise};
+use crate::biome::{BiomeWeight, batch_compute_biome_weights_3d, batch_interpolate_biome_values};
 #[cfg(feature = "cubecl-preview")]
 use crate::cubecl_preview::{CubePotentialCache, MIN_CHARGE_COUNT as CUBECL_MIN_CHARGE_COUNT};
 use crate::simd;
@@ -560,6 +561,53 @@ pub fn batch_sample_noise_3d(
 
     let generator = &*generators[generator_id];
     batch_sample_noise_3d_parallel(generator, positions, output)
+}
+
+pub fn compute_biome_weights_3d(
+    sample_positions: &[f64],
+    biome_centers: &[f64],
+    influence_radius: f64,
+    output: &mut [(i32, f64)],
+    max_biomes_per_sample: usize,
+) -> Result<(), NativeError> {
+    let mut biome_weights: Vec<BiomeWeight> = vec![BiomeWeight { biome_index: -1, weight: 0.0 }; output.len()];
+    
+    batch_compute_biome_weights_3d(
+        sample_positions,
+        biome_centers,
+        influence_radius,
+        &mut biome_weights,
+        max_biomes_per_sample,
+    )?;
+
+    for (i, bw) in biome_weights.iter().enumerate() {
+        output[i] = (bw.biome_index, bw.weight);
+    }
+
+    Ok(())
+}
+
+pub fn interpolate_biome_values(
+    biome_indices: &[i32],
+    weights: &[f64],
+    biome_values: &[f64],
+    samples_per_position: usize,
+    output: &mut [f64],
+) -> Result<(), NativeError> {
+    if biome_indices.len() != weights.len() {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let biome_weights: Vec<BiomeWeight> = biome_indices
+        .iter()
+        .zip(weights.iter())
+        .map(|(&idx, &w)| BiomeWeight {
+            biome_index: idx,
+            weight: w,
+        })
+        .collect();
+
+    batch_interpolate_biome_values(&biome_weights, biome_values, samples_per_position, output)
 }
 
 #[cfg(feature = "cubecl-preview")]

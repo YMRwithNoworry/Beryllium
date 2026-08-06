@@ -999,6 +999,105 @@ pub unsafe extern "C" fn beryllium_batch_sample_noise_3d(
     ))
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct BiomeWeightPair {
+    pub biome_index: i32,
+    pub weight: f64,
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_compute_biome_weights_3d(
+    sample_positions: *const f64,
+    sample_positions_length: usize,
+    biome_centers: *const f64,
+    biome_centers_length: usize,
+    influence_radius: f64,
+    output: *mut BiomeWeightPair,
+    output_length: usize,
+    max_biomes_per_sample: i32,
+) -> i32 {
+    if max_biomes_per_sample < 0 {
+        return NativeStatus::InvalidInput.code();
+    }
+
+    let sample_positions = match unsafe { read_slice(sample_positions, sample_positions_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let biome_centers = match unsafe { read_slice(biome_centers, biome_centers_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+
+    let mut temp_output: Vec<(i32, f64)> = vec![(0, 0.0); output_length];
+    
+    let result = crate::kernel::compute_biome_weights_3d(
+        sample_positions,
+        biome_centers,
+        influence_radius,
+        &mut temp_output,
+        max_biomes_per_sample as usize,
+    );
+
+    if result.is_ok() {
+        for (i, (idx, weight)) in temp_output.iter().enumerate() {
+            output[i] = BiomeWeightPair {
+                biome_index: *idx,
+                weight: *weight,
+            };
+        }
+    }
+
+    status_result(result)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_interpolate_biome_values(
+    biome_indices: *const i32,
+    biome_indices_length: usize,
+    weights: *const f64,
+    weights_length: usize,
+    biome_values: *const f64,
+    biome_values_length: usize,
+    samples_per_position: i32,
+    output: *mut f64,
+    output_length: usize,
+) -> i32 {
+    if samples_per_position < 0 {
+        return NativeStatus::InvalidInput.code();
+    }
+
+    let biome_indices = match unsafe { read_slice(biome_indices, biome_indices_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let weights = match unsafe { read_slice(weights, weights_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let biome_values = match unsafe { read_slice(biome_values, biome_values_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+
+    status_result(crate::kernel::interpolate_biome_values(
+        biome_indices,
+        weights,
+        biome_values,
+        samples_per_position as usize,
+        output,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
