@@ -3,6 +3,8 @@ package alku.beryllium.mixin;
 import alku.beryllium.api.NoiseChunkInterpolationAccess;
 import alku.beryllium.api.NoiseInterpolatorAccess;
 import alku.beryllium.bridge.NativeBridge;
+import alku.beryllium.worldgen.InterpolationScratch;
+import alku.beryllium.worldgen.SlabCache;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -12,7 +14,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.util.Arrays;
 import java.util.List;
 
 @Mixin(NoiseChunk.class)
@@ -215,66 +216,8 @@ public abstract class NoiseChunkMixin implements NoiseChunkInterpolationAccess {
         }
     }
 
-    @Unique
-    private static final class InterpolationScratch {
-        private double[] corners = new double[0];
-        private double[] values = new double[0];
-
-        private double[] corners(int requiredLength) {
-            if (this.corners.length < requiredLength) {
-                this.corners = Arrays.copyOf(this.corners, grow(this.corners.length, requiredLength));
-            }
-            return this.corners;
-        }
-
-        private double[] values(int requiredLength) {
-            if (this.values.length < requiredLength) {
-                this.values = Arrays.copyOf(this.values, grow(this.values.length, requiredLength));
-            }
-            return this.values;
-        }
-
-        private static int grow(int currentLength, int requiredLength) {
-            int grown = Math.max(16, currentLength);
-            while (grown < requiredLength) {
-                grown = Math.multiplyExact(grown, 2);
-            }
-            return grown;
-        }
-    }
-
-    @Unique
-    private static final class SlabCache {
-        private long cacheKey = -1;
-        private int interpolatorCount;
-        private int cellCountY;
-        private int cellCountXZ;
-        private int cellWidth;
-        private int cellHeight;
-        private double[] values = new double[0];
-
-        private boolean isValid(long key, int interpolators, int countY, int countXZ, int width, int height) {
-            return this.cacheKey == key
-                && this.interpolatorCount == interpolators
-                && this.cellCountY == countY
-                && this.cellCountXZ == countXZ
-                && this.cellWidth == width
-                && this.cellHeight == height;
-        }
-
-        private void update(long key, int interpolators, int countY, int countXZ, int width, int height, double[] source) {
-            this.cacheKey = key;
-            this.interpolatorCount = interpolators;
-            this.cellCountY = countY;
-            this.cellCountXZ = countXZ;
-            this.cellWidth = width;
-            this.cellHeight = height;
-
-            int requiredLength = source.length;
-            if (this.values.length < requiredLength) {
-                this.values = new double[requiredLength];
-            }
-            System.arraycopy(source, 0, this.values, 0, requiredLength);
-        }
+    @Override
+    public int beryllium$nativeCellIndex() {
+        return this.beryllium$nativeCellIndex;
     }
 }
