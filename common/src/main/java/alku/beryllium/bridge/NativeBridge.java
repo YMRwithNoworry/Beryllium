@@ -1233,6 +1233,57 @@ public final class NativeBridge {
         return status.isSuccess();
     }
 
+    public static boolean computeBiomeWeights3D(
+        double[] samplePositions,
+        double[] biomeCenters,
+        double influenceRadius,
+        alku.beryllium.worldgen.BiomeWeightPair[] output,
+        int maxBiomesPerSample
+    ) {
+        if (!isLoaded()) {
+            return false;
+        }
+        if (samplePositions.length % 3 != 0) {
+            throw new IllegalArgumentException("samplePositions must contain x/y/z triples");
+        }
+        if (biomeCenters.length % 3 != 0) {
+            throw new IllegalArgumentException("biomeCenters must contain x/y/z triples");
+        }
+
+        NativeStatus status = NativeStatus.fromCode(FfmNativeBridge.computeBiomeWeights3D(
+            samplePositions,
+            biomeCenters,
+            influenceRadius,
+            output,
+            maxBiomesPerSample
+        ));
+        return status.isSuccess();
+    }
+
+    public static boolean interpolateBiomeValues(
+        int[] biomeIndices,
+        double[] weights,
+        double[] biomeValues,
+        int samplesPerPosition,
+        double[] output
+    ) {
+        if (!isLoaded()) {
+            return false;
+        }
+        if (biomeIndices.length != weights.length) {
+            throw new IllegalArgumentException("biomeIndices and weights must have same length");
+        }
+
+        NativeStatus status = NativeStatus.fromCode(FfmNativeBridge.interpolateBiomeValues(
+            biomeIndices,
+            weights,
+            biomeValues,
+            samplesPerPosition,
+            output
+        ));
+        return status.isSuccess();
+    }
+
     private static int computeSquaredDistancesNative(
         int originX,
         int originY,

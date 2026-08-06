@@ -17,7 +17,7 @@ impl OpenSimplex2Noise {
         
         for i in (0..2048).rev() {
             rng = rng.wrapping_mul(6364136223846793005_i64).wrapping_add(1442695040888963407_i64);
-            let r = ((rng + 31) % (i as i64 + 1)) as usize;
+            let r = (((rng.wrapping_add(31) as u64) % ((i + 1) as u64)) as usize);
             perm[i] = source[r];
             source[r] = source[i];
         }

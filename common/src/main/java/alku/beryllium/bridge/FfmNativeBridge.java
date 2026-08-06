@@ -880,6 +880,63 @@ final class FfmNativeBridge {
         });
     }
 
+    static int computeBiomeWeights3D(
+        double[] samplePositions,
+        double[] biomeCenters,
+        double influenceRadius,
+        alku.beryllium.worldgen.BiomeWeightPair[] output,
+        int maxBiomesPerSample
+    ) {
+        int[] tempIndices = new int[output.length];
+        double[] tempWeights = new double[output.length];
+        
+        int status = withStatusSession(session -> {
+            Buffer samplePosBuffer = session.input(samplePositions, Kind.DOUBLE);
+            Buffer biomeCentersBuffer = session.input(biomeCenters, Kind.DOUBLE);
+            Buffer indicesBuffer = session.uninitializedOutput(tempIndices, Kind.INT);
+            Buffer weightsBuffer = session.uninitializedOutput(tempWeights, Kind.DOUBLE);
+            
+            return NativeStatus.InvalidInput.code();
+        });
+        
+        if (status == NativeStatus.OK.code()) {
+            for (int i = 0; i < output.length; i++) {
+                output[i] = new alku.beryllium.worldgen.BiomeWeightPair(tempIndices[i], tempWeights[i]);
+            }
+        }
+        
+        return status;
+    }
+
+    static int interpolateBiomeValues(
+        int[] biomeIndices,
+        double[] weights,
+        double[] biomeValues,
+        int samplesPerPosition,
+        double[] output
+    ) {
+        return withStatusSession(session -> {
+            Buffer indicesBuffer = session.input(biomeIndices, Kind.INT);
+            Buffer weightsBuffer = session.input(weights, Kind.DOUBLE);
+            Buffer valuesBuffer = session.input(biomeValues, Kind.DOUBLE);
+            Buffer outputBuffer = session.output(output, Kind.DOUBLE);
+            
+            int result = session.invoke(
+                Function.INTERPOLATE_BIOME_VALUES,
+                indicesBuffer,
+                weightsBuffer,
+                valuesBuffer,
+                samplesPerPosition,
+                outputBuffer
+            );
+            
+            if (result == NativeStatus.OK.code()) {
+                session.copyOutputs();
+            }
+            return result;
+        });
+    }
+
     private static int withStatusSession(SessionCall call) {
         return withSession(call, FFM_ERROR);
     }
@@ -971,7 +1028,9 @@ final class FfmNativeBridge {
         CREATE_SIMPLEX_NOISE("beryllium_create_simplex_noise", Kind.LONG),
         CREATE_OPENSIMPLEX2_NOISE("beryllium_create_opensimplex2_noise", Kind.LONG),
         DESTROY_NOISE_GENERATOR("beryllium_destroy_noise_generator", Kind.INT),
-        BATCH_SAMPLE_NOISE_3D("beryllium_batch_sample_noise_3d", Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG);
+        BATCH_SAMPLE_NOISE_3D("beryllium_batch_sample_noise_3d", Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
+        COMPUTE_BIOME_WEIGHTS_3D("beryllium_compute_biome_weights_3d", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.INT),
+        INTERPOLATE_BIOME_VALUES("beryllium_interpolate_biome_values", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG);
 
         private final String symbol;
         private final Kind[] arguments;
