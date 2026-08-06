@@ -799,9 +799,31 @@ final class FfmNativeBridge {
         double[] positions,
         int[] output
     ) {
+        return sortWithinRadiusExclusivePrefixOutput(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            positions.length,
+            output,
+            output.length
+        );
+    }
+
+    static int sortWithinRadiusExclusivePrefixOutput(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int positionsLength,
+        int[] output,
+        int outputLength
+    ) {
         return withSession(session -> {
-            Buffer positionsBuffer = session.input(positions, Kind.DOUBLE);
-            Buffer outputBuffer = session.uninitializedOutput(output, Kind.INT);
+            Buffer positionsBuffer = session.input(positions, Kind.DOUBLE, positionsLength);
+            Buffer outputBuffer = session.uninitializedOutput(output, Kind.INT, outputLength);
             int result = session.invokeSortWithinRadiusExclusive(
                 originX,
                 originY,
@@ -810,7 +832,7 @@ final class FfmNativeBridge {
                 positionsBuffer,
                 outputBuffer
             );
-            if (isValidCount(result, output.length)) {
+            if (isValidCount(result, outputBuffer.length)) {
                 session.copyOutput(outputBuffer, result);
             }
             return result;
@@ -823,6 +845,39 @@ final class FfmNativeBridge {
 
     private static int withSession(SessionCall call) {
         return withSession(call, -1 - FFM_ERROR);
+    }
+
+    static int createPerlinNoise(long seed) {
+        return withSession(session -> session.invoke(Function.CREATE_PERLIN_NOISE, seed), -1);
+    }
+
+    static int createSimplexNoise(long seed) {
+        return withSession(session -> session.invoke(Function.CREATE_SIMPLEX_NOISE, seed), -1);
+    }
+
+    static int createOpenSimplex2Noise(long seed) {
+        return withSession(session -> session.invoke(Function.CREATE_OPENSIMPLEX2_NOISE, seed), -1);
+    }
+
+    static int destroyNoiseGenerator(int generatorId) {
+        return withStatusSession(session -> session.invoke(Function.DESTROY_NOISE_GENERATOR, generatorId));
+    }
+
+    static int batchSampleNoise3D(int generatorId, double[] positions, double[] output) {
+        return withStatusSession(session -> {
+            Buffer positionsBuffer = session.input(positions, Kind.DOUBLE);
+            Buffer outputBuffer = session.output(output, Kind.DOUBLE);
+            int result = session.invoke(
+                Function.BATCH_SAMPLE_NOISE_3D,
+                generatorId,
+                positionsBuffer,
+                outputBuffer
+            );
+            if (result == NativeStatus.OK.code()) {
+                session.copyOutputs();
+            }
+            return result;
+        });
     }
 
     private static int withStatusSession(SessionCall call) {
@@ -911,7 +966,12 @@ final class FfmNativeBridge {
         SORT_BY_DISTANCE_DOUBLE("beryllium_sort_by_distance_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         SORT_BY_DISTANCE_AND_COUNT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE("beryllium_sort_by_distance_and_count_within_radius_exclusive_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         SELECT_NEAREST_INDICES_WITHIN_RADIUS_EXCLUSIVE_DOUBLE("beryllium_select_nearest_indices_within_radius_exclusive_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG),
-        SORT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE("beryllium_sort_within_radius_exclusive_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG);
+        SORT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE("beryllium_sort_within_radius_exclusive_double", Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
+        CREATE_PERLIN_NOISE("beryllium_create_perlin_noise", Kind.LONG),
+        CREATE_SIMPLEX_NOISE("beryllium_create_simplex_noise", Kind.LONG),
+        CREATE_OPENSIMPLEX2_NOISE("beryllium_create_opensimplex2_noise", Kind.LONG),
+        DESTROY_NOISE_GENERATOR("beryllium_destroy_noise_generator", Kind.INT),
+        BATCH_SAMPLE_NOISE_3D("beryllium_batch_sample_noise_3d", Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG);
 
         private final String symbol;
         private final Kind[] arguments;

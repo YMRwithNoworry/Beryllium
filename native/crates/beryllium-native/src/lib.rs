@@ -3,6 +3,7 @@ mod cubecl_preview;
 mod error;
 mod ffi;
 mod kernel;
+mod noise;
 mod simd;
 
 pub use error::NativeError;

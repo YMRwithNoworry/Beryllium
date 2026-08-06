@@ -1027,13 +1027,41 @@ public final class NativeBridge {
         int[] output
     ) {
         JavaComputeKernels.validatePositions(positions);
+        return sortWithinRadiusExclusivePrefixOutput(
+            originX,
+            originY,
+            originZ,
+            radiusSquared,
+            positions,
+            positions.length / 3,
+            output
+        );
+    }
+
+    public static int sortWithinRadiusExclusivePrefixOutput(
+        double originX,
+        double originY,
+        double originZ,
+        double radiusSquared,
+        double[] positions,
+        int positionCount,
+        int[] output
+    ) {
+        int positionsLength = validatePositionPrefix(positions, positionCount);
         if (radiusSquared < 0.0) {
             throw new IllegalArgumentException("radiusSquared must be non-negative");
         }
-        JavaComputeKernels.validateOutputCapacity(positions.length / 3, output);
+        JavaComputeKernels.validateOutputCapacity(positionCount, output);
 
         if (!isLoaded()) {
-            return JavaComputeKernels.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, output);
+            return JavaComputeKernels.sortWithinRadiusExclusive(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                exactPositionPrefix(positions, positionsLength),
+                output
+            );
         }
 
         int nativeCount = sortWithinRadiusExclusivePrefixOutputDoubleNative(
@@ -1042,10 +1070,19 @@ public final class NativeBridge {
             originZ,
             radiusSquared,
             positions,
+            positionsLength,
+            positionCount,
             output
         );
-        if (nativeCount < 0) {
-            return JavaComputeKernels.sortWithinRadiusExclusive(originX, originY, originZ, radiusSquared, positions, output);
+        if (nativeCount < 0 || nativeCount > positionCount) {
+            return JavaComputeKernels.sortWithinRadiusExclusive(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                exactPositionPrefix(positions, positionsLength),
+                output
+            );
         }
 
         return nativeCount;
@@ -1147,6 +1184,53 @@ public final class NativeBridge {
 
     private static double[] exactPositionPrefix(double[] positions, int positionsLength) {
         return positionsLength == positions.length ? positions : Arrays.copyOf(positions, positionsLength);
+    }
+
+    public static int createPerlinNoise(long seed) {
+        if (!isLoaded()) {
+            return -1;
+        }
+        return FfmNativeBridge.createPerlinNoise(seed);
+    }
+
+    public static int createSimplexNoise(long seed) {
+        if (!isLoaded()) {
+            return -1;
+        }
+        return FfmNativeBridge.createSimplexNoise(seed);
+    }
+
+    public static int createOpenSimplex2Noise(long seed) {
+        if (!isLoaded()) {
+            return -1;
+        }
+        return FfmNativeBridge.createOpenSimplex2Noise(seed);
+    }
+
+    public static void destroyNoiseGenerator(int generatorId) {
+        if (!isLoaded()) {
+            return;
+        }
+        FfmNativeBridge.destroyNoiseGenerator(generatorId);
+    }
+
+    public static boolean batchSampleNoise3D(int generatorId, double[] positions, double[] output) {
+        if (!isLoaded()) {
+            return false;
+        }
+        if (positions.length % 3 != 0) {
+            throw new IllegalArgumentException("positions must contain x/y/z triples");
+        }
+        if (output.length != positions.length / 3) {
+            throw new IllegalArgumentException("output length must match position count");
+        }
+
+        NativeStatus status = NativeStatus.fromCode(FfmNativeBridge.batchSampleNoise3D(
+            generatorId,
+            positions,
+            output
+        ));
+        return status.isSuccess();
     }
 
     private static int computeSquaredDistancesNative(
@@ -1503,6 +1587,8 @@ public final class NativeBridge {
         double originZ,
         double radiusSquared,
         double[] positions,
+        int positionsLength,
+        int outputLength,
         int[] output
     ) {
         return FfmNativeBridge.sortWithinRadiusExclusivePrefixOutput(
@@ -1511,7 +1597,9 @@ public final class NativeBridge {
             originZ,
             radiusSquared,
             positions,
-            output
+            positionsLength,
+            output,
+            outputLength
         );
     }
 }

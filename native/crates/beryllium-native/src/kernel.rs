@@ -12,6 +12,7 @@ use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
 
 use crate::NativeError;
+use crate::noise::{NoiseGenerator, batch_sample_noise_3d_parallel, perlin::PerlinNoise, simplex::SimplexNoise, opensimplex2::OpenSimplex2Noise};
 #[cfg(feature = "cubecl-preview")]
 use crate::cubecl_preview::{CubePotentialCache, MIN_CHARGE_COUNT as CUBECL_MIN_CHARGE_COUNT};
 use crate::simd;
@@ -502,6 +503,63 @@ fn potential_calibration_worker(receiver: mpsc::Receiver<PotentialCalibrationReq
 
         finish_potential_calibration(generation, calibrated);
     }
+}
+
+static NOISE_GENERATORS: Mutex<Vec<Box<dyn NoiseGenerator>>> = Mutex::new(Vec::new());
+
+pub fn create_perlin_noise(seed: i64) -> Result<usize, NativeError> {
+    let generator = Box::new(PerlinNoise::new(seed));
+    let mut generators = NOISE_GENERATORS.lock().unwrap();
+    let id = generators.len();
+    generators.push(generator);
+    Ok(id)
+}
+
+pub fn create_simplex_noise(seed: i64) -> Result<usize, NativeError> {
+    let generator = Box::new(SimplexNoise::new(seed));
+    let mut generators = NOISE_GENERATORS.lock().unwrap();
+    let id = generators.len();
+    generators.push(generator);
+    Ok(id)
+}
+
+pub fn create_opensimplex2_noise(seed: i64) -> Result<usize, NativeError> {
+    let generator = Box::new(OpenSimplex2Noise::new(seed));
+    let mut generators = NOISE_GENERATORS.lock().unwrap();
+    let id = generators.len();
+    generators.push(generator);
+    Ok(id)
+}
+
+pub fn destroy_noise_generator(id: usize) -> Result<(), NativeError> {
+    let mut generators = NOISE_GENERATORS.lock().unwrap();
+    if id >= generators.len() {
+        return Err(NativeError::InvalidInput);
+    }
+    generators[id] = Box::new(PerlinNoise::new(0));
+    Ok(())
+}
+
+pub fn batch_sample_noise_3d(
+    generator_id: usize,
+    positions: &[f64],
+    output: &mut [f64],
+) -> Result<(), NativeError> {
+    if positions.len() % 3 != 0 {
+        return Err(NativeError::InvalidInput);
+    }
+    let count = positions.len() / 3;
+    if output.len() != count {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    let generators = NOISE_GENERATORS.lock().unwrap();
+    if generator_id >= generators.len() {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let generator = &*generators[generator_id];
+    batch_sample_noise_3d_parallel(generator, positions, output)
 }
 
 #[cfg(feature = "cubecl-preview")]

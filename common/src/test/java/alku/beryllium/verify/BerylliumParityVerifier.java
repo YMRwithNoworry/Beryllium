@@ -124,6 +124,7 @@ public final class BerylliumParityVerifier {
         EntityDistanceSortVerifier.verifyNearestItemTopKFallbackPreservesPredicateOrder();
         EntityDistanceSortVerifier.verifyNearestItemScratchReuseIgnoresUnusedCapacity();
         EntityDistanceSortVerifier.verifyNearestItemScratchIsReentrant();
+        EntityDistanceSortVerifier.verifyRadiusSortedScratchReusesActivePrefixAndIsReentrant();
         EntityDistanceSortVerifier.verifyFindFirstBySortedOrderWithinPrefixPreservesPredicateOrderAndShortCircuits();
         BlockDistanceSortVerifier.verifySortByBlockDistance();
         BlockDistanceSortVerifier.verifySortByBlockDistanceTieOrder();
@@ -426,6 +427,18 @@ public final class BerylliumParityVerifier {
             positions,
             prefixOutput
         );
+        double[] oversizedPositions = Arrays.copyOf(positions, positions.length + 3);
+        int[] oversizedOutput = new int[positions.length / 3 + 1];
+        Arrays.fill(oversizedOutput, -1);
+        int oversizedCount = NativeBridge.sortWithinRadiusExclusivePrefixOutput(
+            0.0,
+            0.0,
+            0.0,
+            1024.0,
+            oversizedPositions,
+            positions.length / 3,
+            oversizedOutput
+        );
         assertArrayEquals(range(4967, 5000), filtered, "Native bridge large double radius filter");
         assertArrayEquals(range(4968, 5000), exclusiveFiltered, "Native bridge large exclusive double radius filter");
         assertEquals(33, count, "Native bridge large double radius count");
@@ -438,6 +451,9 @@ public final class BerylliumParityVerifier {
         assertEquals(32, prefixCount, "Native bridge prefix-only sorted exclusive double radius count");
         assertArrayEquals(descendingRange(4999, 4968), Arrays.copyOf(prefixOutput, prefixCount), "Native bridge prefix-only sorted exclusive double radius output prefix");
         assertEquals(-1, prefixOutput[prefixCount], "Native bridge prefix-only sorted exclusive double radius tail");
+        assertEquals(32, oversizedCount, "Native bridge active-prefix sorted exclusive double radius count");
+        assertArrayEquals(descendingRange(4999, 4968), Arrays.copyOf(oversizedOutput, oversizedCount), "Native bridge active-prefix sorted exclusive double radius output prefix");
+        assertEquals(-1, oversizedOutput[oversizedCount], "Native bridge active-prefix sorted exclusive double radius tail");
     }
 
     private static void verifyNativeBridgeAabbFilter() {

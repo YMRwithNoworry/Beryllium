@@ -40,6 +40,8 @@ public final class BerylliumPerformanceBenchmark {
     private static final int MEASUREMENT_ITERATIONS = 300;
     private static final int FOCUSED_WARMUP_ITERATIONS = 2000;
     private static final int FOCUSED_MEASUREMENT_ITERATIONS = 2000;
+    private static final int REUSE_WARMUP_ITERATIONS = 300;
+    private static final int REUSE_MEASUREMENT_ITERATIONS = 500;
     private static final int[] POTENTIAL_CHARGE_COUNTS = {32, 128, 512, 2048, 8192};
     private static final double RADIUS = 32.0;
     private static final int NEAREST_ITEM_TOP_K_LIMIT = 16;
@@ -217,7 +219,80 @@ public final class BerylliumPerformanceBenchmark {
                 medians[1],
                 speedup(medians[0], medians[1])
             );
+
+            List<BenchmarkPoint> points = createPoints(candidateCount);
+            long allocatingResult = allocatingRadiusFilteredDistanceSort(points);
+            long reusedResult = reusedRadiusFilteredDistanceSort(points);
+            if (allocatingResult != reusedResult) {
+                throw new AssertionError(
+                    "Radius-filtered distance sort reuse mismatch, expected "
+                        + allocatingResult
+                        + " but got "
+                        + reusedResult
+                );
+            }
+            long[] reuseMedians = measureLongPair(
+                "allocating_radius_distance_sort",
+                () -> allocatingRadiusFilteredDistanceSort(points),
+                "reused_radius_distance_sort",
+                () -> reusedRadiusFilteredDistanceSort(points),
+                REUSE_WARMUP_ITERATIONS,
+                REUSE_MEASUREMENT_ITERATIONS
+            );
+            System.out.printf(
+                Locale.ROOT,
+                "radius_sort_reuse_result=candidates:%d allocating_median_ns:%d reused_median_ns:%d speedup:%.2fx%n",
+                candidateCount,
+                reuseMedians[0],
+                reuseMedians[1],
+                speedup(reuseMedians[0], reuseMedians[1])
+            );
         }
+    }
+
+    private static long allocatingRadiusFilteredDistanceSort(List<BenchmarkPoint> points) {
+        double[] positions = EntityPacking.packPositions(
+            points,
+            BenchmarkPoint::x,
+            BenchmarkPoint::y,
+            BenchmarkPoint::z
+        );
+        int[] order = new int[points.size()];
+        int orderCount = NativeBridge.sortWithinRadiusExclusivePrefixOutput(
+            0.25,
+            -0.5,
+            0.75,
+            RADIUS_FILTERED_SORT_RADIUS * RADIUS_FILTERED_SORT_RADIUS,
+            positions,
+            order
+        );
+        List<BenchmarkPoint> matches = new ArrayList<>(orderCount);
+        for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
+            matches.add(points.get(order[orderIndex]));
+        }
+        return pointListChecksum(matches);
+    }
+
+    private static long reusedRadiusFilteredDistanceSort(List<BenchmarkPoint> points) {
+        List<BenchmarkPoint> matches = EntityDistanceSort.filterWithinExclusiveDistanceSortedByDistance(
+            points,
+            0.25,
+            -0.5,
+            0.75,
+            RADIUS_FILTERED_SORT_RADIUS,
+            BenchmarkPoint::x,
+            BenchmarkPoint::y,
+            BenchmarkPoint::z
+        );
+        return pointListChecksum(matches);
+    }
+
+    private static long pointListChecksum(List<BenchmarkPoint> points) {
+        long checksum = points.size();
+        for (BenchmarkPoint point : points) {
+            checksum = checksum * 31 + point.id;
+        }
+        return checksum;
     }
 
     private static int radiusFilteredDistanceSort(

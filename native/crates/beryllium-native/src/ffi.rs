@@ -940,6 +940,65 @@ pub unsafe extern "C" fn beryllium_potential_clear_cache() {
     crate::kernel::clear_cached_potential_charges();
 }
 
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_create_perlin_noise(seed: i64) -> i32 {
+    match crate::kernel::create_perlin_noise(seed) {
+        Ok(id) => id as i32,
+        Err(error) => -1 - NativeStatus::from(error).code(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_create_simplex_noise(seed: i64) -> i32 {
+    match crate::kernel::create_simplex_noise(seed) {
+        Ok(id) => id as i32,
+        Err(error) => -1 - NativeStatus::from(error).code(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_create_opensimplex2_noise(seed: i64) -> i32 {
+    match crate::kernel::create_opensimplex2_noise(seed) {
+        Ok(id) => id as i32,
+        Err(error) => -1 - NativeStatus::from(error).code(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_destroy_noise_generator(id: i32) -> i32 {
+    if id < 0 {
+        return NativeStatus::InvalidInput.code();
+    }
+    status_result(crate::kernel::destroy_noise_generator(id as usize))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_batch_sample_noise_3d(
+    generator_id: i32,
+    positions: *const f64,
+    positions_length: usize,
+    output: *mut f64,
+    output_length: usize,
+) -> i32 {
+    if generator_id < 0 {
+        return NativeStatus::InvalidInput.code();
+    }
+    let positions = match unsafe { read_slice(positions, positions_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_length) } {
+        Ok(value) => value,
+        Err(error) => return error.code(),
+    };
+
+    status_result(crate::kernel::batch_sample_noise_3d(
+        generator_id as usize,
+        positions,
+        output,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

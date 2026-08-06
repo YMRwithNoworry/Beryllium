@@ -83,21 +83,28 @@ public final class EntityDistanceSort {
             return matches;
         }
 
-        double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-        int[] order = new int[values.size()];
-        int orderCount = NativeBridge.sortWithinRadiusExclusivePrefixOutput(
-            originX,
-            originY,
-            originZ,
-            radiusSquared,
-            positions,
-            order
-        );
-        List<T> matches = new ArrayList<>(orderCount);
-        for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
-            matches.add(values.get(order[orderIndex]));
+        int candidateCount = values.size();
+        DistanceScratchPool scratchPool = DISTANCE_SCRATCH.get();
+        DistanceScratch scratch = scratchPool.acquire(candidateCount);
+        try {
+            EntityPacking.packPositions(values, xGetter, yGetter, zGetter, scratch.positions);
+            int orderCount = NativeBridge.sortWithinRadiusExclusivePrefixOutput(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                scratch.positions,
+                candidateCount,
+                scratch.order
+            );
+            List<T> matches = new ArrayList<>(orderCount);
+            for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
+                matches.add(values.get(scratch.order[orderIndex]));
+            }
+            return matches;
+        } finally {
+            scratchPool.release();
         }
-        return matches;
     }
 
     public static <T> Optional<T> findFirstWithinExclusiveDistanceSortedByDistance(
@@ -135,24 +142,31 @@ public final class EntityDistanceSort {
             return Optional.empty();
         }
 
-        double[] positions = EntityPacking.packPositions(values, xGetter, yGetter, zGetter);
-        int[] order = new int[values.size()];
-        int orderCount = NativeBridge.sortWithinRadiusExclusivePrefixOutput(
-            originX,
-            originY,
-            originZ,
-            radiusSquared,
-            positions,
-            order
-        );
-        for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
-            int index = order[orderIndex];
-            T value = values.get(index);
-            if (postSortedPredicate.test(value)) {
-                return Optional.of(value);
+        int candidateCount = values.size();
+        DistanceScratchPool scratchPool = DISTANCE_SCRATCH.get();
+        DistanceScratch scratch = scratchPool.acquire(candidateCount);
+        try {
+            EntityPacking.packPositions(values, xGetter, yGetter, zGetter, scratch.positions);
+            int orderCount = NativeBridge.sortWithinRadiusExclusivePrefixOutput(
+                originX,
+                originY,
+                originZ,
+                radiusSquared,
+                scratch.positions,
+                candidateCount,
+                scratch.order
+            );
+            for (int orderIndex = 0; orderIndex < orderCount; orderIndex++) {
+                int index = scratch.order[orderIndex];
+                T value = values.get(index);
+                if (postSortedPredicate.test(value)) {
+                    return Optional.of(value);
+                }
             }
+            return Optional.empty();
+        } finally {
+            scratchPool.release();
         }
-        return Optional.empty();
     }
 
     public static <T> Optional<T> findFirstWithinExclusiveDistanceAfterPredicatesSortedByDistance(
@@ -306,6 +320,7 @@ public final class EntityDistanceSort {
                     }
                 }
 
+                scratch.ensureEvaluationCapacity(candidateCount);
                 for (int orderIndex = 0; orderIndex < nearestCount; orderIndex++) {
                     scratch.markEvaluated(scratch.nearestOrder[orderIndex]);
                 }
@@ -602,6 +617,9 @@ public final class EntityDistanceSort {
             if (this.order.length < candidateCount) {
                 this.order = new int[candidateCount];
             }
+        }
+
+        private void ensureEvaluationCapacity(int candidateCount) {
             if (this.alreadyEvaluated.length < candidateCount) {
                 this.alreadyEvaluated = new boolean[candidateCount];
             }

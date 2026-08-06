@@ -461,6 +461,57 @@ public final class EntityDistanceSortVerifier {
         assertListEquals(descendingRange(1023, 1021), evaluated, "reentrant scratch predicate order");
     }
 
+    public static void verifyRadiusSortedScratchReusesActivePrefixAndIsReentrant() {
+        List<SimplePoint> largeMatches = EntityDistanceSort.filterWithinExclusiveDistanceSortedByDistance(
+            descendingAxisPoints(1024),
+            0.0,
+            0.0,
+            0.0,
+            2.0,
+            point -> point.x,
+            point -> point.y,
+            point -> point.z
+        );
+        assertListEquals(List.of(1023, 1022), ids(largeMatches), "large radius scratch warmup");
+
+        List<Integer> evaluated = new ArrayList<>();
+        boolean[] nested = {false};
+        SimplePoint outerMatch = EntityDistanceSort.findFirstWithinExclusiveDistanceSortedByDistance(
+                descendingAxisPoints(256),
+                0.0,
+                0.0,
+                0.0,
+                4.0,
+                point -> point.x,
+                point -> point.y,
+                point -> point.z,
+                point -> {
+                    evaluated.add(point.id);
+                    if (!nested[0]) {
+                        nested[0] = true;
+                        List<SimplePoint> nestedMatches = EntityDistanceSort.filterWithinExclusiveDistanceSortedByDistance(
+                            descendingAxisPoints(512),
+                            0.0,
+                            0.0,
+                            0.0,
+                            2.0,
+                            nestedPoint -> nestedPoint.x,
+                            nestedPoint -> nestedPoint.y,
+                            nestedPoint -> nestedPoint.z
+                        );
+                        assertListEquals(List.of(511, 510), ids(nestedMatches), "nested radius scratch result");
+                    }
+                    return point.id == 253;
+                }
+            )
+            .orElseThrow(() -> new AssertionError("expected an outer radius-sorted match after nested query"));
+
+        if (outerMatch.id != 253) {
+            throw new AssertionError("radius scratch match mismatch, expected 253 but got " + outerMatch.id);
+        }
+        assertListEquals(List.of(255, 254, 253), evaluated, "radius scratch predicate order");
+    }
+
     public static void verifyFindFirstBySortedOrderWithinPrefixPreservesPredicateOrderAndShortCircuits() {
         List<SimplePoint> points = List.of(
             new SimplePoint(0, 1.0, 0.0, 0.0),
