@@ -1,5 +1,6 @@
 package alku.beryllium.worldgen;
 
+import alku.beryllium.config.BerylliumConfig;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
@@ -24,9 +25,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class AsyncChunkGenerator {
     private static final Logger LOGGER = LoggerFactory.getLogger("Beryllium/AsyncChunkGen");
 
-    private static final int SYNC_RADIUS = 3;
-    private static final int MAX_PENDING_TASKS = 256;
-    private static final int WORKER_THREADS = Math.max(2, Runtime.getRuntime().availableProcessors() - 2);
     private static final int PREFETCH_INTERVAL_TICKS = 20; // 每秒更新一次预取
 
     private static AsyncChunkGenerator INSTANCE;
@@ -46,9 +44,10 @@ public class AsyncChunkGenerator {
         this.pendingTaskCount = new AtomicInteger(0);
         this.cache = ChunkGenerationCache.getInstance();
         this.predictor = ChunkGenerationPredictor.getInstance();
-        this.enabled = true;
+        this.enabled = BerylliumConfig.isAsyncChunkGenEnabled();
 
-        this.executorService = Executors.newFixedThreadPool(WORKER_THREADS, r -> {
+        int workerThreads = BerylliumConfig.getWorkerThreads();
+        this.executorService = Executors.newFixedThreadPool(workerThreads, r -> {
             Thread thread = new Thread(r);
             thread.setName("Beryllium-ChunkGen-Worker");
             thread.setDaemon(true);
@@ -56,7 +55,7 @@ public class AsyncChunkGenerator {
             return thread;
         });
 
-        LOGGER.info("异步区块生成器已启动，工作线程数: {}", WORKER_THREADS);
+        LOGGER.info("异步区块生成器已启动，工作线程数: {}", workerThreads);
     }
 
     public static synchronized AsyncChunkGenerator getInstance() {
@@ -87,9 +86,10 @@ public class AsyncChunkGenerator {
             return false;
         }
 
+        int syncRadius = BerylliumConfig.getSyncGenerationRadius();
         int distanceSquared = playerPos.distanceSquared(chunkPos);
 
-        return distanceSquared > SYNC_RADIUS * SYNC_RADIUS;
+        return distanceSquared > syncRadius * syncRadius;
     }
 
     /**
@@ -101,7 +101,9 @@ public class AsyncChunkGenerator {
         ChunkPos playerPos,
         Callable<ChunkAccess> generator
     ) {
-        if (!enabled || pendingTaskCount.get() >= MAX_PENDING_TASKS) {
+        int maxPendingTasks = BerylliumConfig.getMaxPendingTasks();
+
+        if (!enabled || pendingTaskCount.get() >= maxPendingTasks) {
             try {
                 return CompletableFuture.completedFuture(generator.call());
             } catch (Exception e) {

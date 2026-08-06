@@ -5,6 +5,7 @@ import alku.beryllium.compute.NativeBatching;
 import alku.beryllium.config.BerylliumConfig;
 import alku.beryllium.worldgen.AsyncChunkGenerator;
 import alku.beryllium.worldgen.ChunkGenerationCache;
+import alku.beryllium.worldgen.ChunkGenerationTracker;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -88,10 +89,12 @@ public final class BerylliumCommands {
         AsyncChunkGenerator asyncGen = AsyncChunkGenerator.getInstance();
         boolean enabled = asyncGen.isEnabled();
         int pendingTasks = asyncGen.getPendingTaskCount();
+        ChunkGenerationTracker.TrackerStats trackerStats = ChunkGenerationTracker.getInstance().getStats();
 
         source.sendSuccess(() -> Component.literal(
             "异步区块生成: " + (enabled ? "§a已启用" : "§c已禁用") +
-            ", 待处理任务: §e" + pendingTasks
+            ", 待处理任务: §e" + pendingTasks +
+            " §7| 正在生成: §e" + trackerStats.getGeneratingCount()
         ), false);
 
         return 1;
