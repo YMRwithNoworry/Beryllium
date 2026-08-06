@@ -198,6 +198,122 @@ gradle -PberylliumCubeclPreview=true :common:build :fabric:build :neoforge:build
 
 使用 `/beryllium native` 命令可在游戏内查看当前阈值配置和 native 后端加载状态。
 
+## 区块生成优化系统
+
+Beryllium 实现了异步区块生成系统，避免主线程阻塞并提升 TPS 稳定性。
+
+### 核心组件
+
+- **`AsyncChunkGenerator`**：异步区块生成器，使用独立线程池处理远距离区块生成
+- **`ChunkGenerationCache`**：区块生成结果缓存，避免重复计算
+- **`ChunkGenerationPredictor`**：基于玩家移动预测需要的区块
+- **`ChunkGenerationTracker`**：追踪正在生成的区块，避免重复生成
+- **`ChunkGenPerformanceMonitor`**：性能监控器，追踪生成耗时和主线程阻塞时间
+- **`BerylliumConfig`**：动态配置管理，支持 TPS 自适应调整
+
+### 工作原理
+
+1. **同步/异步分离**：根据距离玩家的远近决定生成策略
+   - **近距离区块**（默认 3 区块半径内）：主线程同步生成，保证响应速度
+   - **远距离区块**：工作线程池异步生成，避免主线程阻塞
+
+2. **优先级调度**：使用优先级队列确保玩家附近区块优先生成
+
+3. **背压控制**：最大待处理任务数限制（默认 256），防止内存溢出
+
+4. **缓存机制**：已生成区块缓存复用，避免重复计算
+
+5. **预测预取**：基于玩家移动方向预测需要的区块并提前加载
+
+6. **TPS 自适应**：根据当前 TPS 动态调整同步生成半径
+   - TPS < 18.0：收紧同步半径，更多异步生成
+   - TPS > 19.8：放宽同步半径，减少异步开销
+
+### 配置参数
+
+所有配置保存在 `config/beryllium.properties`，支持热重载。
+
+#### 异步区块生成配置
+
+- **`asyncChunkGen.enabled`**：是否启用异步区块生成，默认 `true`
+- **`asyncChunkGen.syncRadius`**：同步生成半径（区块数），默认 `3`
+- **`asyncChunkGen.maxPendingTasks`**：最大待处理任务数，默认 `256`
+- **`asyncChunkGen.workerThreads`**：工作线程数，默认 `CPU核心数 - 2`（最小 2）
+
+#### 自适应调整配置
+
+- **`adaptive.enabled`**：是否启用 TPS 自适应调整，默认 `true`
+- **`adaptive.targetTPS`**：目标 TPS，默认 `19.5`
+- **`adaptive.tpsThresholdLow`**：TPS 低阈值，默认 `18.0`
+- **`adaptive.tpsThresholdHigh`**：TPS 高阈值，默认 `19.8`
+- **`adaptive.minSyncRadius`**：最小同步半径，默认 `2`
+- **`adaptive.maxSyncRadius`**：最大同步半径，默认 `6`
+
+#### 性能监控配置
+
+- **`monitor.enabled`**：是否启用性能监控，默认 `true`
+- **`monitor.reportIntervalTicks`**：监控报告间隔（tick），默认 `200`（10 秒）
+
+### 游戏内命令
+
+```
+/beryllium chunk                    # 显示区块生成统计信息
+/beryllium chunk reset              # 重置统计数据
+
+/beryllium config                   # 显示当前配置
+/beryllium config syncRadius <n>    # 设置同步生成半径（1-10 区块）
+/beryllium config maxTasks <n>      # 设置最大任务数（64-1024）
+/beryllium config adaptive <bool>   # 启用/禁用自适应调整
+/beryllium config reload            # 重新加载配置文件
+/beryllium config save              # 保存当前配置到文件
+
+/beryllium async                    # 显示异步生成状态
+/beryllium async <bool>             # 启用/禁用异步生成
+
+/beryllium cache                    # 显示缓存统计
+/beryllium cache clear              # 清空缓存
+```
+
+### 性能统计
+
+`/beryllium chunk` 显示的统计信息包括：
+
+- **总生成数**：同步和异步区块生成总数
+- **异步比例**：异步生成占比
+- **平均耗时**：同步/异步生成的平均耗时（毫秒）
+- **峰值耗时**：单次生成的最大耗时（毫秒）
+- **主线程阻塞**：主线程被区块生成阻塞的次数、总时长、平均时长和峰值时长
+- **生成速率**：每秒生成的区块数
+- **上次 tick**：上一个 tick 的同步/异步生成数和阻塞时长
+
+### 调优建议
+
+1. **CPU 密集型服务器**：
+   - 增加 `workerThreads`，充分利用多核
+   - 减小 `syncRadius`，更多异步生成
+   - 启用 `adaptive.enabled`，自动适应负载
+
+2. **内存受限服务器**：
+   - 减小 `maxPendingTasks`，控制内存占用
+   - 适当增加 `syncRadius`，减少异步任务数
+
+3. **单人/小型服务器**：
+   - 可以禁用异步生成（`asyncChunkGen.enabled=false`），减少开销
+   - 或使用较大的 `syncRadius`（5-6），减少线程切换
+
+4. **大型多人服务器**：
+   - 启用所有优化，使用默认或更激进的配置
+   - 监控 `主线程阻塞` 指标，如果过高则减小 `syncRadius`
+   - 定期查看 `/beryllium chunk` 统计，调整配置
+
+### 注意事项
+
+- 异步生成会引入轻微的区块加载延迟，但能显著降低主线程压力
+- TPS 自适应调整是保守的，每次只调整 1 区块，避免剧烈波动
+- 性能监控数据保存在内存中，重启后清空
+- 配置文件修改后需要运行 `/beryllium config reload` 或重启服务器生效
+- `workerThreads` 修改需要重启服务器才能生效（线程池在初始化时创建）
+
 ## 开发工作流建议
 
 ### 新增 Native Kernel

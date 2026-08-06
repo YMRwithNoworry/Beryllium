@@ -1,0 +1,57 @@
+# Beryllium Performance Configuration
+# 此文件会在首次运行时自动生成为 beryllium.properties
+# 修改后使用 /beryllium config reload 重新加载
+
+# ===== 异步区块生成配置 =====
+# 是否启用异步区块生成
+asyncChunkGen.enabled=true
+
+# 同步生成半径（区块数）
+# 玩家周围此半径内的区块在主线程同步生成，保证响应速度
+# 超出此半径的区块在工作线程池异步生成，避免主线程阻塞
+asyncChunkGen.syncRadius=3
+
+# 最大待处理任务数
+# 超过此数量时新任务将在主线程同步执行，防止内存溢出
+asyncChunkGen.maxPendingTasks=256
+
+# 工作线程数
+# 用于异步区块生成的线程池大小
+# 默认为 CPU核心数 - 2（最小2）
+# 注意：修改此值需要重启服务器生效
+asyncChunkGen.workerThreads=4
+
+# ===== 自适应调整配置 =====
+# 是否启用 TPS 自适应调整
+# 启用后会根据服务器 TPS 动态调整同步生成半径
+adaptive.enabled=true
+
+# 目标 TPS
+# 服务器期望维持的 TPS 值
+adaptive.targetTPS=19.5
+
+# TPS 低阈值
+# 当 TPS 低于此值时，收紧同步半径（更多异步生成）
+adaptive.tpsThresholdLow=18.0
+
+# TPS 高阈值
+# 当 TPS 高于此值时，放宽同步半径（减少异步开销）
+adaptive.tpsThresholdHigh=19.8
+
+# 最小同步半径
+# 自适应调整时的最小同步半径
+adaptive.minSyncRadius=2
+
+# 最大同步半径
+# 自适应调整时的最大同步半径
+adaptive.maxSyncRadius=6
+
+# ===== 性能监控配置 =====
+# 是否启用性能监控
+# 禁用可节省少量性能开销
+monitor.enabled=true
+
+# 监控报告间隔（tick）
+# 每隔多少 tick 输出一次性能报告到日志
+# 200 tick = 10 秒（假设 20 TPS）
+monitor.reportIntervalTicks=200

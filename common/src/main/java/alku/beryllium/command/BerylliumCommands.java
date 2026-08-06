@@ -3,6 +3,7 @@ package alku.beryllium.command;
 import alku.beryllium.bridge.NativeBridge;
 import alku.beryllium.compute.NativeBatching;
 import alku.beryllium.config.BerylliumConfig;
+import alku.beryllium.monitor.ChunkGenPerformanceMonitor;
 import alku.beryllium.worldgen.AsyncChunkGenerator;
 import alku.beryllium.worldgen.ChunkGenerationCache;
 import alku.beryllium.worldgen.ChunkGenerationTracker;
@@ -38,6 +39,10 @@ public final class BerylliumCommands {
                 .executes(context -> showCacheStats(context.getSource()))
                 .then(Commands.literal("clear")
                     .executes(context -> clearCache(context.getSource()))))
+            .then(Commands.literal("chunk")
+                .executes(context -> showChunkStats(context.getSource()))
+                .then(Commands.literal("reset")
+                    .executes(context -> resetChunkStats(context.getSource()))))
             .then(Commands.literal("config")
                 .executes(context -> showConfig(context.getSource()))
                 .then(Commands.literal("syncRadius")
@@ -45,7 +50,14 @@ public final class BerylliumCommands {
                         .executes(context -> setSyncRadius(context.getSource(), IntegerArgumentType.getInteger(context, "radius")))))
                 .then(Commands.literal("maxTasks")
                     .then(Commands.argument("tasks", IntegerArgumentType.integer(64, 1024))
-                        .executes(context -> setMaxTasks(context.getSource(), IntegerArgumentType.getInteger(context, "tasks")))))));
+                        .executes(context -> setMaxTasks(context.getSource(), IntegerArgumentType.getInteger(context, "tasks")))))
+                .then(Commands.literal("adaptive")
+                    .then(Commands.argument("enabled", BoolArgumentType.bool())
+                        .executes(context -> toggleAdaptive(context.getSource(), BoolArgumentType.getBool(context, "enabled")))))
+                .then(Commands.literal("reload")
+                    .executes(context -> reloadConfig(context.getSource())))
+                .then(Commands.literal("save")
+                    .executes(context -> saveConfig(context.getSource())))));
     }
 
     private static int showNativeStatus(CommandSourceStack source) {
@@ -144,6 +156,10 @@ public final class BerylliumCommands {
             BerylliumConfig.getMaxPendingTasks()), false);
         source.sendSuccess(() -> Component.literal("工作线程: §e" +
             BerylliumConfig.getWorkerThreads()), false);
+        source.sendSuccess(() -> Component.literal("自适应调整: " +
+            (BerylliumConfig.isAdaptiveThresholdEnabled() ? "§a启用" : "§c禁用")), false);
+        source.sendSuccess(() -> Component.literal("性能监控: " +
+            (BerylliumConfig.isPerformanceMonitorEnabled() ? "§a启用" : "§c禁用")), false);
 
         return 1;
     }
@@ -161,6 +177,83 @@ public final class BerylliumCommands {
         source.sendSuccess(() -> Component.literal(
             "最大任务数已设置为: §e" + tasks
         ), true);
+        return 1;
+    }
+
+    private static int toggleAdaptive(CommandSourceStack source, boolean enabled) {
+        BerylliumConfig.setAdaptiveThresholdEnabled(enabled);
+        source.sendSuccess(() -> Component.literal(
+            "自适应阈值调整已" + (enabled ? "§a启用" : "§c禁用")
+        ), true);
+        return 1;
+    }
+
+    private static int reloadConfig(CommandSourceStack source) {
+        BerylliumConfig.reload();
+        source.sendSuccess(() -> Component.literal("§a配置已重新加载"), true);
+        return 1;
+    }
+
+    private static int saveConfig(CommandSourceStack source) {
+        BerylliumConfig.saveConfig();
+        source.sendSuccess(() -> Component.literal("§a配置已保存"), true);
+        return 1;
+    }
+
+    private static int showChunkStats(CommandSourceStack source) {
+        ChunkGenPerformanceMonitor.PerformanceStats stats =
+            ChunkGenPerformanceMonitor.getInstance().getStats();
+
+        source.sendSuccess(() -> Component.literal("§6=== 区块生成统计 ==="), false);
+
+        source.sendSuccess(() -> Component.literal(
+            "总生成数: §e" + stats.getTotalGenerationCount() +
+            " §7(同步: §e" + stats.getSyncGenerationCount() +
+            " §7| 异步: §e" + stats.getAsyncGenerationCount() + "§7)"
+        ), false);
+
+        source.sendSuccess(() -> Component.literal(
+            "异步比例: §e" + String.format("%.1f%%", stats.getAsyncRatio() * 100)
+        ), false);
+
+        source.sendSuccess(() -> Component.literal(
+            "平均耗时: §7同步 §e" + String.format("%.2f", stats.getAvgSyncGenerationMs()) + "ms" +
+            " §7| 异步 §e" + String.format("%.2f", stats.getAvgAsyncGenerationMs()) + "ms"
+        ), false);
+
+        source.sendSuccess(() -> Component.literal(
+            "峰值耗时: §7同步 §e" + String.format("%.2f", stats.getMaxSyncGenerationMs()) + "ms" +
+            " §7| 异步 §e" + String.format("%.2f", stats.getMaxAsyncGenerationMs()) + "ms"
+        ), false);
+
+        source.sendSuccess(() -> Component.literal(
+            "主线程阻塞: §c" + stats.getMainThreadBlockCount() + " §7次" +
+            " §7| 总计 §c" + String.format("%.2f", stats.getTotalMainThreadBlockMs()) + "ms" +
+            " §7| 平均 §c" + String.format("%.2f", stats.getAvgMainThreadBlockMs()) + "ms"
+        ), false);
+
+        if (stats.getMaxMainThreadBlockMs() > 0) {
+            source.sendSuccess(() -> Component.literal(
+                "最长阻塞: §c" + String.format("%.2f", stats.getMaxMainThreadBlockMs()) + "ms"
+            ), false);
+        }
+
+        source.sendSuccess(() -> Component.literal(
+            "生成速率: §e" + String.format("%.1f", stats.getGenerationRatePerSecond()) + " §7区块/秒"
+        ), false);
+
+        source.sendSuccess(() -> Component.literal(
+            "上次 tick: §7同步 §e" + stats.getLastTickSyncCount() +
+            " §7| 异步 §e" + stats.getLastTickAsyncCount() +
+            " §7| 阻塞 §c" + String.format("%.2f", stats.getLastTickMainThreadBlockMs()) + "ms"
+        ), false);
+
+        return 1;
+    }
+
+    private static int resetChunkStats(CommandSourceStack source) {
+        ChunkGenPerformanceMonitor.getInstance().reset();
+        source.sendSuccess(() -> Component.literal("§a区块生成统计已重置"), true);
         return 1;
     }
 }
