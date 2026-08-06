@@ -915,22 +915,35 @@ final class FfmNativeBridge {
     ) {
         int[] tempIndices = new int[output.length];
         double[] tempWeights = new double[output.length];
-        
+
         int status = withStatusSession(session -> {
             Buffer samplePosBuffer = session.input(samplePositions, Kind.DOUBLE);
             Buffer biomeCentersBuffer = session.input(biomeCenters, Kind.DOUBLE);
             Buffer indicesBuffer = session.uninitializedOutput(tempIndices, Kind.INT);
             Buffer weightsBuffer = session.uninitializedOutput(tempWeights, Kind.DOUBLE);
-            
-            return NativeStatus.InvalidInput.code();
+
+            int result = session.invoke(
+                Function.COMPUTE_BIOME_WEIGHTS_3D,
+                samplePosBuffer,
+                biomeCentersBuffer,
+                influenceRadius,
+                indicesBuffer,
+                weightsBuffer,
+                maxBiomesPerSample
+            );
+
+            if (result == NativeStatus.OK.code()) {
+                session.copyOutputs();
+            }
+            return result;
         });
-        
+
         if (status == NativeStatus.OK.code()) {
             for (int i = 0; i < output.length; i++) {
                 output[i] = new alku.beryllium.worldgen.BiomeWeightPair(tempIndices[i], tempWeights[i]);
             }
         }
-        
+
         return status;
     }
 
