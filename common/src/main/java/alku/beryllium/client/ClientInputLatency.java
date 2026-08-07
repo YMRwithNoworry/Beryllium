@@ -17,6 +17,10 @@ public final class ClientInputLatency {
         return ENABLED;
     }
 
+    public static boolean shouldFlushKeyboardCallback(boolean opensTextInput) {
+        return InputLatencyGate.shouldFlushKeyboardCallback(opensTextInput);
+    }
+
     public static void flushFromCallback(
         Minecraft minecraft,
         boolean createsClick,

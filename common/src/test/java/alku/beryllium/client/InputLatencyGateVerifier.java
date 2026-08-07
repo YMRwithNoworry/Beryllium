@@ -20,6 +20,18 @@ public final class InputLatencyGateVerifier {
         firstCursorEventRemainsUncoalesced();
         skipsOnlyResetNonSmoothIdleTurns();
         exposesSharedTargetingPreparation();
+        delaysTextOpeningKeysUntilVanillaTick();
+    }
+
+    private static void delaysTextOpeningKeysUntilVanillaTick() {
+        check(
+            !InputLatencyGate.shouldFlushKeyboardCallback(true),
+            "chat and command key presses must wait until the vanilla tick"
+        );
+        check(
+            InputLatencyGate.shouldFlushKeyboardCallback(false),
+            "ordinary keyboard callbacks must retain immediate handling"
+        );
     }
 
     private static void exposesSharedTargetingPreparation() {

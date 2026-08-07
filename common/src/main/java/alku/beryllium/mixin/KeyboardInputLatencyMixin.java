@@ -72,6 +72,12 @@ public class KeyboardInputLatencyMixin {
         boolean useInput = createsClick && this.minecraft.options.keyUse.matches(key, scanCode);
         boolean targetedInput = attackInput || useInput
             || createsClick && this.minecraft.options.keyPickItem.matches(key, scanCode);
+        boolean opensTextInput = createsClick
+            && (this.minecraft.options.keyChat.matches(key, scanCode)
+                || this.minecraft.options.keyCommand.matches(key, scanCode));
+        if (!ClientInputLatency.shouldFlushKeyboardCallback(opensTextInput)) {
+            return;
+        }
         ClientInputLatency.flushFromCallback(this.minecraft, createsClick, attackInput, useInput, targetedInput);
     }
 }

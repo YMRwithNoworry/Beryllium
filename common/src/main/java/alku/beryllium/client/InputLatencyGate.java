@@ -22,6 +22,10 @@ final class InputLatencyGate {
     private boolean useOccurred;
     private boolean mouseSmoothersReset;
 
+    static boolean shouldFlushKeyboardCallback(boolean opensTextInput) {
+        return !opensTextInput;
+    }
+
     int planFlush(
         boolean createsClick,
         boolean attackInput,
