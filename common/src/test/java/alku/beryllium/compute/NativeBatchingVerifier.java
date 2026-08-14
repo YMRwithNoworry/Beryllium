@@ -52,6 +52,33 @@ public final class NativeBatchingVerifier {
                     + NativeBatching.aabbBatchThreshold()
             );
         }
+        if (NativeBatching.normalNoiseBatchThreshold() != 128) {
+            throw new AssertionError(
+                "Native NormalNoise threshold mismatch, expected 128 but got "
+                    + NativeBatching.normalNoiseBatchThreshold()
+            );
+        }
+        if (NativeBatching.singleOctaveNormalNoiseBatchThreshold() != 512) {
+            throw new AssertionError(
+                "Native single-octave NormalNoise threshold mismatch, expected 512 but got "
+                    + NativeBatching.singleOctaveNormalNoiseBatchThreshold()
+            );
+        }
+        if (NativeBatching.shouldUseNativeNormalNoiseBatch(127, 2)) {
+            throw new AssertionError("Native multi-octave NormalNoise should remain disabled below its threshold");
+        }
+        if (NativeBatching.shouldUseNativeNormalNoiseBatch(128, 2) != NativeBridge.isLoaded()) {
+            throw new AssertionError("Native multi-octave NormalNoise activation should follow native availability");
+        }
+        if (NativeBatching.shouldUseNativeNormalNoiseBatch(511, 1)) {
+            throw new AssertionError("Native single-octave NormalNoise should remain disabled below its threshold");
+        }
+        if (NativeBatching.shouldUseNativeNormalNoiseBatch(512, 1) != NativeBridge.isLoaded()) {
+            throw new AssertionError("Native single-octave NormalNoise activation should follow native availability");
+        }
+        if (NativeBatching.shouldUseNativeNormalNoiseBatch(1024, 0)) {
+            throw new AssertionError("NormalNoise without active octaves must remain on the Java path");
+        }
         if (NativeBatching.shouldUseNativeVariableRadiusBatch(16_384)) {
             throw new AssertionError("Native variable-radius batch should remain disabled by default");
         }

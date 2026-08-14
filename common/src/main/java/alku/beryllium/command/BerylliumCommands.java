@@ -76,6 +76,10 @@ public final class BerylliumCommands {
                 + NativeBatching.chunkSendSelectionThreshold()
                 + ", nearest-item Top-K threshold: "
                 + NativeBatching.nearestItemTopKThreshold()
+                + ", normal noise threshold: "
+                + NativeBatching.normalNoiseBatchThreshold()
+                + ", single-octave normal noise threshold: "
+                + NativeBatching.singleOctaveNormalNoiseBatchThreshold()
         ), false);
         return NativeBridge.isLoaded() ? 1 : 0;
     }

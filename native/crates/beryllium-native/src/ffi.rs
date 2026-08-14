@@ -965,6 +965,43 @@ pub unsafe extern "C" fn beryllium_create_opensimplex2_noise(seed: i64) -> i32 {
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_create_minecraft_normal_noise(
+    amplitudes: *const f64,
+    amplitudes_length: usize,
+    origins: *const f64,
+    origins_length: usize,
+    permutations: *const i32,
+    permutations_length: usize,
+    lowest_frequency_input_factor: f64,
+    lowest_frequency_value_factor: f64,
+    value_factor: f64,
+) -> i32 {
+    let amplitudes = match unsafe { read_slice(amplitudes, amplitudes_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let origins = match unsafe { read_slice(origins, origins_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let permutations = match unsafe { read_slice(permutations, permutations_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    match crate::kernel::create_minecraft_normal_noise(
+        amplitudes,
+        origins,
+        permutations,
+        lowest_frequency_input_factor,
+        lowest_frequency_value_factor,
+        value_factor,
+    ) {
+        Ok(id) => i32::try_from(id).unwrap_or(-1 - NativeStatus::InvalidInput.code()),
+        Err(error) => -1 - NativeStatus::from(error).code(),
+    }
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_destroy_noise_generator(id: i32) -> i32 {
     if id < 0 {
         return NativeStatus::InvalidInput.code();

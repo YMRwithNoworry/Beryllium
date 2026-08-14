@@ -115,6 +115,15 @@ tasks.register('performanceBenchmark', JavaExec) {
     jvmArgs '--enable-native-access=ALL-UNNAMED', '-Dberyllium.native.nearestItemTopKThreshold=1'
 }
 
+tasks.register('normalNoisePerformanceBenchmark', JavaExec) {
+    description = 'Measures Minecraft-compatible NormalNoise fillArray Java and native paths.'
+    group = 'verification'
+    dependsOn tasks.named('testClasses')
+    mainClass = 'alku.beryllium.worldgen.MinecraftNormalNoisePerformanceBenchmark'
+    classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
 check.dependsOn tasks.named('javaParityTest')
 check.dependsOn tasks.named('nativeRuntimeTest')
 check.dependsOn tasks.named('ffmReuseTest')

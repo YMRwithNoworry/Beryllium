@@ -16,16 +16,20 @@
     "ChunkMapMixin",
     "EntitySectionMixin",
     "FrogAttackablesSensorMixin",
+    "ImprovedNoiseAccessor",
     "LongOpenHashSetMixin",
     "NearestItemSensorMixin",
     "NearestLivingEntitySensorMixin",
+    "NormalNoiseMixin",
+    "PerlinNoiseAccessor",
     "PlayerSensorMixin",
     "PlayerChunkSenderMixin",
     "PotentialCalculatorMixin",
     "PotentialCalculatorPointChargeAccessor",
     "PrepareRamNearestTargetMixin",
     "TemptingSensorMixin",
-    "WardenEntitySensorMixin"
+    "WardenEntitySensorMixin",
+    "DensityFunctionsNoiseMixin"
   ],
   "injectors": {
     "defaultRequire": 1

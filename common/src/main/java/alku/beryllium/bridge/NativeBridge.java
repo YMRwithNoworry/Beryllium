@@ -1207,6 +1207,32 @@ public final class NativeBridge {
         return FfmNativeBridge.createOpenSimplex2Noise(seed);
     }
 
+    public static int createMinecraftNormalNoise(
+        double[] amplitudes,
+        double[] origins,
+        int[] permutations,
+        double lowestFrequencyInputFactor,
+        double lowestFrequencyValueFactor,
+        double valueFactor
+    ) {
+        if (!isLoaded()) {
+            return -1;
+        }
+        if (amplitudes.length == 0
+            || origins.length != Math.multiplyExact(amplitudes.length, 6)
+            || permutations.length != Math.multiplyExact(amplitudes.length, 512)) {
+            throw new IllegalArgumentException("invalid Minecraft NormalNoise state lengths");
+        }
+        return FfmNativeBridge.createMinecraftNormalNoise(
+            amplitudes,
+            origins,
+            permutations,
+            lowestFrequencyInputFactor,
+            lowestFrequencyValueFactor,
+            valueFactor
+        );
+    }
+
     public static void destroyNoiseGenerator(int generatorId) {
         if (!isLoaded()) {
             return;
@@ -1215,19 +1241,29 @@ public final class NativeBridge {
     }
 
     public static boolean batchSampleNoise3D(int generatorId, double[] positions, double[] output) {
-        if (!isLoaded()) {
-            return false;
-        }
         if (positions.length % 3 != 0) {
             throw new IllegalArgumentException("positions must contain x/y/z triples");
         }
         if (output.length != positions.length / 3) {
             throw new IllegalArgumentException("output length must match position count");
         }
+        return batchSampleNoise3D(generatorId, positions, positions.length / 3, output);
+    }
+
+    public static boolean batchSampleNoise3D(int generatorId, double[] positions, int positionCount, double[] output) {
+        if (!isLoaded()) {
+            return false;
+        }
+        if (positionCount < 0
+            || Math.multiplyExact(positionCount, 3) > positions.length
+            || positionCount > output.length) {
+            throw new IllegalArgumentException("positionCount exceeds input or output capacity");
+        }
 
         NativeStatus status = NativeStatus.fromCode(FfmNativeBridge.batchSampleNoise3D(
             generatorId,
             positions,
+            positionCount,
             output
         ));
         return status.isSuccess();

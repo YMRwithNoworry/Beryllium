@@ -285,3 +285,18 @@ CubeCL/LLVM 静态链接产物约 `83.3 MB`，并且在 GraalVM Community 21 中
 | 区块发送 Top-K，配额 64 | 8,192 | 1.21x-2.15x |
 
 所有默认接管组合在三次独立 JVM 中均快于原版。基准仍会展示默认禁用的最近实体、实体过滤、AABB 和方块距离实验入口，其中低于 `1.0x` 的结果不代表生产负优化；这些路径不会被默认调用。
+
+## 2026-08-14 Minecraft NormalNoise 批量采样
+
+`DensityFunctions.Noise.fillArray` 改为在足够大的批次中复用已注册的 Minecraft `NormalNoise` 状态，通过 FFM 一次传入坐标并在 Rust 中完成全部有效 octave 采样。验证覆盖零振幅层、大坐标 wrap、Rayon 批次、输出尾部保护和销毁后的错误路径，Java 与 Rust 输出逐位一致；采样期间不会持有生成器注册表锁。
+
+环境为 Windows x86_64、GraalVM Community JDK 21.0.2、Rust release native `OK`。每组运行三个独立 Gradle/JVM 进程，以下为每轮 native 相对 Java 的端到端加速比：
+
+| 有效 octave | 样本数 | 第 1 轮 | 第 2 轮 | 第 3 轮 |
+|---:|---:|---:|---:|---:|
+| 1 | 128 | 0.955x | 0.963x | 0.956x |
+| 1 | 512 | 1.398x | 1.219x | 1.224x |
+| 2 | 128 | 1.325x | 1.518x | 1.163x |
+| 5 | 128 | 1.267x | 1.577x | 1.226x |
+
+因此生产门控按有效 octave 分层：多 octave 从 `128` 个样本接管，单 octave 从 `512` 个样本接管，零有效 octave 和更小数组继续使用 Java。该数据只衡量一次 `fillArray` 的局部计算，不能直接推导整体区块生成速度或 TPS。

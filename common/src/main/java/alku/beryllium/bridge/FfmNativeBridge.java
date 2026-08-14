@@ -859,14 +859,38 @@ final class FfmNativeBridge {
         return withSession(session -> session.invoke(Function.CREATE_OPENSIMPLEX2_NOISE, seed), -1);
     }
 
+    static int createMinecraftNormalNoise(
+        double[] amplitudes,
+        double[] origins,
+        int[] permutations,
+        double lowestFrequencyInputFactor,
+        double lowestFrequencyValueFactor,
+        double valueFactor
+    ) {
+        return withSession(session -> session.invoke(
+            Function.CREATE_MINECRAFT_NORMAL_NOISE,
+            session.input(amplitudes, Kind.DOUBLE),
+            session.input(origins, Kind.DOUBLE),
+            session.input(permutations, Kind.INT),
+            lowestFrequencyInputFactor,
+            lowestFrequencyValueFactor,
+            valueFactor
+        ), -1);
+    }
+
     static int destroyNoiseGenerator(int generatorId) {
         return withStatusSession(session -> session.invoke(Function.DESTROY_NOISE_GENERATOR, generatorId));
     }
 
     static int batchSampleNoise3D(int generatorId, double[] positions, double[] output) {
+        return batchSampleNoise3D(generatorId, positions, positions.length / 3, output);
+    }
+
+    static int batchSampleNoise3D(int generatorId, double[] positions, int positionCount, double[] output) {
         return withStatusSession(session -> {
-            Buffer positionsBuffer = session.input(positions, Kind.DOUBLE);
-            Buffer outputBuffer = session.output(output, Kind.DOUBLE);
+            int positionsLength = Math.multiplyExact(positionCount, 3);
+            Buffer positionsBuffer = session.input(positions, Kind.DOUBLE, positionsLength);
+            Buffer outputBuffer = session.uninitializedOutput(output, Kind.DOUBLE, positionCount);
             int result = session.invoke(
                 Function.BATCH_SAMPLE_NOISE_3D,
                 generatorId,
@@ -874,7 +898,7 @@ final class FfmNativeBridge {
                 outputBuffer
             );
             if (result == NativeStatus.OK.code()) {
-                session.copyOutputs();
+                session.copyOutput(outputBuffer, positionCount);
             }
             return result;
         });
@@ -1066,6 +1090,7 @@ final class FfmNativeBridge {
         CREATE_PERLIN_NOISE("beryllium_create_perlin_noise", Kind.LONG),
         CREATE_SIMPLEX_NOISE("beryllium_create_simplex_noise", Kind.LONG),
         CREATE_OPENSIMPLEX2_NOISE("beryllium_create_opensimplex2_noise", Kind.LONG),
+        CREATE_MINECRAFT_NORMAL_NOISE("beryllium_create_minecraft_normal_noise", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE),
         DESTROY_NOISE_GENERATOR("beryllium_destroy_noise_generator", Kind.INT),
         BATCH_SAMPLE_NOISE_3D("beryllium_batch_sample_noise_3d", Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         BATCH_PRECOMPUTE_CHUNK_NOISE("beryllium_batch_precompute_chunk_noise", Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),

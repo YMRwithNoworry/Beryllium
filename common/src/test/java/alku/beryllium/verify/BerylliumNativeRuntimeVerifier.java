@@ -14,6 +14,7 @@ import alku.beryllium.compute.NativeBatchingVerifier;
 import alku.beryllium.compute.PotentialEnergyBatchVerifier;
 import alku.beryllium.compute.PrioritizedEntitySearchVerifier;
 import alku.beryllium.compute.SupportingBlockSearchVerifier;
+import alku.beryllium.worldgen.MinecraftNormalNoiseBridgeVerifier;
 import net.minecraft.core.BlockPos;
 
 import java.util.Arrays;
@@ -51,6 +52,7 @@ public final class BerylliumNativeRuntimeVerifier {
         verifyNativeAabbFilter();
         verifyNativeAabbIntersectionFilter();
         verifyNativePotentialEnergyChange();
+        MinecraftNormalNoiseBridgeVerifier.verifyNativeMatchesMinecraftReference();
         NativeBatchingVerifier.verifyDefaultThreshold();
         EntitySectionBatchVerifier.verifyAcceptIntersecting();
         EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();

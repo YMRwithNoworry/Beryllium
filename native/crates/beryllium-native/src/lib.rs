@@ -5,6 +5,7 @@ pub mod biome;
 mod error;
 mod ffi;
 mod kernel;
+mod minecraft_noise;
 pub mod noise;
 pub mod octave_noise;
 mod simd;

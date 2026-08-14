@@ -4,6 +4,7 @@ use std::collections::BinaryHeap;
 #[cfg(feature = "cubecl-preview")]
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Mutex;
+use std::sync::Arc;
 #[cfg(feature = "cubecl-preview")]
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 #[cfg(feature = "cubecl-preview")]
@@ -12,6 +13,7 @@ use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
 
 use crate::NativeError;
+use crate::minecraft_noise::MinecraftNormalNoise;
 use crate::noise::{NoiseGenerator, batch_sample_noise_3d_parallel, perlin::PerlinNoise, simplex::SimplexNoise, opensimplex2::OpenSimplex2Noise};
 use crate::biome::{BiomeWeight, batch_compute_biome_weights_3d, batch_interpolate_biome_values};
 #[cfg(feature = "cubecl-preview")]
@@ -620,39 +622,56 @@ fn potential_calibration_worker(receiver: mpsc::Receiver<PotentialCalibrationReq
     }
 }
 
-static NOISE_GENERATORS: Mutex<Vec<Box<dyn NoiseGenerator>>> = Mutex::new(Vec::new());
+static NOISE_GENERATORS: Mutex<Vec<Option<Arc<dyn NoiseGenerator>>>> = Mutex::new(Vec::new());
+
+fn register_noise_generator(generator: impl NoiseGenerator + 'static) -> Result<usize, NativeError> {
+    let mut generators = NOISE_GENERATORS
+        .lock()
+        .map_err(|_| NativeError::InvalidInput)?;
+    let id = generators.len();
+    generators.push(Some(Arc::new(generator)));
+    Ok(id)
+}
 
 pub fn create_perlin_noise(seed: i64) -> Result<usize, NativeError> {
-    let generator = Box::new(PerlinNoise::new(seed));
-    let mut generators = NOISE_GENERATORS.lock().unwrap();
-    let id = generators.len();
-    generators.push(generator);
-    Ok(id)
+    register_noise_generator(PerlinNoise::new(seed))
 }
 
 pub fn create_simplex_noise(seed: i64) -> Result<usize, NativeError> {
-    let generator = Box::new(SimplexNoise::new(seed));
-    let mut generators = NOISE_GENERATORS.lock().unwrap();
-    let id = generators.len();
-    generators.push(generator);
-    Ok(id)
+    register_noise_generator(SimplexNoise::new(seed))
 }
 
 pub fn create_opensimplex2_noise(seed: i64) -> Result<usize, NativeError> {
-    let generator = Box::new(OpenSimplex2Noise::new(seed));
-    let mut generators = NOISE_GENERATORS.lock().unwrap();
-    let id = generators.len();
-    generators.push(generator);
-    Ok(id)
+    register_noise_generator(OpenSimplex2Noise::new(seed))
+}
+
+pub fn create_minecraft_normal_noise(
+    amplitudes: &[f64],
+    origins: &[f64],
+    permutations: &[i32],
+    lowest_frequency_input_factor: f64,
+    lowest_frequency_value_factor: f64,
+    value_factor: f64,
+) -> Result<usize, NativeError> {
+    register_noise_generator(MinecraftNormalNoise::from_flat_state(
+        amplitudes,
+        origins,
+        permutations,
+        lowest_frequency_input_factor,
+        lowest_frequency_value_factor,
+        value_factor,
+    )?)
 }
 
 pub fn destroy_noise_generator(id: usize) -> Result<(), NativeError> {
-    let mut generators = NOISE_GENERATORS.lock().unwrap();
-    if id >= generators.len() {
-        return Err(NativeError::InvalidInput);
-    }
-    generators[id] = Box::new(PerlinNoise::new(0));
-    Ok(())
+    let mut generators = NOISE_GENERATORS
+        .lock()
+        .map_err(|_| NativeError::InvalidInput)?;
+    generators
+        .get_mut(id)
+        .and_then(Option::take)
+        .map(|_| ())
+        .ok_or(NativeError::InvalidInput)
 }
 
 pub fn batch_sample_noise_3d(
@@ -668,13 +687,14 @@ pub fn batch_sample_noise_3d(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    let generators = NOISE_GENERATORS.lock().unwrap();
-    if generator_id >= generators.len() {
-        return Err(NativeError::InvalidInput);
-    }
-
-    let generator = &*generators[generator_id];
-    batch_sample_noise_3d_parallel(generator, positions, output)
+    let generator = NOISE_GENERATORS
+        .lock()
+        .map_err(|_| NativeError::InvalidInput)?
+        .get(generator_id)
+        .and_then(Option::as_ref)
+        .cloned()
+        .ok_or(NativeError::InvalidInput)?;
+    batch_sample_noise_3d_parallel(generator.as_ref(), positions, output)
 }
 
 /// 批量生成多个区块的噪声数据
@@ -705,11 +725,13 @@ pub fn batch_precompute_chunk_noise(
         return Err(NativeError::OutputLengthMismatch);
     }
 
-    let generators = NOISE_GENERATORS.lock().unwrap();
-    if generator_id >= generators.len() {
-        return Err(NativeError::InvalidInput);
-    }
-    let generator = &*generators[generator_id];
+    let generator = NOISE_GENERATORS
+        .lock()
+        .map_err(|_| NativeError::InvalidInput)?
+        .get(generator_id)
+        .and_then(Option::as_ref)
+        .cloned()
+        .ok_or(NativeError::InvalidInput)?;
 
     // 使用并行处理每个区块
     const CHUNK_PARALLEL_THRESHOLD: usize = 4;
@@ -2846,6 +2868,55 @@ fn compare_java_double(left: f64, right: f64) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct BlockingNoise {
+        entered: Mutex<Option<std::sync::mpsc::Sender<()>>>,
+        release: Mutex<std::sync::mpsc::Receiver<()>>,
+    }
+
+    impl NoiseGenerator for BlockingNoise {
+        fn sample_2d(&self, x: f64, y: f64) -> f64 {
+            self.sample_3d(x, y, 0.0)
+        }
+
+        fn sample_3d(&self, _x: f64, _y: f64, _z: f64) -> f64 {
+            if let Some(entered) = self.entered.lock().unwrap().take() {
+                entered.send(()).unwrap();
+            }
+            self.release.lock().unwrap().recv().unwrap();
+            1.0
+        }
+    }
+
+    #[test]
+    fn noise_sampling_should_not_hold_registry_lock() {
+        let (entered_sender, entered_receiver) = std::sync::mpsc::channel();
+        let (release_sender, release_receiver) = std::sync::mpsc::channel();
+        let generator_id = register_noise_generator(BlockingNoise {
+            entered: Mutex::new(Some(entered_sender)),
+            release: Mutex::new(release_receiver),
+        })
+        .unwrap();
+        let sampling = std::thread::spawn(move || {
+            let mut output = [0.0];
+            batch_sample_noise_3d(generator_id, &[0.0, 0.0, 0.0], &mut output).unwrap();
+            output[0]
+        });
+        entered_receiver.recv().unwrap();
+
+        let (registered_sender, registered_receiver) = std::sync::mpsc::channel();
+        let registration = std::thread::spawn(move || {
+            registered_sender.send(create_perlin_noise(42)).unwrap();
+        });
+        let registered = registered_receiver.recv_timeout(std::time::Duration::from_millis(250));
+        release_sender.send(()).unwrap();
+
+        assert_eq!(sampling.join().unwrap(), 1.0);
+        registration.join().unwrap();
+        let registered_id = registered.expect("noise registry lock was held during sampling").unwrap();
+        destroy_noise_generator(generator_id).unwrap();
+        destroy_noise_generator(registered_id).unwrap();
+    }
 
     static POTENTIAL_CACHE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 

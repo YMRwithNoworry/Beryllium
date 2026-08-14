@@ -2,7 +2,7 @@
 
 Beryllium 是一个基于 Architectury 的 Minecraft 多加载器性能模组，目标平台是 **Fabric** 和 **NeoForge**。
 
-当前功能是提供一个 Rust 加速的批量计算后端，并只在有稳定端到端收益证据的距离排序、点电荷和区块 Top-K 场景接管原版路径。其余内核保留 Java 参考实现与显式调优入口，默认不跨 FFM。
+当前功能是提供一个 Rust 加速的批量计算后端，并只在有稳定端到端收益证据的距离排序、点电荷、区块 Top-K 和原版噪声批量采样场景接管原版路径。其余内核保留 Java 参考实现与显式调优入口，默认不跨 FFM。
 
 Java 与 Rust 之间使用 Java 21 FFM downcall，不依赖 JNI、`jni` 或 `jni-sys`。
 
@@ -23,6 +23,7 @@ Java 与 Rust 之间使用 Java 21 FFM downcall，不依赖 JNI、`jni` 或 `jni
 - FFM scratch session：每个 Java 线程复用 native buffer 和 arena slot，并只传输当次数组的有效前缀；已实测的默认热点预适配精确 MethodHandle 签名，避免每次 downcall 构造通用参数容器。buffer 扩容或类型切换时释放旧 arena，避免长期累积 native 内存。
 - PotentialCalculator 批处理：点电荷贡献在 Rust 中按索引计算，再沿原版顺序累加；小批量直接调用原版点电荷方法，不经过通用数据打包。
 - PlayerChunkSender 区块批次：远程连接的大型待发送集合会按 FastUtil stream 的哈希桶遇到顺序写入可重入 Java scratch，再通过 FFM 交给 Rust 选择最近 Top-K；保持原版 Guava 的 signed-int 回绕距离、Quickselect tie 行为、空区块过滤和移除副作用。低于实测阈值、native 不可用或集合实现被其他模组替换时执行原版分支。
+- Minecraft NormalNoise 批处理：`DensityFunctions.Noise.fillArray` 在达到实测阈值后将坐标批量交给 Rust，复用已注册的原版 octave、origin 和 permutation 状态；结果与 Java 原版逐位一致。多 octave 默认阈值为 `128`，单 octave 为 `512`，小数组和 native 不可用时保留原版路径，避免 FFM 固定成本造成卡顿。
 
 ## 目录结构
 
@@ -61,9 +62,9 @@ gradle :neoforge:runClient
 gradle :common:test :fabric:test :neoforge:test
 ```
 
-当前 `:common:check` 会运行三个 JavaExec 验证器：`javaParityTest` 覆盖 Java fallback/native 语义一致性，`nativeRuntimeTest` 要求打包进 classpath 的 native 后端真实加载并执行所有 FFM 入口，`ffmReuseTest` 验证线程本地 FFM buffer 复用和并发隔离。
+当前 `:common:check` 会运行 JavaExec 验证器：`javaParityTest` 覆盖 Java fallback/native 语义一致性，`nativeRuntimeTest` 要求打包进 classpath 的 native 后端真实加载并执行所有 FFM 入口，`ffmReuseTest` 验证线程本地 FFM buffer 复用和并发隔离，`inputLatencyStateTest` 验证输入时序和重复处理门控。
 
-性能对比可运行 `gradle :common:performanceBenchmark`，测试说明和实测记录见 [`docs/performance-benchmark.md`](docs/performance-benchmark.md)。结果覆盖最近物品距离、最近实体、点电荷、方块距离内核和 PlayerChunkSender Top-K 阶段，不能直接换算成整体 TPS 提升。
+性能对比可运行 `gradle :common:performanceBenchmark`；NormalNoise 专项可运行 `gradle :common:normalNoisePerformanceBenchmark`。测试说明和实测记录见 [`docs/performance-benchmark.md`](docs/performance-benchmark.md)。结果仅表示对应局部计算路径，不能直接换算成整体 TPS 提升。
 
 ### 运行单个测试
 
@@ -124,4 +125,6 @@ gradle -PberylliumCubeclPreview=true :common:build :fabric:build :neoforge:build
 - `-Dberyllium.native.potentialBatchThreshold=<正整数>`：控制 PotentialCalculator 点电荷计算跨 FFM 的最小点电荷数，默认 `512`。低于阈值时直接按原版顺序在 Java 中计算，避免小批量数组编组开销；`/beryllium native` 会显示当前阈值。
 - `-Dberyllium.native.chunkSendSelectionThreshold=<正整数>`：控制 PlayerChunkSender 最近 Top-K 跨 FFM 的最小待发送区块数，默认 `8192`。Java 在每个调用线程内复用候选快照与输出索引，Rust 复用距离和选择 scratch buffer；低于阈值或 native 不可用时保留原版 Guava 路径。该保守阈值避开了复测中有波动的中等候选规模。
 - `-Dberyllium.native.nearestItemTopKThreshold=<正整数>`：控制最近物品传感器先走 Rust Top-K 快路径的最小候选数，默认 `1024`。快路径仅检查按原版距离/等距规则排列的最近 `16` 个严格半径内候选；未命中时继续完整排序，避免改变谓词与结果语义。
+- `-Dberyllium.native.normalNoiseBatchThreshold=<正整数>`：控制包含多个有效 octave 的原版 NormalNoise 批量采样跨 FFM 的最小样本数，默认 `128`。
+- `-Dberyllium.native.singleOctaveNormalNoiseBatchThreshold=<正整数>`：控制只有一个有效 octave 的 NormalNoise 批量采样跨 FFM 的最小样本数，默认 `512`。单 octave 的 Java 路径更轻，因此使用更保守的阈值；零有效 octave 永不进入 native。
 - Rust Rayon 通用批处理内核从 `2048` 个候选开始并行，半径与 AABB 筛选从 `16384` 个候选开始，最近方块查询从 `65536` 个候选开始；最近物品 Top-K 从 `1048576` 个候选开始，PlayerChunkSender 的轻量距离预计算从 `32768` 个候选开始，避免调度开销抵消收益。
