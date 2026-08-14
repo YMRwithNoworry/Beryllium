@@ -17,8 +17,8 @@ public final class ClientInputLatency {
         return ENABLED;
     }
 
-    public static boolean shouldFlushKeyboardCallback(boolean opensTextInput) {
-        return InputLatencyGate.shouldFlushKeyboardCallback(opensTextInput);
+    public static boolean shouldFlushKeyboardCallback(boolean gameplayInput, boolean opensTextInput) {
+        return InputLatencyGate.shouldFlushKeyboardCallback(gameplayInput, opensTextInput);
     }
 
     public static void flushFromCallback(

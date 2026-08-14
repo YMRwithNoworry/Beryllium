@@ -25,12 +25,20 @@ public final class InputLatencyGateVerifier {
 
     private static void delaysTextOpeningKeysUntilVanillaTick() {
         check(
-            !InputLatencyGate.shouldFlushKeyboardCallback(true),
+            !InputLatencyGate.shouldFlushKeyboardCallback(false, true),
             "chat and command key presses must wait until the vanilla tick"
         );
         check(
-            InputLatencyGate.shouldFlushKeyboardCallback(false),
-            "ordinary keyboard callbacks must retain immediate handling"
+            !InputLatencyGate.shouldFlushKeyboardCallback(false, false),
+            "non-gameplay keyboard callbacks must retain vanilla ordering"
+        );
+        check(
+            InputLatencyGate.shouldFlushKeyboardCallback(true, false),
+            "gameplay keyboard callbacks must retain immediate handling"
+        );
+        check(
+            !InputLatencyGate.shouldFlushKeyboardCallback(true, true),
+            "text-opening bindings must win over conflicting gameplay bindings"
         );
     }
 

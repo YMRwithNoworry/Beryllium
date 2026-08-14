@@ -22,8 +22,8 @@ final class InputLatencyGate {
     private boolean useOccurred;
     private boolean mouseSmoothersReset;
 
-    static boolean shouldFlushKeyboardCallback(boolean opensTextInput) {
-        return !opensTextInput;
+    static boolean shouldFlushKeyboardCallback(boolean gameplayInput, boolean opensTextInput) {
+        return gameplayInput && !opensTextInput;
     }
 
     int planFlush(
