@@ -7,6 +7,12 @@ use crate::NativeError;
 pub trait NoiseGenerator: Send + Sync {
     fn sample_2d(&self, x: f64, y: f64) -> f64;
     fn sample_3d(&self, x: f64, y: f64, z: f64) -> f64;
+
+    /// Relative per-sample cost in single-octave units, used to decide when a
+    /// batch carries enough work to justify Rayon fork/join overhead.
+    fn sample_cost(&self) -> usize {
+        1
+    }
 }
 
 pub fn batch_sample_noise_2d(
@@ -68,9 +74,13 @@ pub fn batch_sample_noise_3d_parallel(
     }
 
     use rayon::prelude::*;
-    const PARALLEL_THRESHOLD: usize = 1024;
+    // Gate on total work (samples × per-sample octave cost), not raw sample count:
+    // a 256-sample five-octave batch carries as much compute as a 1280-sample
+    // single-octave batch and deserves the same parallel treatment.
+    const PARALLEL_WORK_THRESHOLD: usize = 1024;
 
-    if count < PARALLEL_THRESHOLD {
+    let work = count.saturating_mul(generator.sample_cost().max(1));
+    if work < PARALLEL_WORK_THRESHOLD {
         return batch_sample_noise_3d(generator, positions, output);
     }
 

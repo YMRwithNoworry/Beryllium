@@ -246,6 +246,12 @@ impl MinecraftBlendedNoise {
 }
 
 impl NoiseGenerator for MinecraftBlendedNoise {
+    fn sample_cost(&self) -> usize {
+        // 8 main octaves always run; of the 32 limit-octave slots the blend
+        // cutoff usually skips one side entirely, so half is the typical load.
+        BLENDED_MAIN_OCTAVES + BLENDED_LIMIT_OCTAVES
+    }
+
     fn sample_2d(&self, x: f64, y: f64) -> f64 {
         self.sample_3d(x, y, 0.0)
     }
@@ -396,6 +402,16 @@ impl MinecraftNormalNoise {
 }
 
 impl NoiseGenerator for MinecraftNormalNoise {
+    fn sample_cost(&self) -> usize {
+        // sample_3d walks first_levels and second_levels, skipping None slots.
+        let active = self
+            .first_levels
+            .iter()
+            .filter(|level| level.is_some())
+            .count();
+        active.saturating_mul(2)
+    }
+
     fn sample_2d(&self, x: f64, y: f64) -> f64 {
         self.sample_3d(x, y, 0.0)
     }

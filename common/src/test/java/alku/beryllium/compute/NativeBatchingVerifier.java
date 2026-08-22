@@ -58,9 +58,9 @@ public final class NativeBatchingVerifier {
                     + NativeBatching.normalNoiseBatchThreshold()
             );
         }
-        if (NativeBatching.singleOctaveNormalNoiseBatchThreshold() != 1_024) {
+        if (NativeBatching.singleOctaveNormalNoiseBatchThreshold() != 512) {
             throw new AssertionError(
-                "Native single-octave NormalNoise threshold mismatch, expected 1024 but got "
+                "Native single-octave NormalNoise threshold mismatch, expected 512 but got "
                     + NativeBatching.singleOctaveNormalNoiseBatchThreshold()
             );
         }
@@ -70,25 +70,25 @@ public final class NativeBatchingVerifier {
         if (NativeBatching.shouldUseNativeNormalNoiseBatch(128, 2) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native multi-octave NormalNoise activation should follow native availability");
         }
-        if (NativeBatching.shouldUseNativeNormalNoiseBatch(1_023, 1)) {
+        if (NativeBatching.shouldUseNativeNormalNoiseBatch(511, 1)) {
             throw new AssertionError("Native single-octave NormalNoise should remain disabled below its threshold");
         }
-        if (NativeBatching.shouldUseNativeNormalNoiseBatch(1_024, 1) != NativeBridge.isLoaded()) {
+        if (NativeBatching.shouldUseNativeNormalNoiseBatch(512, 1) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native single-octave NormalNoise activation should follow native availability");
         }
         if (NativeBatching.shouldUseNativeNormalNoiseBatch(1024, 0)) {
             throw new AssertionError("NormalNoise without active octaves must remain on the Java path");
         }
-        if (NativeBatching.blendedNoiseBatchThreshold() != 1_024) {
+        if (NativeBatching.blendedNoiseBatchThreshold() != 49) {
             throw new AssertionError(
-                "Native BlendedNoise threshold mismatch, expected 1024 but got "
+                "Native BlendedNoise threshold mismatch, expected 49 but got "
                     + NativeBatching.blendedNoiseBatchThreshold()
             );
         }
-        if (NativeBatching.shouldUseNativeBlendedNoiseBatch(1_023)) {
+        if (NativeBatching.shouldUseNativeBlendedNoiseBatch(48)) {
             throw new AssertionError("Native BlendedNoise should remain disabled below its threshold");
         }
-        if (NativeBatching.shouldUseNativeBlendedNoiseBatch(1_024) != NativeBridge.isLoaded()) {
+        if (NativeBatching.shouldUseNativeBlendedNoiseBatch(49) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native BlendedNoise activation should follow native availability at its threshold");
         }
         if (NativeBatching.shouldUseNativeVariableRadiusBatch(16_384)) {

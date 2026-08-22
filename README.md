@@ -23,8 +23,8 @@ Java 与 Rust 之间使用 Java 21 FFM downcall，不依赖 JNI、`jni` 或 `jni
 - FFM scratch session：每个 Java 线程复用 native buffer 和 arena slot，并只传输当次数组的有效前缀；已实测的默认热点预适配精确 MethodHandle 签名，避免每次 downcall 构造通用参数容器。buffer 扩容或类型切换时释放旧 arena，避免长期累积 native 内存。
 - PotentialCalculator 批处理：点电荷贡献在 Rust 中按索引计算，再沿原版顺序累加；小批量直接调用原版点电荷方法，不经过通用数据打包。
 - PlayerChunkSender 区块批次：远程连接的大型待发送集合会按 FastUtil stream 的哈希桶遇到顺序写入可重入 Java scratch，再通过 FFM 交给 Rust 选择最近 Top-K；保持原版 Guava 的 signed-int 回绕距离、Quickselect tie 行为、空区块过滤和移除副作用。低于实测阈值、native 不可用或集合实现被其他模组替换时执行原版分支。
-- Minecraft NormalNoise 批处理：`DensityFunctions.Noise.fillArray` 在达到实测阈值后将坐标批量交给 Rust，复用已注册的原版 octave、origin 和 permutation 状态；结果与 Java 原版逐位一致。多 octave 默认阈值为 `128`，单 octave 为 `1024`，小数组和 native 不可用时保留原版路径，避免 FFM 固定成本造成卡顿。
-- Minecraft BlendedNoise 批处理：主世界、下界和末地的基础三维密度噪声一次注册 `40` 个原版 `ImprovedNoise` 状态，`fillArray` 只传批量方块坐标；Rust 保持原版 wrap、Y-smear、分支跳过和浮点顺序。默认从 `1,024` 个样本接管：HotSpot 上小批次因 FFM 固定成本反而慢于 Java，`1,024` 起 native 稳定快约 `3x`。
+- Minecraft NormalNoise 批处理：`DensityFunctions.Noise.fillArray` 在达到实测阈值后将坐标批量交给 Rust，复用已注册的原版 octave、origin 和 permutation 状态；结果与 Java 原版逐位一致。多 octave 默认阈值为 `128`，单 octave 为 `512`，小数组和 native 不可用时保留原版路径，避免 FFM 固定成本造成卡顿。
+- Minecraft BlendedNoise 批处理：主世界、下界和末地的基础三维密度噪声一次注册 `40` 个原版 `ImprovedNoise` 状态，`fillArray` 只传批量方块坐标；Rust 保持原版 wrap、Y-smear、分支跳过和浮点顺序。默认从 `49` 个样本接管：Rust 侧按工作量（样本数 × octave 开销）触发 Rayon 并行，`49` 点切片实测约 `2x`，`128` 点以上约 `3x`；`33` 点及以下串行档不占优，保留原版路径。
 
 ## 目录结构
 
@@ -127,6 +127,6 @@ gradle -PberylliumCubeclPreview=true :common:build :fabric:build :neoforge:build
 - `-Dberyllium.native.chunkSendSelectionThreshold=<正整数>`：控制 PlayerChunkSender 最近 Top-K 跨 FFM 的最小待发送区块数，默认 `8192`。Java 在每个调用线程内复用候选快照与输出索引，Rust 复用距离和选择 scratch buffer；低于阈值或 native 不可用时保留原版 Guava 路径。该保守阈值避开了复测中有波动的中等候选规模。
 - `-Dberyllium.native.nearestItemTopKThreshold=<正整数>`：控制最近物品传感器先走 Rust Top-K 快路径的最小候选数，默认 `1024`。快路径仅检查按原版距离/等距规则排列的最近 `16` 个严格半径内候选；未命中时继续完整排序，避免改变谓词与结果语义。
 - `-Dberyllium.native.normalNoiseBatchThreshold=<正整数>`：控制包含多个有效 octave 的原版 NormalNoise 批量采样跨 FFM 的最小样本数，默认 `128`。
-- `-Dberyllium.native.singleOctaveNormalNoiseBatchThreshold=<正整数>`：控制只有一个有效 octave 的 NormalNoise 批量采样跨 FFM 的最小样本数，默认 `1024`。单 octave 的 Java 路径更轻，HotSpot 实测 `512` 及以下与 Java 基本持平甚至回退，`1024` 起进入 Rayon 并行档稳定快 `1.6x` 以上；零有效 octave 永不进入 native。
-- `-Dberyllium.native.blendedNoiseBatchThreshold=<正整数>`：控制原版 BlendedNoise 跨 FFM 的最小样本数，默认 `1024`。HotSpot 复测显示 `512` 及以下样本 native 慢于 Java（最高约 `20%` 回退），`1024` 起稳定快约 `3x`；GraalVM 上小批次原有 `1.01x-1.17x` 收益，可用该参数调回 `17`。更小数组保留原版路径。
+- `-Dberyllium.native.singleOctaveNormalNoiseBatchThreshold=<正整数>`：控制只有一个有效 octave 的 NormalNoise 批量采样跨 FFM 的最小样本数，默认 `512`。单 octave 每样本执行两遍 Perlin，`512` 样本即达到 Rust 侧工作量并行档（HotSpot 实测约 `1.8x`）；更小批次保留 Java 路径；零有效 octave 永不进入 native。
+- `-Dberyllium.native.blendedNoiseBatchThreshold=<正整数>`：控制原版 BlendedNoise 跨 FFM 的最小样本数，默认 `49`。Rust 内核按工作量（样本数 × 每 octave 成本，BlendedNoise 每样本约 `24`）从 `1024` 工作单位起 Rayon 并行：`49` 点切片实测约 `2x`、`128/512` 点约 `3x`；`33` 点以下串行档在 HotSpot 上约 `0.87x`，保留原版路径。
 - Rust Rayon 通用批处理内核从 `2048` 个候选开始并行，半径与 AABB 筛选从 `16384` 个候选开始，最近方块查询从 `65536` 个候选开始；最近物品 Top-K 从 `1048576` 个候选开始，PlayerChunkSender 的轻量距离预计算从 `32768` 个候选开始，避免调度开销抵消收益。

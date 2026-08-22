@@ -314,7 +314,7 @@ CubeCL/LLVM 静态链接产物约 `83.3 MB`，并且在 GraalVM Community 21 中
 | 5 | 1,024 | 630,000 ns | 174,100 ns | 3.619x |
 | 5 | 2,048 | 1,159,700 ns | 318,300 ns | 3.643x |
 
-单 octave 在 `512` 处两轮复测分别在 `0.646x` 与 `1.011x` 之间波动，无稳定收益；`1024` 起稳定快 `1.6x` 以上，因此单 octave 默认阈值从 `512` 上调至 `1024`。多 octave 保持 `128`：HotSpot 上该档位处于 `1.0x` 左右的噪音区间，GraalVM 上仍有 `1.16x-1.58x` 收益，且低于阈值的批次本就留在 Java 路径。
+单 octave 在 `512` 处两轮复测分别在 `0.646x` 与 `1.011x` 之间波动，无稳定收益；`1024` 起稳定快 `1.6x` 以上。多 octave 保持 `128`：HotSpot 上该档位处于 `1.0x` 左右的噪音区间，GraalVM 上仍有 `1.16x-1.58x` 收益，且低于阈值的批次本就留在 Java 路径。随后 Rust 内核改为按工作量触发 Rayon 并行（见下一节），单 octave `512` 样本的 `512 × 2 = 1024` 工作单位进入并行档并测得 `1.815x`，因此最终单 octave 阈值保持 `512`。
 
 ## 2026-08-14 Minecraft BlendedNoise 批量采样
 
@@ -348,3 +348,28 @@ CubeCL/LLVM 静态链接产物约 `83.3 MB`，并且在 GraalVM Community 21 中
 | 2,048 | 3,265,900 ns | 913,500 ns | 3.575x |
 
 交叉点位于 `512` 与 `1024` 之间：HotSpot 上小于 `1024` 样本 native 均慢于 Java，而 `1024` 起 native 稳定快约 `3x`。GraalVM 小批次 `1.01x-1.17x` 的收益不足以抵消 HotSpot 上最高约 `20%` 的回退，因此默认阈值从 `17` 上调至 `1024`（`-Dberyllium.native.blendedNoiseBatchThreshold` 可覆盖）。大切片（噪声插值缓存填充、`fillArray` 全量路径）仍获得约 `3x` 加速。
+
+## 2026-08-22 噪声内核改为按工作量触发 Rayon 并行
+
+排查上述交叉点时发现真正的分界不是 FFM 开销：Rust 内核 `batch_sample_noise_3d_parallel` 此前按样本数（`1024`）决定是否并行，而 BlendedNoise 每样本约 `24` 个 octave、多 octave NormalNoise 每样本 `2 × 有效 octave` 个 Perlin 采样——中重型批次在 `512` 样本以下一直是单线程，与 JIT 后的 Java 打平甚至更慢；`1024` 样本起进入 Rayon 才跳到 `3x`。
+
+改为 `NoiseGenerator::sample_cost()`（每样本 octave 开销，默认 `1`）× 样本数 ≥ `1024` 工作单位即并行：
+
+- BlendedNoise：`8 main + 16 limit`（一侧常被 blend 跳过）= `24`；
+- MinecraftNormalNoise：`2 × 有效 octave`；
+- 其余生成器保持 `1`，维持原行为。
+
+HotSpot（Adoptium 21.0.12，同基准方法）复测：
+
+| 内核 | 样本数 | 改造前 | 改造后 |
+|---|---:|---:|---:|
+| BlendedNoise | 49 | 0.967x | 1.966x |
+| BlendedNoise | 128 | 0.891x | 2.860x |
+| BlendedNoise | 512 | 0.809x | 3.028x |
+| NormalNoise 2 octave | 256 | 1.067x | 2.088x |
+| NormalNoise 2 octave | 512 | 1.064x | 2.644x |
+| NormalNoise 5 octave | 128 | 0.992x | 2.618x |
+| NormalNoise 5 octave | 256 | 1.023x | 3.163x |
+| NormalNoise 1 octave | 512 | 1.011x | 1.815x |
+
+据此把 BlendedNoise 默认阈值定为 `49`（`49 × 24 = 1176` 工作单位进入并行档，覆盖原版 `49` 点切片；`33 × 24 = 792` 仍为串行档，HotSpot 约 `0.87x`，保留 Java 路径），单 octave NormalNoise 阈值回到 `512`（`512 × 2 = 1024` 恰好进入并行档，实测 `1.815x`）。多 octave 维持 `128`（`2 octave × 128 = 256` 仍串行但 HotSpot 上约 `1.09x`；`5 octave × 128 = 640` 亦串行；`2 octave × 256` 起进入并行档）。逐位一致性由既有 parity 校验覆盖，`cargo test` 113 项全通过。
