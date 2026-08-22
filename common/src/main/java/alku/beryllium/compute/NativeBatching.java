@@ -18,7 +18,9 @@ public final class NativeBatching {
     private static final int DEFAULT_VARIABLE_RADIUS_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final int DEFAULT_AABB_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final int DEFAULT_NORMAL_NOISE_BATCH_THRESHOLD = 128;
-    private static final int DEFAULT_SINGLE_OCTAVE_NORMAL_NOISE_BATCH_THRESHOLD = 512;
+    // HotSpot re-measurement: single-octave batches below 1024 samples hover around parity while
+    // 1024+ engages the Rayon parallel path at a consistent ~1.6x-2.4x.
+    private static final int DEFAULT_SINGLE_OCTAVE_NORMAL_NOISE_BATCH_THRESHOLD = 1_024;
     // Measured crossover on the blended-noise benchmark: native only wins from ~1024 samples upward.
     private static final int DEFAULT_BLENDED_NOISE_BATCH_THRESHOLD = 1_024;
     private static final String ENTITY_BATCH_THRESHOLD_PROPERTY = "beryllium.native.entityBatchThreshold";

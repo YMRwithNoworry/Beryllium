@@ -47,7 +47,7 @@ public final class MinecraftNormalNoisePerformanceBenchmark {
             }
 
             try {
-                for (int sampleCount : new int[] {32, 49, 64, 128, 256, 512}) {
+                for (int sampleCount : new int[] {32, 49, 64, 128, 256, 512, 1_024, 2_048}) {
                     runCase(
                         generator,
                         activeOctaves,

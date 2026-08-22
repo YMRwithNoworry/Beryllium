@@ -58,9 +58,9 @@ public final class NativeBatchingVerifier {
                     + NativeBatching.normalNoiseBatchThreshold()
             );
         }
-        if (NativeBatching.singleOctaveNormalNoiseBatchThreshold() != 512) {
+        if (NativeBatching.singleOctaveNormalNoiseBatchThreshold() != 1_024) {
             throw new AssertionError(
-                "Native single-octave NormalNoise threshold mismatch, expected 512 but got "
+                "Native single-octave NormalNoise threshold mismatch, expected 1024 but got "
                     + NativeBatching.singleOctaveNormalNoiseBatchThreshold()
             );
         }
@@ -70,10 +70,10 @@ public final class NativeBatchingVerifier {
         if (NativeBatching.shouldUseNativeNormalNoiseBatch(128, 2) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native multi-octave NormalNoise activation should follow native availability");
         }
-        if (NativeBatching.shouldUseNativeNormalNoiseBatch(511, 1)) {
+        if (NativeBatching.shouldUseNativeNormalNoiseBatch(1_023, 1)) {
             throw new AssertionError("Native single-octave NormalNoise should remain disabled below its threshold");
         }
-        if (NativeBatching.shouldUseNativeNormalNoiseBatch(512, 1) != NativeBridge.isLoaded()) {
+        if (NativeBatching.shouldUseNativeNormalNoiseBatch(1_024, 1) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native single-octave NormalNoise activation should follow native availability");
         }
         if (NativeBatching.shouldUseNativeNormalNoiseBatch(1024, 0)) {

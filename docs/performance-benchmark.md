@@ -301,6 +301,21 @@ CubeCL/LLVM 静态链接产物约 `83.3 MB`，并且在 GraalVM Community 21 中
 
 因此生产门控按有效 octave 分层：多 octave 从 `128` 个样本接管，单 octave 从 `512` 个样本接管，零有效 octave 和更小数组继续使用 Java。该数据只衡量一次 `fillArray` 的局部计算，不能直接推导整体区块生成速度或 TPS。
 
+## 2026-08-22 NormalNoise 阈值在 HotSpot 上复测
+
+上述 NormalNoise 表格同样来自 GraalVM。改用 Eclipse Adoptium HotSpot JDK 21.0.12 复测（Windows x86_64，单轮中位数，预热 `120` 次、测量 `401` 次），`512` 及以下样本基本与 Java 持平甚至回退，`1024` 起 Rust 内核进入 Rayon 并行档后全面转正：
+
+| 有效 octave | 样本数 | Java 中位数 | Native 中位数 | 加速比 |
+|---:|---:|---:|---:|---:|
+| 1 | 512 | 74,100 ns | 73,300 ns | 1.011x |
+| 1 | 1,024 | 138,200 ns | 84,400 ns | 1.637x |
+| 1 | 2,048 | 314,400 ns | 129,500 ns | 2.428x |
+| 2 | 1,024 | 297,300 ns | 99,100 ns | 3.000x |
+| 5 | 1,024 | 630,000 ns | 174,100 ns | 3.619x |
+| 5 | 2,048 | 1,159,700 ns | 318,300 ns | 3.643x |
+
+单 octave 在 `512` 处两轮复测分别在 `0.646x` 与 `1.011x` 之间波动，无稳定收益；`1024` 起稳定快 `1.6x` 以上，因此单 octave 默认阈值从 `512` 上调至 `1024`。多 octave 保持 `128`：HotSpot 上该档位处于 `1.0x` 左右的噪音区间，GraalVM 上仍有 `1.16x-1.58x` 收益，且低于阈值的批次本就留在 Java 路径。
+
 ## 2026-08-14 Minecraft BlendedNoise 批量采样
 
 原版 `BlendedNoise` 是主世界、下界和末地基础三维密度的共同实现，每个样本先计算 `8` 个 main octave，再根据 blend 结果计算最多 `16 + 16` 个 limit octave。新路径一次注册三组共 `40` 个 `ImprovedNoise` 的 origin 与 permutation，以线程本地坐标 buffer 和精确 FFM MethodHandle 批量调用 Rust；小于门槛、native 不可用或注册失败时执行原版 Java。
