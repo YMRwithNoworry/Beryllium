@@ -25,6 +25,7 @@ Java 与 Rust 之间使用 Java 21 FFM downcall，不依赖 JNI、`jni` 或 `jni
 - PlayerChunkSender 区块批次：远程连接的大型待发送集合会按 FastUtil stream 的哈希桶遇到顺序写入可重入 Java scratch，再通过 FFM 交给 Rust 选择最近 Top-K；保持原版 Guava 的 signed-int 回绕距离、Quickselect tie 行为、空区块过滤和移除副作用。低于实测阈值、native 不可用或集合实现被其他模组替换时执行原版分支。
 - Minecraft NormalNoise 批处理：`DensityFunctions.Noise.fillArray` 在达到实测阈值后将坐标批量交给 Rust，复用已注册的原版 octave、origin 和 permutation 状态；结果与 Java 原版逐位一致。多 octave 默认阈值为 `128`，单 octave 为 `512`，小数组和 native 不可用时保留原版路径，避免 FFM 固定成本造成卡顿。
 - Minecraft BlendedNoise 批处理：主世界、下界和末地的基础三维密度噪声一次注册 `40` 个原版 `ImprovedNoise` 状态，`fillArray` 只传批量方块坐标；Rust 保持原版 wrap、Y-smear、分支跳过和浮点顺序。默认从 `49` 个样本接管：Rust 侧按工作量（样本数 × octave 开销）触发 Rayon 并行，`49` 点切片实测约 `2x`，`128` 点以上约 `3x`；`33` 点及以下串行档不占优，保留原版路径。
+- PalettedContainer 网络打包（默认禁用）：Rust 内核可逐字节复刻区块包中 `PalettedContainer.Data.write` 的 `bits 字节 + palette varint + 大端 long 数组` 格式，覆盖 SingleValue/Linear/HashMap/Global 四种 palette 并有逐字节 parity 校验；但原版 `writeLongArray` 经 JIT 后已按约 `2ns/long` 直写 netty 缓冲，FFM 路径多出输入/输出两次数组拷贝与一次 `writeBytes`，实测各形态均为 `0.51x-0.96x`，因此默认保持原版路径。
 
 ## 目录结构
 
@@ -129,4 +130,5 @@ gradle -PberylliumCubeclPreview=true :common:build :fabric:build :neoforge:build
 - `-Dberyllium.native.normalNoiseBatchThreshold=<正整数>`：控制包含多个有效 octave 的原版 NormalNoise 批量采样跨 FFM 的最小样本数，默认 `128`。
 - `-Dberyllium.native.singleOctaveNormalNoiseBatchThreshold=<正整数>`：控制只有一个有效 octave 的 NormalNoise 批量采样跨 FFM 的最小样本数，默认 `512`。单 octave 每样本执行两遍 Perlin，`512` 样本即达到 Rust 侧工作量并行档（HotSpot 实测约 `1.8x`）；更小批次保留 Java 路径；零有效 octave 永不进入 native。
 - `-Dberyllium.native.blendedNoiseBatchThreshold=<正整数>`：控制原版 BlendedNoise 跨 FFM 的最小样本数，默认 `49`。Rust 内核按工作量（样本数 × 每 octave 成本，BlendedNoise 每样本约 `24`）从 `1024` 工作单位起 Rayon 并行：`49` 点切片实测约 `2x`、`128/512` 点约 `3x`；`33` 点以下串行档在 HotSpot 上约 `0.87x`，保留原版路径。
+- `-Dberyllium.native.palettedContainerPackThreshold=<正整数>`：控制区块包 PalettedContainer 序列化跨 FFM 的最小 packed long 数，默认 `Integer.MAX_VALUE`（禁用）。该路径保持逐字节 parity 校验可用，但实测 `0.51x-0.96x` 无收益，仅在未来 JVM 或 FFM 语义变化时作为实验开关。
 - Rust Rayon 通用批处理内核从 `2048` 个候选开始并行，半径与 AABB 筛选从 `16384` 个候选开始，最近方块查询从 `65536` 个候选开始；最近物品 Top-K 从 `1048576` 个候选开始，PlayerChunkSender 的轻量距离预计算从 `32768` 个候选开始，避免调度开销抵消收益。

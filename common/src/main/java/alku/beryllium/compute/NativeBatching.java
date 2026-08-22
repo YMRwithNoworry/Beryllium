@@ -24,6 +24,10 @@ public final class NativeBatching {
     // With work-based Rayon gating, 49-sample blended fills (work = 49 * 24) cross the parallel
     // threshold at ~2x; 33-sample fills stay serial and slightly behind Java, so they stay gated out.
     private static final int DEFAULT_BLENDED_NOISE_BATCH_THRESHOLD = 49;
+    // Vanilla writeLongArray already writes each packed long straight into the netty buffer in
+    // ~2ns; the FFM path pays an extra input copy, output copy, and bulk writeBytes and measured
+    // 0.51x-0.96x across every palette shape, so the packer stays disabled by default.
+    private static final int DEFAULT_PALETED_CONTAINER_PACK_THRESHOLD = Integer.MAX_VALUE;
     private static final String ENTITY_BATCH_THRESHOLD_PROPERTY = "beryllium.native.entityBatchThreshold";
     private static final String ENTITY_DISTANCE_SORT_THRESHOLD_PROPERTY =
         "beryllium.native.entityDistanceSortThreshold";
@@ -38,6 +42,8 @@ public final class NativeBatching {
         "beryllium.native.singleOctaveNormalNoiseBatchThreshold";
     private static final String BLENDED_NOISE_BATCH_THRESHOLD_PROPERTY =
         "beryllium.native.blendedNoiseBatchThreshold";
+    private static final String PALETED_CONTAINER_PACK_THRESHOLD_PROPERTY =
+        "beryllium.native.palettedContainerPackThreshold";
 
     private static final int ENTITY_BATCH_THRESHOLD = readPositiveIntProperty(
         ENTITY_BATCH_THRESHOLD_PROPERTY,
@@ -82,6 +88,10 @@ public final class NativeBatching {
     private static final int BLENDED_NOISE_BATCH_THRESHOLD = readPositiveIntProperty(
         BLENDED_NOISE_BATCH_THRESHOLD_PROPERTY,
         DEFAULT_BLENDED_NOISE_BATCH_THRESHOLD
+    );
+    private static final int PALETED_CONTAINER_PACK_THRESHOLD = readPositiveIntProperty(
+        PALETED_CONTAINER_PACK_THRESHOLD_PROPERTY,
+        DEFAULT_PALETED_CONTAINER_PACK_THRESHOLD
     );
 
     private NativeBatching() {
@@ -133,6 +143,10 @@ public final class NativeBatching {
         return sampleCount >= BLENDED_NOISE_BATCH_THRESHOLD && NativeBridge.isLoaded();
     }
 
+    public static boolean shouldUseNativePalettedContainerPack(int packedLongCount) {
+        return packedLongCount >= PALETED_CONTAINER_PACK_THRESHOLD && NativeBridge.isLoaded();
+    }
+
     public static int entityBatchThreshold() {
         return ENTITY_BATCH_THRESHOLD;
     }
@@ -175,6 +189,10 @@ public final class NativeBatching {
 
     public static int blendedNoiseBatchThreshold() {
         return BLENDED_NOISE_BATCH_THRESHOLD;
+    }
+
+    public static int palettedContainerPackThreshold() {
+        return PALETED_CONTAINER_PACK_THRESHOLD;
     }
 
     private static int readPositiveIntProperty(String property, int fallback) {

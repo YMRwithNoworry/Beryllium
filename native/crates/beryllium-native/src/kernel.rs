@@ -694,6 +694,116 @@ pub fn destroy_noise_generator(id: usize) -> Result<(), NativeError> {
         .ok_or(NativeError::InvalidInput)
 }
 
+/// Palette serialization kinds accepted by [`pack_paletted_container`].
+pub const PALETTE_KIND_GLOBAL: u8 = 0;
+pub const PALETTE_KIND_SINGLE_VALUE: u8 = 1;
+pub const PALETTE_KIND_INDEXED: u8 = 2;
+
+/// Packs one vanilla `PalettedContainer.Data` network payload byte-for-byte:
+/// `[bits byte][palette varints][varint long count][big-endian longs]` (netty `writeLong` order).
+///
+/// * `PALETTE_KIND_GLOBAL` writes no palette section (vanilla `GlobalPalette.write` is a no-op).
+/// * `PALETTE_KIND_SINGLE_VALUE` writes one varint registry id.
+/// * `PALETTE_KIND_INDEXED` writes varint(size) followed by one varint registry id per entry,
+///   matching both `LinearPalette.write` and `HashMapPalette.write`.
+///
+/// Varints use vanilla `FriendlyByteBuf.writeVarInt` semantics (unsigned 7-bit groups, up to 5
+/// bytes). Returns the number of bytes written, or `OutputLengthMismatch` when `output` is too
+/// small for the exact encoded size.
+pub fn pack_paletted_container(
+    bits: u8,
+    palette_kind: u8,
+    palette_ids: &[i32],
+    longs: &[i64],
+    output: &mut [u8],
+) -> Result<usize, NativeError> {
+    match palette_kind {
+        PALETTE_KIND_GLOBAL => {
+            if !palette_ids.is_empty() {
+                return Err(NativeError::InvalidInput);
+            }
+        }
+        PALETTE_KIND_SINGLE_VALUE => {
+            if palette_ids.len() != 1 {
+                return Err(NativeError::InvalidInput);
+            }
+        }
+        PALETTE_KIND_INDEXED => {}
+        _ => return Err(NativeError::InvalidInput),
+    }
+    if palette_ids.iter().any(|id| *id < 0) {
+        return Err(NativeError::InvalidInput);
+    }
+
+    let encoded_size = encoded_paletted_container_size(palette_kind, palette_ids, longs);
+    if output.len() < encoded_size {
+        return Err(NativeError::OutputLengthMismatch);
+    }
+
+    let mut cursor = 0usize;
+    output[cursor] = bits;
+    cursor += 1;
+    if palette_kind == PALETTE_KIND_INDEXED {
+        cursor = write_var_int(palette_ids.len() as u32, output, cursor);
+    }
+    for id in palette_ids {
+        cursor = write_var_int(*id as u32, output, cursor);
+    }
+    cursor = write_var_int(longs.len() as u32, output, cursor);
+    for value in longs {
+        output[cursor..cursor + 8].copy_from_slice(&value.to_be_bytes());
+        cursor += 8;
+    }
+    debug_assert_eq!(cursor, encoded_size);
+    Ok(cursor)
+}
+
+fn encoded_paletted_container_size(
+    palette_kind: u8,
+    palette_ids: &[i32],
+    longs: &[i64],
+) -> usize {
+    let mut size = 1 // bits byte
+        + var_int_size(longs.len() as u32)
+        + longs.len() * 8;
+    match palette_kind {
+        PALETTE_KIND_SINGLE_VALUE => size += var_int_size(palette_ids[0] as u32),
+        PALETTE_KIND_INDEXED => {
+            size += var_int_size(palette_ids.len() as u32);
+            size += palette_ids
+                .iter()
+                .map(|id| var_int_size(*id as u32))
+                .sum::<usize>();
+        }
+        _ => {}
+    }
+    size
+}
+
+#[inline]
+fn var_int_size(value: u32) -> usize {
+    match value {
+        0..=0x7F => 1,
+        0x80..=0x3FFF => 2,
+        0x4000..=0x1F_FFFF => 3,
+        0x20_0000..=0xFFF_FFFF => 4,
+        _ => 5,
+    }
+}
+
+#[inline]
+fn write_var_int(mut value: u32, output: &mut [u8], mut cursor: usize) -> usize {
+    loop {
+        if value & !0x7F == 0 {
+            output[cursor] = value as u8;
+            return cursor + 1;
+        }
+        output[cursor] = (value as u8 & 0x7F) | 0x80;
+        value >>= 7;
+        cursor += 1;
+    }
+}
+
 pub fn batch_sample_noise_3d(
     generator_id: usize,
     positions: &[f64],
@@ -2888,6 +2998,71 @@ fn compare_java_double(left: f64, right: f64) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pack_paletted_container_matches_reference_layout() {
+        let mut output = [0u8; 64];
+        let written = pack_paletted_container(
+            5,
+            PALETTE_KIND_INDEXED,
+            &[3, 300, 0x20_0000],
+            &[0x0102_0304_0506_0708, -1],
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(
+            &output[..written],
+            &[
+                5, // bits
+                3, // palette size varint
+                3, // id 3 (1 byte)
+                0xAC, 0x02, // id 300 (2 bytes)
+                0x80, 0x80, 0x80, 0x01, // id 0x20_0000 (4 bytes)
+                2, // long count varint
+                1, 2, 3, 4, 5, 6, 7, 8, // 0x0102..0708 BE
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // -1 BE
+            ]
+        );
+    }
+
+    #[test]
+    fn pack_paletted_container_handles_global_and_single_value() {
+        let mut output = [0u8; 32];
+        let written = pack_paletted_container(12, PALETTE_KIND_GLOBAL, &[], &[42], &mut output).unwrap();
+        assert_eq!(&output[..written], &[12, 1, 0, 0, 0, 0, 0, 0, 0, 42]);
+
+        let written = pack_paletted_container(0, PALETTE_KIND_SINGLE_VALUE, &[7], &[], &mut output).unwrap();
+        assert_eq!(&output[..written], &[0, 7, 0]);
+    }
+
+    #[test]
+    fn pack_paletted_container_rejects_invalid_input() {
+        assert_eq!(
+            pack_paletted_container(4, PALETTE_KIND_GLOBAL, &[1], &[], &mut [0u8; 8]),
+            Err(NativeError::InvalidInput)
+        );
+        assert_eq!(
+            pack_paletted_container(4, PALETTE_KIND_SINGLE_VALUE, &[], &[], &mut [0u8; 8]),
+            Err(NativeError::InvalidInput)
+        );
+        assert_eq!(
+            pack_paletted_container(4, 9, &[], &[], &mut [0u8; 8]),
+            Err(NativeError::InvalidInput)
+        );
+        assert_eq!(
+            pack_paletted_container(4, PALETTE_KIND_INDEXED, &[-1], &[], &mut [0u8; 8]),
+            Err(NativeError::InvalidInput)
+        );
+    }
+
+    #[test]
+    fn pack_paletted_container_requires_exact_capacity() {
+        assert_eq!(
+            pack_paletted_container(4, PALETTE_KIND_GLOBAL, &[], &[1, 2], &mut [0u8; 17]),
+            Err(NativeError::OutputLengthMismatch)
+        );
+        assert!(pack_paletted_container(4, PALETTE_KIND_GLOBAL, &[], &[1, 2], &mut [0u8; 18]).is_ok());
+    }
 
     struct BlockingNoise {
         entered: Mutex<Option<std::sync::mpsc::Sender<()>>>,

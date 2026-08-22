@@ -13,8 +13,9 @@
   "mixins": [
     "BlendedNoiseMixin",
     "BreezeAttackEntitySensorMixin",
-    "ClassInstanceMultiMapAccessor",
     "ChunkMapMixin",
+    "ClassInstanceMultiMapAccessor",
+    "DensityFunctionsNoiseMixin",
     "EntitySectionMixin",
     "FrogAttackablesSensorMixin",
     "ImprovedNoiseAccessor",
@@ -22,15 +23,15 @@
     "NearestItemSensorMixin",
     "NearestLivingEntitySensorMixin",
     "NormalNoiseMixin",
+    "PalettedContainerDataMixin",
     "PerlinNoiseAccessor",
-    "PlayerSensorMixin",
     "PlayerChunkSenderMixin",
+    "PlayerSensorMixin",
     "PotentialCalculatorMixin",
     "PotentialCalculatorPointChargeAccessor",
     "PrepareRamNearestTargetMixin",
     "TemptingSensorMixin",
-    "WardenEntitySensorMixin",
-    "DensityFunctionsNoiseMixin"
+    "WardenEntitySensorMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -373,3 +373,22 @@ HotSpot（Adoptium 21.0.12，同基准方法）复测：
 | NormalNoise 1 octave | 512 | 1.011x | 1.815x |
 
 据此把 BlendedNoise 默认阈值定为 `49`（`49 × 24 = 1176` 工作单位进入并行档，覆盖原版 `49` 点切片；`33 × 24 = 792` 仍为串行档，HotSpot 约 `0.87x`，保留 Java 路径），单 octave NormalNoise 阈值回到 `512`（`512 × 2 = 1024` 恰好进入并行档，实测 `1.815x`）。多 octave 维持 `128`（`2 octave × 128 = 256` 仍串行但 HotSpot 上约 `1.09x`；`5 octave × 128 = 640` 亦串行；`2 octave × 256` 起进入并行档）。逐位一致性由既有 parity 校验覆盖，`cargo test` 113 项全通过。
+
+## 2026-08-22 PalettedContainer 区块包打包内核（默认禁用）
+
+为区块网络包序列化实现了 Rust 打包内核 `beryllium_pack_paletted_container`，逐字节复刻 `PalettedContainer.Data.write` 的线上格式：`bits 字节 + palette varint（Global 无 / SingleValue 单 id / Linear 与 HashMap 为 varint(size)+ids）+ varint 长度前缀 + 大端 long 数组`（netty `writeLong` 为大端，MC 网络协议即大端）。mixin 挂在 `PalettedContainer$Data.write` HEAD，低于阈值、未知 palette 实现、单值 palette 未初始化或 native 失败时回落原版。
+
+语义验证 `MinecraftPalettedContainerPackVerifier` 直接以原版 `container.write` 输出为参考，覆盖 SECTION_STATES/SECTION_BIOMES、1/2/5/40/200/3000 种取值（SingleValue、Linear、HashMap、Global 四种 palette 全覆盖）、varint 多字节编码、缓冲区不足回落与未知 palette 回落；所有输出逐字节一致。注意容器在 `write` 的 acquire/release 内部会重排数据，校验器须在自己的 `acquire()` 期间快照。
+
+HotSpot（Adoptium 21.0.12）实测（O(1) 注册表查找，Java 基线为原版 `writeByte + palette.write + writeLongArray` 序列，native 为打包 + 一次 `writeBytes`）：
+
+| palette 形态 | packed longs | Java 中位数 | Native 中位数 | 加速比 |
+|---|---:|---:|---:|---:|
+| Linear（2 种取值） | 256 | 12,700 ns | 13,200 ns | 0.962x |
+| Linear（8 种取值） | 256 | 6,000 ns | 11,800 ns | 0.508x |
+| HashMap（32 种取值） | 342 | 6,600 ns | 9,500 ns | 0.695x |
+| HashMap（128 种取值） | 456 | 8,300 ns | 9,000 ns | 0.922x |
+| HashMap（256 种取值） | 512 | 10,500 ns | 12,200 ns | 0.861x |
+| Global（3000 种取值） | 1,024 | 4,300 ns | 4,900 ns | 0.878x |
+
+结论：原版 `writeLongArray` 经 JIT 后约 `2ns/long` 直写 netty 缓冲（单遍），而 FFM 路径需要 long 数组拷入 native、结果拷回 Java、再 `writeBytes` 三遍搬运，固定开销无法摊薄，全部形态均为负收益。与 radius/AABB 筛选同样的处理：内核、parity 校验与 `beryllium.native.palettedContainerPackThreshold` 开关保留（默认 `Integer.MAX_VALUE` 禁用），`PalettedContainerDataMixin` 在默认阈值下永远走原版分支。该测量说明区块包序列化的剩余成本在 palette 写出与 long 直写本身，Rust 下沉无结构性空间；未来若 JVM FFM 支持零拷贝直写 netty 缓冲内存可重评。

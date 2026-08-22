@@ -1070,6 +1070,45 @@ pub unsafe extern "C" fn beryllium_batch_sample_noise_3d(
     ))
 }
 
+/// Packs one vanilla `PalettedContainer.Data` network payload (bits byte, palette varints,
+/// varint-prefixed little-endian long array). Returns the packed byte count on success or a
+/// negative encoded error via [`count_result`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_pack_paletted_container(
+    bits: i32,
+    palette_kind: i32,
+    palette_ids: *const i32,
+    palette_ids_length: usize,
+    longs: *const i64,
+    longs_length: usize,
+    output: *mut u8,
+    output_capacity: usize,
+) -> i32 {
+    if !(0..=255).contains(&bits) {
+        return -1 - NativeStatus::InvalidInput.code();
+    }
+    let palette_ids = match unsafe { read_slice(palette_ids, palette_ids_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let longs = match unsafe { read_slice(longs, longs_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let output = match unsafe { write_slice(output, output_capacity) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+
+    count_result(crate::kernel::pack_paletted_container(
+        bits as u8,
+        palette_kind as u8,
+        palette_ids,
+        longs,
+        output,
+    ))
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_batch_precompute_chunk_noise(
     generator_id: i32,

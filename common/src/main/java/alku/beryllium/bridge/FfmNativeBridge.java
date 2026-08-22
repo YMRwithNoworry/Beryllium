@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 final class FfmNativeBridge {
     private static final int FFM_ERROR = NativeStatus.FFM_ERROR.code();
+    private static final int[] EMPTY_INT_ARRAY = new int[0];
     private static final int CUBECL_MIN_CHARGE_COUNT = 262_144;
     private static final Object POTENTIAL_CACHE_UPDATE_LOCK = new Object();
     private static final AtomicLong NEXT_SESSION_ID = new AtomicLong();
@@ -924,6 +925,37 @@ final class FfmNativeBridge {
         });
     }
 
+    static int packPalettedContainer(
+        int bits,
+        int paletteKind,
+        int[] paletteIds,
+        int paletteIdCount,
+        long[] longs,
+        byte[] output,
+        int outputCapacity
+    ) {
+        return withIndexSession(session -> {
+            Buffer paletteBuffer = session.input(
+                paletteIds == null ? EMPTY_INT_ARRAY : paletteIds,
+                Kind.INT,
+                Math.max(paletteIdCount, 0)
+            );
+            Buffer longsBuffer = session.input(longs, Kind.LONG);
+            Buffer outputBuffer = session.uninitializedOutput(output, Kind.BYTE, outputCapacity);
+            int result = session.invokePackPalettedContainer(
+                bits,
+                paletteKind,
+                paletteBuffer,
+                longsBuffer,
+                outputBuffer
+            );
+            if (result >= 0) {
+                session.copyOutput(outputBuffer, result);
+            }
+            return result;
+        });
+    }
+
     static int batchPrecomputeChunkNoise(
         int generatorId,
         int[] chunkPositions,
@@ -1055,14 +1087,15 @@ final class FfmNativeBridge {
         ADDRESS(0, 1),
         INT(4, 4),
         LONG(8, 8),
-        DOUBLE(8, 8);
+        DOUBLE(8, 8),
+        BYTE(1, 1);
 
         private final int byteSize;
         private final long alignment;
 
         Kind(int byteSize, long alignment) {
             this.byteSize = byteSize;
-            this.alignment = alignment;
+            this.alignment = byteSize;
         }
 
         private Class<?> carrier() {
@@ -1071,6 +1104,7 @@ final class FfmNativeBridge {
                 case INT -> int.class;
                 case LONG -> long.class;
                 case DOUBLE -> double.class;
+                case BYTE -> byte.class;
             };
         }
     }
@@ -1116,7 +1150,8 @@ final class FfmNativeBridge {
         BATCH_SAMPLE_NOISE_3D("beryllium_batch_sample_noise_3d", Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         BATCH_PRECOMPUTE_CHUNK_NOISE("beryllium_batch_precompute_chunk_noise", Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         COMPUTE_BIOME_WEIGHTS_3D("beryllium_compute_biome_weights_3d", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.DOUBLE, Kind.ADDRESS, Kind.LONG, Kind.INT),
-        INTERPOLATE_BIOME_VALUES("beryllium_interpolate_biome_values", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG);
+        INTERPOLATE_BIOME_VALUES("beryllium_interpolate_biome_values", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG),
+        PACK_PALETTED_CONTAINER("beryllium_pack_paletted_container", Kind.INT, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG);
 
         private final String symbol;
         private final Kind[] arguments;
@@ -1135,8 +1170,9 @@ final class FfmNativeBridge {
                     SORT_BY_DISTANCE_DOUBLE,
                     SORT_BY_DISTANCE_AND_COUNT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
                     SELECT_NEAREST_INDICES_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
-                    SORT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
-                    BATCH_SAMPLE_NOISE_3D -> true;
+                SORT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
+                BATCH_SAMPLE_NOISE_3D,
+                PACK_PALETTED_CONTAINER -> true;
                 default -> false;
             };
         }
@@ -1209,6 +1245,7 @@ final class FfmNativeBridge {
             layouts.put(Kind.INT, valueLayoutClass.getField("JAVA_INT").get(null));
             layouts.put(Kind.LONG, valueLayoutClass.getField("JAVA_LONG").get(null));
             layouts.put(Kind.DOUBLE, valueLayoutClass.getField("JAVA_DOUBLE").get(null));
+            layouts.put(Kind.BYTE, valueLayoutClass.getField("JAVA_BYTE").get(null));
 
             Object linker = linkerClass.getMethod("nativeLinker").invoke(null);
             Object lookup = symbolLookupClass.getMethod("loaderLookup").invoke(null);
@@ -1387,6 +1424,25 @@ final class FfmNativeBridge {
                 generatorId,
                 positions.segment,
                 (long) positions.length,
+                output.segment,
+                (long) output.length
+            );
+        }
+
+        private int invokePackPalettedContainer(
+            int bits,
+            int paletteKind,
+            Buffer paletteIds,
+            Buffer longs,
+            Buffer output
+        ) throws Throwable {
+            return (int) runtime.exactHandle(Function.PACK_PALETTED_CONTAINER).invokeExact(
+                bits,
+                paletteKind,
+                paletteIds.segment,
+                (long) paletteIds.length,
+                longs.segment,
+                (long) longs.length,
                 output.segment,
                 (long) output.length
             );

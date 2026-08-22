@@ -91,6 +91,15 @@ public final class NativeBatchingVerifier {
         if (NativeBatching.shouldUseNativeBlendedNoiseBatch(49) != NativeBridge.isLoaded()) {
             throw new AssertionError("Native BlendedNoise activation should follow native availability at its threshold");
         }
+        if (NativeBatching.palettedContainerPackThreshold() != Integer.MAX_VALUE) {
+            throw new AssertionError(
+                "Native paletted-container pack threshold mismatch, expected disabled by default but got "
+                    + NativeBatching.palettedContainerPackThreshold()
+            );
+        }
+        if (NativeBatching.shouldUseNativePalettedContainerPack(1_000_000)) {
+            throw new AssertionError("Native paletted-container pack should remain disabled by default");
+        }
         if (NativeBatching.shouldUseNativeVariableRadiusBatch(16_384)) {
             throw new AssertionError("Native variable-radius batch should remain disabled by default");
         }

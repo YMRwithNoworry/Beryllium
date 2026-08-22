@@ -1297,6 +1297,55 @@ public final class NativeBridge {
         return status.isSuccess();
     }
 
+    /**
+     * Packs one vanilla paletted-container network payload into {@code output}.
+     *
+     * @param bits        bits per entry as written by {@code BitStorage.getBits()}
+     * @param paletteKind 0 = global (no palette bytes), 1 = single value, 2 = indexed
+     * @param paletteIds  registry ids in palette order; only the first {@code paletteIdCount}
+     *                    entries are read ({@code null} allowed for the global kind)
+     * @param longs       the packed storage longs ({@code BitStorage.getRaw()})
+     * @param output      destination buffer, filled from index 0
+     * @return packed byte count, or {@code -1} when the native path failed and the caller must
+     *         fall back to the vanilla serializer
+     */
+    public static int packPalettedContainer(
+        int bits,
+        int paletteKind,
+        int[] paletteIds,
+        int paletteIdCount,
+        long[] longs,
+        byte[] output
+    ) {
+        if (!isLoaded()) {
+            return -1;
+        }
+        if (bits < 0 || bits > 255 || paletteKind < 0 || paletteKind > 2) {
+            return -1;
+        }
+        if (paletteIds == null) {
+            if (paletteIdCount != 0) {
+                return -1;
+            }
+        } else if (paletteIdCount < 0 || paletteIdCount > paletteIds.length) {
+            return -1;
+        }
+        if (output.length < 6 + 5L * Math.max(paletteIdCount, 1) + 8L * longs.length) {
+            return -1;
+        }
+
+        int packed = FfmNativeBridge.packPalettedContainer(
+            bits,
+            paletteKind,
+            paletteIds,
+            paletteIdCount,
+            longs,
+            output,
+            output.length
+        );
+        return packed >= 0 ? packed : -1;
+    }
+
     public static boolean computeBiomeWeights3D(
         double[] samplePositions,
         double[] biomeCenters,
