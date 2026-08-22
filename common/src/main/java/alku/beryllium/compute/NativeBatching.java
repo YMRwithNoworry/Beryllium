@@ -19,6 +19,8 @@ public final class NativeBatching {
     private static final int DEFAULT_AABB_BATCH_THRESHOLD = Integer.MAX_VALUE;
     private static final int DEFAULT_NORMAL_NOISE_BATCH_THRESHOLD = 128;
     private static final int DEFAULT_SINGLE_OCTAVE_NORMAL_NOISE_BATCH_THRESHOLD = 512;
+    // Measured crossover on the blended-noise benchmark: native only wins from ~1024 samples upward.
+    private static final int DEFAULT_BLENDED_NOISE_BATCH_THRESHOLD = 1_024;
     private static final String ENTITY_BATCH_THRESHOLD_PROPERTY = "beryllium.native.entityBatchThreshold";
     private static final String ENTITY_DISTANCE_SORT_THRESHOLD_PROPERTY =
         "beryllium.native.entityDistanceSortThreshold";
@@ -31,6 +33,8 @@ public final class NativeBatching {
     private static final String NORMAL_NOISE_BATCH_THRESHOLD_PROPERTY = "beryllium.native.normalNoiseBatchThreshold";
     private static final String SINGLE_OCTAVE_NORMAL_NOISE_BATCH_THRESHOLD_PROPERTY =
         "beryllium.native.singleOctaveNormalNoiseBatchThreshold";
+    private static final String BLENDED_NOISE_BATCH_THRESHOLD_PROPERTY =
+        "beryllium.native.blendedNoiseBatchThreshold";
 
     private static final int ENTITY_BATCH_THRESHOLD = readPositiveIntProperty(
         ENTITY_BATCH_THRESHOLD_PROPERTY,
@@ -71,6 +75,10 @@ public final class NativeBatching {
     private static final int SINGLE_OCTAVE_NORMAL_NOISE_BATCH_THRESHOLD = readPositiveIntProperty(
         SINGLE_OCTAVE_NORMAL_NOISE_BATCH_THRESHOLD_PROPERTY,
         DEFAULT_SINGLE_OCTAVE_NORMAL_NOISE_BATCH_THRESHOLD
+    );
+    private static final int BLENDED_NOISE_BATCH_THRESHOLD = readPositiveIntProperty(
+        BLENDED_NOISE_BATCH_THRESHOLD_PROPERTY,
+        DEFAULT_BLENDED_NOISE_BATCH_THRESHOLD
     );
 
     private NativeBatching() {
@@ -118,6 +126,10 @@ public final class NativeBatching {
         return sampleCount >= threshold && NativeBridge.isLoaded();
     }
 
+    public static boolean shouldUseNativeBlendedNoiseBatch(int sampleCount) {
+        return sampleCount >= BLENDED_NOISE_BATCH_THRESHOLD && NativeBridge.isLoaded();
+    }
+
     public static int entityBatchThreshold() {
         return ENTITY_BATCH_THRESHOLD;
     }
@@ -156,6 +168,10 @@ public final class NativeBatching {
 
     public static int singleOctaveNormalNoiseBatchThreshold() {
         return SINGLE_OCTAVE_NORMAL_NOISE_BATCH_THRESHOLD;
+    }
+
+    public static int blendedNoiseBatchThreshold() {
+        return BLENDED_NOISE_BATCH_THRESHOLD;
     }
 
     private static int readPositiveIntProperty(String property, int fallback) {

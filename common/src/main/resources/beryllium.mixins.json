@@ -11,6 +11,7 @@
     "SmoothDoubleAccessor"
   ],
   "mixins": [
+    "BlendedNoiseMixin",
     "BreezeAttackEntitySensorMixin",
     "ClassInstanceMultiMapAccessor",
     "ChunkMapMixin",

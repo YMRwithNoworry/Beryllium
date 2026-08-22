@@ -2,6 +2,7 @@ package alku.beryllium.mixin;
 
 import alku.beryllium.api.MinecraftNormalNoiseAccess;
 import alku.beryllium.bridge.NativeBridge;
+import alku.beryllium.worldgen.NativeNoiseCleaner;
 import it.unimi.dsi.fastutil.doubles.DoubleList;
 import net.minecraft.world.level.levelgen.synth.ImprovedNoise;
 import net.minecraft.world.level.levelgen.synth.NormalNoise;
@@ -19,13 +20,6 @@ public class NormalNoiseMixin implements MinecraftNormalNoiseAccess {
     private static final int BERYLLIUM_UNINITIALIZED = -1;
     @Unique
     private static final int BERYLLIUM_FAILED = -2;
-    @Unique
-    private static final Cleaner BERYLLIUM_CLEANER = Cleaner.create(runnable -> {
-        Thread thread = new Thread(runnable, "Beryllium native noise cleanup");
-        thread.setDaemon(true);
-        return thread;
-    });
-
     @Shadow
     @Final
     private PerlinNoise first;
@@ -76,10 +70,7 @@ public class NormalNoiseMixin implements MinecraftNormalNoiseAccess {
             int generator = this.beryllium$registerNativeGenerator();
             this.beryllium$nativeGenerator = generator >= 0 ? generator : BERYLLIUM_FAILED;
             if (generator >= 0) {
-                this.beryllium$nativeCleanup = BERYLLIUM_CLEANER.register(
-                    this,
-                    new NativeNoiseCleanup(generator)
-                );
+                this.beryllium$nativeCleanup = NativeNoiseCleaner.register(this, generator);
             }
             return this.beryllium$nativeGenerator;
         }
@@ -169,11 +160,4 @@ public class NormalNoiseMixin implements MinecraftNormalNoiseAccess {
         return true;
     }
 
-    @Unique
-    private record NativeNoiseCleanup(int generator) implements Runnable {
-        @Override
-        public void run() {
-            NativeBridge.destroyNoiseGenerator(this.generator);
-        }
-    }
 }

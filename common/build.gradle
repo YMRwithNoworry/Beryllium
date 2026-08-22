@@ -124,6 +124,15 @@ tasks.register('normalNoisePerformanceBenchmark', JavaExec) {
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
+tasks.register('blendedNoisePerformanceBenchmark', JavaExec) {
+    description = 'Measures Minecraft BlendedNoise fillArray Java and native paths.'
+    group = 'verification'
+    dependsOn tasks.named('testClasses')
+    mainClass = 'alku.beryllium.worldgen.MinecraftBlendedNoisePerformanceBenchmark'
+    classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
 check.dependsOn tasks.named('javaParityTest')
 check.dependsOn tasks.named('nativeRuntimeTest')
 check.dependsOn tasks.named('ffmReuseTest')

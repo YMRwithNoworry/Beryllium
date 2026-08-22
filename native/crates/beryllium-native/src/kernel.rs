@@ -13,7 +13,7 @@ use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
 
 use crate::NativeError;
-use crate::minecraft_noise::MinecraftNormalNoise;
+use crate::minecraft_noise::{MinecraftBlendedNoise, MinecraftNormalNoise};
 use crate::noise::{NoiseGenerator, batch_sample_noise_3d_parallel, perlin::PerlinNoise, simplex::SimplexNoise, opensimplex2::OpenSimplex2Noise};
 use crate::biome::{BiomeWeight, batch_compute_biome_weights_3d, batch_interpolate_biome_values};
 #[cfg(feature = "cubecl-preview")]
@@ -660,6 +660,26 @@ pub fn create_minecraft_normal_noise(
         lowest_frequency_input_factor,
         lowest_frequency_value_factor,
         value_factor,
+    )?)
+}
+
+pub fn create_minecraft_blended_noise(
+    origins: &[f64],
+    permutations: &[i32],
+    xz_multiplier: f64,
+    y_multiplier: f64,
+    xz_factor: f64,
+    y_factor: f64,
+    smear_scale_multiplier: f64,
+) -> Result<usize, NativeError> {
+    register_noise_generator(MinecraftBlendedNoise::from_flat_state(
+        origins,
+        permutations,
+        xz_multiplier,
+        y_multiplier,
+        xz_factor,
+        y_factor,
+        smear_scale_multiplier,
     )?)
 }
 

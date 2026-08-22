@@ -80,6 +80,8 @@ public final class BerylliumCommands {
                 + NativeBatching.normalNoiseBatchThreshold()
                 + ", single-octave normal noise threshold: "
                 + NativeBatching.singleOctaveNormalNoiseBatchThreshold()
+                + ", blended noise threshold: "
+                + NativeBatching.blendedNoiseBatchThreshold()
         ), false);
         return NativeBridge.isLoaded() ? 1 : 0;
     }

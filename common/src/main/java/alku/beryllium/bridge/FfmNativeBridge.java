@@ -878,6 +878,27 @@ final class FfmNativeBridge {
         ), -1);
     }
 
+    static int createMinecraftBlendedNoise(
+        double[] origins,
+        int[] permutations,
+        double xzMultiplier,
+        double yMultiplier,
+        double xzFactor,
+        double yFactor,
+        double smearScaleMultiplier
+    ) {
+        return withSession(session -> session.invoke(
+            Function.CREATE_MINECRAFT_BLENDED_NOISE,
+            session.input(origins, Kind.DOUBLE),
+            session.input(permutations, Kind.INT),
+            xzMultiplier,
+            yMultiplier,
+            xzFactor,
+            yFactor,
+            smearScaleMultiplier
+        ), -1);
+    }
+
     static int destroyNoiseGenerator(int generatorId) {
         return withStatusSession(session -> session.invoke(Function.DESTROY_NOISE_GENERATOR, generatorId));
     }
@@ -891,8 +912,7 @@ final class FfmNativeBridge {
             int positionsLength = Math.multiplyExact(positionCount, 3);
             Buffer positionsBuffer = session.input(positions, Kind.DOUBLE, positionsLength);
             Buffer outputBuffer = session.uninitializedOutput(output, Kind.DOUBLE, positionCount);
-            int result = session.invoke(
-                Function.BATCH_SAMPLE_NOISE_3D,
+            int result = session.invokeBatchSampleNoise3D(
                 generatorId,
                 positionsBuffer,
                 outputBuffer
@@ -1091,6 +1111,7 @@ final class FfmNativeBridge {
         CREATE_SIMPLEX_NOISE("beryllium_create_simplex_noise", Kind.LONG),
         CREATE_OPENSIMPLEX2_NOISE("beryllium_create_opensimplex2_noise", Kind.LONG),
         CREATE_MINECRAFT_NORMAL_NOISE("beryllium_create_minecraft_normal_noise", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE),
+        CREATE_MINECRAFT_BLENDED_NOISE("beryllium_create_minecraft_blended_noise", Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE, Kind.DOUBLE),
         DESTROY_NOISE_GENERATOR("beryllium_destroy_noise_generator", Kind.INT),
         BATCH_SAMPLE_NOISE_3D("beryllium_batch_sample_noise_3d", Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
         BATCH_PRECOMPUTE_CHUNK_NOISE("beryllium_batch_precompute_chunk_noise", Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.INT, Kind.ADDRESS, Kind.LONG, Kind.ADDRESS, Kind.LONG),
@@ -1114,7 +1135,8 @@ final class FfmNativeBridge {
                     SORT_BY_DISTANCE_DOUBLE,
                     SORT_BY_DISTANCE_AND_COUNT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
                     SELECT_NEAREST_INDICES_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
-                    SORT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE -> true;
+                    SORT_WITHIN_RADIUS_EXCLUSIVE_DOUBLE,
+                    BATCH_SAMPLE_NOISE_3D -> true;
                 default -> false;
             };
         }
@@ -1355,6 +1377,16 @@ final class FfmNativeBridge {
                 positions.segment,
                 (long) positions.length,
                 limit,
+                output.segment,
+                (long) output.length
+            );
+        }
+
+        private int invokeBatchSampleNoise3D(int generatorId, Buffer positions, Buffer output) throws Throwable {
+            return (int) runtime.exactHandle(Function.BATCH_SAMPLE_NOISE_3D).invokeExact(
+                generatorId,
+                positions.segment,
+                (long) positions.length,
                 output.segment,
                 (long) output.length
             );

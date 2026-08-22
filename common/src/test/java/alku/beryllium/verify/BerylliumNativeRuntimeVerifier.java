@@ -15,7 +15,10 @@ import alku.beryllium.compute.PotentialEnergyBatchVerifier;
 import alku.beryllium.compute.PrioritizedEntitySearchVerifier;
 import alku.beryllium.compute.SupportingBlockSearchVerifier;
 import alku.beryllium.worldgen.MinecraftNormalNoiseBridgeVerifier;
+import alku.beryllium.worldgen.MinecraftBlendedNoiseBridgeVerifier;
+import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.Bootstrap;
 
 import java.util.Arrays;
 
@@ -24,6 +27,8 @@ public final class BerylliumNativeRuntimeVerifier {
     }
 
     public static void main(String[] args) {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
         NativeStatus status = NativeBridge.initialize();
         if (status != NativeStatus.OK) {
             throw new AssertionError("Expected bundled native backend to load, got " + status);
@@ -53,6 +58,7 @@ public final class BerylliumNativeRuntimeVerifier {
         verifyNativeAabbIntersectionFilter();
         verifyNativePotentialEnergyChange();
         MinecraftNormalNoiseBridgeVerifier.verifyNativeMatchesMinecraftReference();
+        MinecraftBlendedNoiseBridgeVerifier.verifyNativeMatchesMinecraftReference();
         NativeBatchingVerifier.verifyDefaultThreshold();
         EntitySectionBatchVerifier.verifyAcceptIntersecting();
         EntitySectionBatchVerifier.verifyAcceptIntersectingAbort();

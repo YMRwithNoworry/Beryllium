@@ -79,6 +79,18 @@ public final class NativeBatchingVerifier {
         if (NativeBatching.shouldUseNativeNormalNoiseBatch(1024, 0)) {
             throw new AssertionError("NormalNoise without active octaves must remain on the Java path");
         }
+        if (NativeBatching.blendedNoiseBatchThreshold() != 1_024) {
+            throw new AssertionError(
+                "Native BlendedNoise threshold mismatch, expected 1024 but got "
+                    + NativeBatching.blendedNoiseBatchThreshold()
+            );
+        }
+        if (NativeBatching.shouldUseNativeBlendedNoiseBatch(1_023)) {
+            throw new AssertionError("Native BlendedNoise should remain disabled below its threshold");
+        }
+        if (NativeBatching.shouldUseNativeBlendedNoiseBatch(1_024) != NativeBridge.isLoaded()) {
+            throw new AssertionError("Native BlendedNoise activation should follow native availability at its threshold");
+        }
         if (NativeBatching.shouldUseNativeVariableRadiusBatch(16_384)) {
             throw new AssertionError("Native variable-radius batch should remain disabled by default");
         }

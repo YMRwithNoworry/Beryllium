@@ -300,3 +300,36 @@ CubeCL/LLVM 静态链接产物约 `83.3 MB`，并且在 GraalVM Community 21 中
 | 5 | 128 | 1.267x | 1.577x | 1.226x |
 
 因此生产门控按有效 octave 分层：多 octave 从 `128` 个样本接管，单 octave 从 `512` 个样本接管，零有效 octave 和更小数组继续使用 Java。该数据只衡量一次 `fillArray` 的局部计算，不能直接推导整体区块生成速度或 TPS。
+
+## 2026-08-14 Minecraft BlendedNoise 批量采样
+
+原版 `BlendedNoise` 是主世界、下界和末地基础三维密度的共同实现，每个样本先计算 `8` 个 main octave，再根据 blend 结果计算最多 `16 + 16` 个 limit octave。新路径一次注册三组共 `40` 个 `ImprovedNoise` 的 origin 与 permutation，以线程本地坐标 buffer 和精确 FFM MethodHandle 批量调用 Rust；小于门槛、native 不可用或注册失败时执行原版 Java。
+
+语义验证直接以 Minecraft `BlendedNoise.compute` 为参考，覆盖三套原版维度参数、不同种子、世界边界坐标、Y-smear、2048 点 Rayon 路径、输出尾部与销毁后失败。所有输出均逐位一致。基准环境为 Windows x86_64、GraalVM Community JDK 21.0.2、Rust release native `OK`；每次 native 测量包含坐标打包、FFM 输入输出复制和 downcall，运行三个独立 JVM：
+
+| 样本数 | 第 1 轮 | 第 2 轮 | 第 3 轮 |
+|---:|---:|---:|---:|
+| 17 | 1.092x | 1.140x | 1.174x |
+| 33 | 1.064x | 1.175x | 1.110x |
+| 49 | 1.072x | 1.122x | 1.110x |
+| 128 | 1.059x | 1.041x | 1.051x |
+| 512 | 1.013x | 1.049x | 1.075x |
+| 2,048 | 3.613x | 3.974x | 3.888x |
+
+原版 `NoiseChunk` 的三个维度通常使用 `33` 或 `49` 点切片，三轮均有收益；`17` 点也连续快于 Java，因此默认 `beryllium.native.blendedNoiseBatchThreshold=17`。小于 `17` 点继续留在 JVM；表格仅代表 BlendedNoise 局部批量计算，不直接等同于整块生成或 TPS 加速。
+
+## 2026-08-22 BlendedNoise 阈值在 HotSpot 上复测
+
+上表在 GraalVM Community JDK 21.0.2 上测得。在同一台 Windows x86_64 机器改用 Eclipse Adoptium HotSpot JDK 21.0.12（玩家更常用的运行时）复测，小批次出现反转，单轮中位数（预热 `120` 次、测量 `401` 次，native 侧包含坐标打包与 FFM 复制）：
+
+| 样本数 | Java 中位数 | Native 中位数 | 加速比 |
+|---:|---:|---:|---:|
+| 17 | 21,375 ns | 22,093 ns | 0.968x |
+| 33 | 41,830 ns | 48,769 ns | 0.858x |
+| 49 | 64,873 ns | 67,075 ns | 0.967x |
+| 128 | 164,731 ns | 184,887 ns | 0.891x |
+| 512 | 649,925 ns | 803,500 ns | 0.809x |
+| 1,024 | 1,336,750 ns | 450,600 ns | 2.967x |
+| 2,048 | 3,265,900 ns | 913,500 ns | 3.575x |
+
+交叉点位于 `512` 与 `1024` 之间：HotSpot 上小于 `1024` 样本 native 均慢于 Java，而 `1024` 起 native 稳定快约 `3x`。GraalVM 小批次 `1.01x-1.17x` 的收益不足以抵消 HotSpot 上最高约 `20%` 的回退，因此默认阈值从 `17` 上调至 `1024`（`-Dberyllium.native.blendedNoiseBatchThreshold` 可覆盖）。大切片（噪声插值缓存填充、`fillArray` 全量路径）仍获得约 `3x` 加速。

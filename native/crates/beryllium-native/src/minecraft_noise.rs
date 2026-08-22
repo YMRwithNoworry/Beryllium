@@ -3,6 +3,9 @@ use crate::noise::NoiseGenerator;
 
 const WRAP: f64 = 33_554_432.0;
 const NORMAL_INPUT_FACTOR: f64 = 1.018_126_888_217_522_7;
+const BLENDED_LIMIT_OCTAVES: usize = 16;
+const BLENDED_MAIN_OCTAVES: usize = 8;
+const BLENDED_TOTAL_OCTAVES: usize = BLENDED_LIMIT_OCTAVES * 2 + BLENDED_MAIN_OCTAVES;
 const GRADIENTS: [[i32; 3]; 16] = [
     [1, 1, 0],
     [-1, 1, 0],
@@ -96,6 +99,11 @@ impl ImprovedNoise {
 
     #[inline]
     fn sample(&self, x: f64, y: f64, z: f64) -> f64 {
+        self.sample_with_y(x, y, z, 0.0, 0.0)
+    }
+
+    #[inline]
+    fn sample_with_y(&self, x: f64, y: f64, z: f64, y_scale: f64, y_max: f64) -> f64 {
         let shifted_x = x + self.xo;
         let shifted_y = y + self.yo;
         let shifted_z = z + self.zo;
@@ -105,6 +113,17 @@ impl ImprovedNoise {
         let local_x = shifted_x - floor_x as f64;
         let local_y = shifted_y - floor_y as f64;
         let local_z = shifted_z - floor_z as f64;
+        let y_offset = if y_scale != 0.0 {
+            let limited_y = if y_max >= 0.0 && y_max < local_y {
+                y_max
+            } else {
+                local_y
+            };
+            (limited_y / y_scale + 1.0E-7_f32 as f64).floor() * y_scale
+        } else {
+            0.0
+        };
+        let gradient_y = local_y - y_offset;
 
         let px0 = self.p(floor_x) as i32;
         let px1 = self.p(floor_x + 1) as i32;
@@ -113,32 +132,32 @@ impl ImprovedNoise {
         let pxy10 = self.p(px1 + floor_y) as i32;
         let pxy11 = self.p(px1 + floor_y + 1) as i32;
         let values = [
-            Self::grad_dot(self.p(pxy00 + floor_z), local_x, local_y, local_z),
-            Self::grad_dot(self.p(pxy10 + floor_z), local_x - 1.0, local_y, local_z),
-            Self::grad_dot(self.p(pxy01 + floor_z), local_x, local_y - 1.0, local_z),
+            Self::grad_dot(self.p(pxy00 + floor_z), local_x, gradient_y, local_z),
+            Self::grad_dot(self.p(pxy10 + floor_z), local_x - 1.0, gradient_y, local_z),
+            Self::grad_dot(self.p(pxy01 + floor_z), local_x, gradient_y - 1.0, local_z),
             Self::grad_dot(
                 self.p(pxy11 + floor_z),
                 local_x - 1.0,
-                local_y - 1.0,
+                gradient_y - 1.0,
                 local_z,
             ),
-            Self::grad_dot(self.p(pxy00 + floor_z + 1), local_x, local_y, local_z - 1.0),
+            Self::grad_dot(self.p(pxy00 + floor_z + 1), local_x, gradient_y, local_z - 1.0),
             Self::grad_dot(
                 self.p(pxy10 + floor_z + 1),
                 local_x - 1.0,
-                local_y,
+                gradient_y,
                 local_z - 1.0,
             ),
             Self::grad_dot(
                 self.p(pxy01 + floor_z + 1),
                 local_x,
-                local_y - 1.0,
+                gradient_y - 1.0,
                 local_z - 1.0,
             ),
             Self::grad_dot(
                 self.p(pxy11 + floor_z + 1),
                 local_x - 1.0,
-                local_y - 1.0,
+                gradient_y - 1.0,
                 local_z - 1.0,
             ),
         ];
@@ -149,6 +168,138 @@ impl ImprovedNoise {
             Self::smoothstep(local_z),
             values,
         )
+    }
+}
+
+pub struct MinecraftBlendedNoise {
+    min_limit_levels: Box<[ImprovedNoise]>,
+    max_limit_levels: Box<[ImprovedNoise]>,
+    main_levels: Box<[ImprovedNoise]>,
+    xz_multiplier: f64,
+    y_multiplier: f64,
+    xz_factor: f64,
+    y_factor: f64,
+    smear_scale_multiplier: f64,
+}
+
+impl MinecraftBlendedNoise {
+    pub fn from_flat_state(
+        origins: &[f64],
+        permutations: &[i32],
+        xz_multiplier: f64,
+        y_multiplier: f64,
+        xz_factor: f64,
+        y_factor: f64,
+        smear_scale_multiplier: f64,
+    ) -> Result<Self, NativeError> {
+        if origins.len() != BLENDED_TOTAL_OCTAVES * 3
+            || permutations.len() != BLENDED_TOTAL_OCTAVES * 256
+            || ![
+                xz_multiplier,
+                y_multiplier,
+                xz_factor,
+                y_factor,
+                smear_scale_multiplier,
+            ]
+            .iter()
+            .all(|value| value.is_finite())
+            || xz_factor == 0.0
+            || y_factor == 0.0
+        {
+            return Err(NativeError::InvalidInput);
+        }
+
+        let mut levels = Vec::with_capacity(BLENDED_TOTAL_OCTAVES);
+        for level_index in 0..BLENDED_TOTAL_OCTAVES {
+            levels.push(ImprovedNoise::from_flat(origins, permutations, level_index)?);
+        }
+        let main_levels = levels.split_off(BLENDED_LIMIT_OCTAVES * 2);
+        let max_limit_levels = levels.split_off(BLENDED_LIMIT_OCTAVES);
+
+        Ok(Self {
+            min_limit_levels: levels.into(),
+            max_limit_levels: max_limit_levels.into(),
+            main_levels: main_levels.into(),
+            xz_multiplier,
+            y_multiplier,
+            xz_factor,
+            y_factor,
+            smear_scale_multiplier,
+        })
+    }
+
+    #[inline]
+    fn wrap(value: f64) -> f64 {
+        value - (value / WRAP + 0.5).floor() * WRAP
+    }
+
+    #[inline]
+    fn clamped_lerp(start: f64, end: f64, delta: f64) -> f64 {
+        if delta < 0.0 {
+            start
+        } else if delta > 1.0 {
+            end
+        } else {
+            start + delta * (end - start)
+        }
+    }
+}
+
+impl NoiseGenerator for MinecraftBlendedNoise {
+    fn sample_2d(&self, x: f64, y: f64) -> f64 {
+        self.sample_3d(x, y, 0.0)
+    }
+
+    fn sample_3d(&self, x: f64, y: f64, z: f64) -> f64 {
+        let scaled_x = x * self.xz_multiplier;
+        let scaled_y = y * self.y_multiplier;
+        let scaled_z = z * self.xz_multiplier;
+        let main_x = scaled_x / self.xz_factor;
+        let main_y = scaled_y / self.y_factor;
+        let main_z = scaled_z / self.xz_factor;
+        let smear_scale = self.y_multiplier * self.smear_scale_multiplier;
+        let main_smear_scale = smear_scale / self.y_factor;
+        let mut min_limit = 0.0;
+        let mut max_limit = 0.0;
+        let mut main = 0.0;
+        let mut octave_scale = 1.0;
+
+        for level in self.main_levels.iter() {
+            main += level.sample_with_y(
+                Self::wrap(main_x * octave_scale),
+                Self::wrap(main_y * octave_scale),
+                Self::wrap(main_z * octave_scale),
+                main_smear_scale * octave_scale,
+                main_y * octave_scale,
+            ) / octave_scale;
+            octave_scale /= 2.0;
+        }
+
+        let blend = (main / 10.0 + 1.0) / 2.0;
+        let skip_min = blend >= 1.0;
+        let skip_max = blend <= 0.0;
+        octave_scale = 1.0;
+
+        for level_index in 0..BLENDED_LIMIT_OCTAVES {
+            let noise_x = Self::wrap(scaled_x * octave_scale);
+            let noise_y = Self::wrap(scaled_y * octave_scale);
+            let noise_z = Self::wrap(scaled_z * octave_scale);
+            let y_scale = smear_scale * octave_scale;
+            let y_max = scaled_y * octave_scale;
+            if !skip_min {
+                min_limit += self.min_limit_levels[level_index]
+                    .sample_with_y(noise_x, noise_y, noise_z, y_scale, y_max)
+                    / octave_scale;
+            }
+            if !skip_max {
+                max_limit += self.max_limit_levels[level_index]
+                    .sample_with_y(noise_x, noise_y, noise_z, y_scale, y_max)
+                    / octave_scale;
+            }
+            octave_scale /= 2.0;
+        }
+
+        Self::clamped_lerp(min_limit / 512.0, max_limit / 512.0, blend) / 128.0
     }
 }
 
@@ -290,5 +441,21 @@ mod tests {
         let second = noise.sample_3d(12.25, -4.5, 81.75);
         assert!(first.is_finite());
         assert_eq!(first.to_bits(), second.to_bits());
+    }
+
+    #[test]
+    fn blended_noise_rejects_mismatched_state() {
+        assert!(matches!(
+            MinecraftBlendedNoise::from_flat_state(
+                &[0.0; BLENDED_TOTAL_OCTAVES * 3 - 1],
+                &[0; BLENDED_TOTAL_OCTAVES * 256],
+                1.0,
+                1.0,
+                80.0,
+                160.0,
+                8.0,
+            ),
+            Err(NativeError::InvalidInput)
+        ));
     }
 }

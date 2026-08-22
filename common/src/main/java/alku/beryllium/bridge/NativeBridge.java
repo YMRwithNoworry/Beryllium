@@ -11,6 +11,7 @@ import java.util.Arrays;
  * native library is unavailable or a native call cannot complete.
  */
 public final class NativeBridge {
+    private static final int MINECRAFT_BLENDED_NOISE_OCTAVES = 40;
     private static volatile NativeStatus status = NativeStatus.UNAVAILABLE;
     private static volatile boolean initialized;
 
@@ -1230,6 +1231,33 @@ public final class NativeBridge {
             lowestFrequencyInputFactor,
             lowestFrequencyValueFactor,
             valueFactor
+        );
+    }
+
+    public static int createMinecraftBlendedNoise(
+        double[] origins,
+        int[] permutations,
+        double xzMultiplier,
+        double yMultiplier,
+        double xzFactor,
+        double yFactor,
+        double smearScaleMultiplier
+    ) {
+        if (!isLoaded()) {
+            return -1;
+        }
+        if (origins.length != MINECRAFT_BLENDED_NOISE_OCTAVES * 3
+            || permutations.length != MINECRAFT_BLENDED_NOISE_OCTAVES * 256) {
+            throw new IllegalArgumentException("invalid Minecraft BlendedNoise state lengths");
+        }
+        return FfmNativeBridge.createMinecraftBlendedNoise(
+            origins,
+            permutations,
+            xzMultiplier,
+            yMultiplier,
+            xzFactor,
+            yFactor,
+            smearScaleMultiplier
         );
     }
 

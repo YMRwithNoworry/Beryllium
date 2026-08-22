@@ -1002,6 +1002,40 @@ pub unsafe extern "C" fn beryllium_create_minecraft_normal_noise(
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn beryllium_create_minecraft_blended_noise(
+    origins: *const f64,
+    origins_length: usize,
+    permutations: *const i32,
+    permutations_length: usize,
+    xz_multiplier: f64,
+    y_multiplier: f64,
+    xz_factor: f64,
+    y_factor: f64,
+    smear_scale_multiplier: f64,
+) -> i32 {
+    let origins = match unsafe { read_slice(origins, origins_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    let permutations = match unsafe { read_slice(permutations, permutations_length) } {
+        Ok(value) => value,
+        Err(error) => return -1 - error.code(),
+    };
+    match crate::kernel::create_minecraft_blended_noise(
+        origins,
+        permutations,
+        xz_multiplier,
+        y_multiplier,
+        xz_factor,
+        y_factor,
+        smear_scale_multiplier,
+    ) {
+        Ok(id) => i32::try_from(id).unwrap_or(-1 - NativeStatus::InvalidInput.code()),
+        Err(error) => -1 - NativeStatus::from(error).code(),
+    }
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn beryllium_destroy_noise_generator(id: i32) -> i32 {
     if id < 0 {
         return NativeStatus::InvalidInput.code();
