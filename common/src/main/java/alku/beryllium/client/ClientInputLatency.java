@@ -3,10 +3,13 @@ package alku.beryllium.client;
 import alku.beryllium.mixin.MinecraftInputLatencyAccess;
 import net.minecraft.client.Minecraft;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public final class ClientInputLatency {
     private static final boolean ENABLED = !isClassPresent("dev.kemmlow.inputoptimizer.InputFlushManager")
         && !isClassPresent("me.incend1um.noinputlagtickrate.NoInputLagTickRateClient");
     private static final InputLatencyGate GATE = new InputLatencyGate();
+    private static final AtomicBoolean SUPPRESS_TEXT_OPENING_CHARACTER = new AtomicBoolean();
 
     private static boolean flushing;
 
@@ -19,6 +22,22 @@ public final class ClientInputLatency {
 
     public static boolean shouldFlushKeyboardCallback(boolean gameplayInput, boolean opensTextInput) {
         return InputLatencyGate.shouldFlushKeyboardCallback(gameplayInput, opensTextInput);
+    }
+
+    public static void markTextOpeningKey() {
+        if (ENABLED) {
+            SUPPRESS_TEXT_OPENING_CHARACTER.set(true);
+        }
+    }
+
+    public static void clearTextOpeningKey() {
+        if (ENABLED) {
+            SUPPRESS_TEXT_OPENING_CHARACTER.set(false);
+        }
+    }
+
+    public static boolean consumeTextOpeningCharacter() {
+        return ENABLED && SUPPRESS_TEXT_OPENING_CHARACTER.getAndSet(false);
     }
 
     public static void flushFromCallback(

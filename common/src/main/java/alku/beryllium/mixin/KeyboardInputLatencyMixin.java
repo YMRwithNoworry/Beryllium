@@ -39,6 +39,15 @@ public class KeyboardInputLatencyMixin {
         GLFWKeyCallbackI scheduledKeyCallback = args.get(1);
         GLFWCharModsCallbackI scheduledCharCallback = args.get(2);
         args.set(1, (GLFWKeyCallbackI) (window, key, scanCode, action, modifiers) -> {
+            boolean opensTextInput = action == 1 && window == this.minecraft.getWindow().getWindow()
+                && this.minecraft.screen == null
+                && (this.minecraft.options.keyChat.matches(key, scanCode)
+                    || this.minecraft.options.keyCommand.matches(key, scanCode));
+            if (opensTextInput) {
+                ClientInputLatency.markTextOpeningKey();
+            } else {
+                ClientInputLatency.clearTextOpeningKey();
+            }
             if (this.minecraft.isSameThread()) {
                 ((KeyboardHandler) (Object) this).keyPress(window, key, scanCode, action, modifiers);
             } else {
@@ -46,6 +55,10 @@ public class KeyboardInputLatencyMixin {
             }
         });
         args.set(2, (GLFWCharModsCallbackI) (window, codePoint, modifiers) -> {
+            if (window == this.minecraft.getWindow().getWindow()
+                && ClientInputLatency.consumeTextOpeningCharacter()) {
+                return;
+            }
             if (this.minecraft.isSameThread()) {
                 this.charTyped(window, codePoint, modifiers);
             } else {
