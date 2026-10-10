@@ -72,6 +72,8 @@ NeoForge 移植版 VulkanMod 首次启动若停在 `VulkanTransformationService 
 
 安装 Lithium 时，Beryllium 自动跳过重复的 `FrogAttackablesSensorMixin`，避免双方重定向同一个调用而导致启动失败。该青蛙目标筛选优化由 Lithium 提供。VulkanMod 应与 Sodium、Sodium Extra 和 Ixeris 分开使用；在 NeoVulkanMod 0.5.5-dev+3.1 的实例中已确认 Sodium Extra 的垂直同步注入冲突及 Ixeris 的模块重复导出错误。
 
+区块发送批处理通过 FastUtil 的公开 primitive spliterator 复制到复用缓冲，保持原版流的遇见顺序（包括零键和等距离目标），不再向上层类加载器中的 `LongOpenHashSet` 注入模组接口，避免 NeoForge 启动时的 `LongOpenHashSetAccess` 类加载失败。
+
 性能对比可运行 `gradle :common:performanceBenchmark`；NormalNoise 和 BlendedNoise 专项分别可运行 `gradle :common:normalNoisePerformanceBenchmark`、`gradle :common:blendedNoisePerformanceBenchmark`。测试说明和实测记录见 [`docs/performance-benchmark.md`](docs/performance-benchmark.md)。结果仅表示对应局部计算路径，不能直接换算成整体 TPS 提升。
 
 ### 运行单个测试

@@ -42,17 +42,13 @@ public class PlayerChunkSenderMixin {
         List<LevelChunk> chunks;
         if (!this.memoryConnection
             && this.pendingChunks.size() > limit
-            && NativeBatching.shouldUseNativeChunkSendSelection(this.pendingChunks.size())
-            && this.pendingChunks instanceof LongOpenHashSetAccess pendingChunksAccess) {
+            && NativeBatching.shouldUseNativeChunkSendSelection(this.pendingChunks.size())) {
             ChunkSendBatchSelector.Scratch scratch = ChunkSendBatchSelector.acquireScratch(
                 this.pendingChunks.size(),
                 limit
             );
             try {
-                int candidateCount = scratch.snapshot(
-                    pendingChunksAccess.beryllium$getKeyTable(),
-                    pendingChunksAccess.beryllium$containsNull()
-                );
+                int candidateCount = scratch.snapshot(this.pendingChunks);
                 long[] packedChunkPositions = scratch.packedChunkPositions();
                 int[] selectedIndices = scratch.selectedIndices();
                 int selectedCount = ChunkSendBatchSelector.selectNearestChunkIndices(

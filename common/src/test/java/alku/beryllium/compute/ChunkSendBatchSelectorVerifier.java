@@ -129,6 +129,14 @@ public final class ChunkSendBatchSelectorVerifier {
                 Arrays.copyOf(scratch.packedChunkPositions(), snapshotSize),
                 "scratch table encounter order"
             );
+            int publicSnapshotSize = scratch.snapshot(pendingChunks);
+            assertArrayEquals(
+                streamOrder,
+                Arrays.copyOf(scratch.packedChunkPositions(), publicSnapshotSize),
+                "public spliterator encounter order including the zero key"
+            );
+            pendingChunks.clear();
+            assertEquals(0, scratch.snapshot(pendingChunks), "empty public snapshot after reuse");
         } finally {
             ChunkSendBatchSelector.releaseScratch(scratch);
         }
@@ -141,7 +149,7 @@ public final class ChunkSendBatchSelectorVerifier {
             64
         );
         try {
-            largeScratch.snapshot(keyTable(largePendingChunks), containsNull(largePendingChunks));
+            largeScratch.snapshot(largePendingChunks);
         } finally {
             ChunkSendBatchSelector.releaseScratch(largeScratch);
         }
@@ -149,7 +157,7 @@ public final class ChunkSendBatchSelectorVerifier {
         LongOpenHashSet pendingChunks = new LongOpenHashSet(createLargePositions(8192));
         ChunkSendBatchSelector.Scratch scratch = ChunkSendBatchSelector.acquireScratch(pendingChunks.size(), 64);
         try {
-            int candidateCount = scratch.snapshot(keyTable(pendingChunks), containsNull(pendingChunks));
+            int candidateCount = scratch.snapshot(pendingChunks);
             long[] packedChunkPositions = scratch.packedChunkPositions();
             if (packedChunkPositions.length <= candidateCount) {
                 throw new AssertionError("expected the smaller snapshot to reuse a larger packed buffer");

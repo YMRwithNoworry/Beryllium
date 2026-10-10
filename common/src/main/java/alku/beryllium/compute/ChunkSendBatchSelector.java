@@ -1,9 +1,11 @@
 package alku.beryllium.compute;
 
 import alku.beryllium.bridge.NativeBridge;
+import it.unimi.dsi.fastutil.longs.LongSet;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.LongConsumer;
 
 /**
  * Selects the distance-ordered subset used by PlayerChunkSender's partial batch path.
@@ -95,10 +97,11 @@ public final class ChunkSendBatchSelector {
         }
     }
 
-    public static final class Scratch {
+    public static final class Scratch implements LongConsumer {
         private final ScratchPool owner;
         private long[] packedChunkPositions = new long[0];
         private int[] selectedIndices = new int[0];
+        private int snapshotSize;
 
         private Scratch(ScratchPool owner) {
             this.owner = owner;
@@ -111,6 +114,22 @@ public final class ChunkSendBatchSelector {
             if (this.selectedIndices.length < selectedCount) {
                 this.selectedIndices = new int[selectedCount];
             }
+        }
+
+        public int snapshot(LongSet values) {
+            if (values == null || values.size() > this.packedChunkPositions.length) {
+                throw new IllegalArgumentException("values must fit the acquired scratch buffer");
+            }
+            this.snapshotSize = 0;
+            // Use the same spliterator as vanilla's boxed stream to preserve equal-distance ties.
+            // FastUtil can live in NeoForge's parent loader, so do not inject mod interfaces into it.
+            values.spliterator().forEachRemaining((LongConsumer) this);
+            return this.snapshotSize;
+        }
+
+        @Override
+        public void accept(long value) {
+            this.packedChunkPositions[this.snapshotSize++] = value;
         }
 
         public int snapshot(long[] keyTable, boolean containsNull) {

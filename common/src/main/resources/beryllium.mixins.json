@@ -20,7 +20,6 @@
     "EntitySectionMixin",
     "FrogAttackablesSensorMixin",
     "ImprovedNoiseAccessor",
-    "LongOpenHashSetMixin",
     "NearestItemSensorMixin",
     "NearestLivingEntitySensorMixin",
     "NormalNoiseMixin",

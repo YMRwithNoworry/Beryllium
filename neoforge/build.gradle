@@ -94,9 +94,15 @@ tasks.register('verifyNativePackage') {
                     throw new GradleException("Missing required entry in ${jarFile.name}: ${entry}")
                 }
             }
-            def forbiddenEntry = 'alku/beryllium/mixin/MouseInputLatencyAccess.class'
-            if (zipFile.getEntry(forbiddenEntry) != null) {
-                throw new GradleException("Forbidden directly loaded class in mixin package in ${jarFile.name}: ${forbiddenEntry}")
+            def forbiddenEntries = [
+                'alku/beryllium/mixin/MouseInputLatencyAccess.class',
+                'alku/beryllium/mixin/LongOpenHashSetAccess.class',
+                'alku/beryllium/mixin/LongOpenHashSetMixin.class'
+            ]
+            forbiddenEntries.each { entry ->
+                if (zipFile.getEntry(entry) != null) {
+                    throw new GradleException("Forbidden cross-loader or directly loaded mixin class in ${jarFile.name}: ${entry}")
+                }
             }
         } finally {
             zipFile.close()
