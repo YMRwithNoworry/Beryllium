@@ -78,6 +78,8 @@ NeoForge 移植版 VulkanMod 首次启动若停在 `VulkanTransformationService 
 
 Photon 2.2.7 要求 OpenGL 3.2，会在此 Vulkan 实例中触发 NeoForge feature bounds 验证失败；Accelerated Rendering 1.0.14 则在 `AvailabilityUtils.isAvailable()` 调用 `GL.createCapabilities()` 时因没有 OpenGL 上下文而失败。使用该 NeoVulkanMod 版本时也应禁用这两个模组。
 
+LDLib2 2.2.41 的 `LDLibShaders.init()` 在客户端初始化阶段直接调用 OpenGL `glCreateShader`，在该实例中已触发原生崩溃。SPD 和 KilaGraph 强制依赖 LDLib2，因此保留这组模组时应使用原版/Sodium 渲染；继续使用此 NeoVulkanMod 版本则需要同时禁用 LDLib2 及其依赖方。上述问题来自其他模组的 OpenGL 初始化，Beryllium 的兼容模式无法替它们提供 OpenGL 上下文。
+
 性能对比可运行 `gradle :common:performanceBenchmark`；NormalNoise 和 BlendedNoise 专项分别可运行 `gradle :common:normalNoisePerformanceBenchmark`、`gradle :common:blendedNoisePerformanceBenchmark`。测试说明和实测记录见 [`docs/performance-benchmark.md`](docs/performance-benchmark.md)。结果仅表示对应局部计算路径，不能直接换算成整体 TPS 提升。
 
 ### 运行单个测试
