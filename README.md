@@ -74,6 +74,8 @@ NeoForge 移植版 VulkanMod 首次启动若停在 `VulkanTransformationService 
 
 区块发送批处理通过 FastUtil 的公开 primitive spliterator 复制到复用缓冲，保持原版流的遇见顺序（包括零键和等距离目标），不再向上层类加载器中的 `LongOpenHashSet` 注入模组接口，避免 NeoForge 启动时的 `LongOpenHashSetAccess` 类加载失败。
 
+同一 NeoVulkanMod 实例若在窗口创建时直接退出且 `latest.log` 没有异常，应检查实例目录的 `hs_err_pid*.log`。ImmediatelyFast 1.6.14 的 `windowInit()` 调用 OpenGL `glGetString` 已确认会在该 Vulkan 窗口下触发 `lwjgl_opengl.dll` 原生崩溃，应禁用 ImmediatelyFast。
+
 性能对比可运行 `gradle :common:performanceBenchmark`；NormalNoise 和 BlendedNoise 专项分别可运行 `gradle :common:normalNoisePerformanceBenchmark`、`gradle :common:blendedNoisePerformanceBenchmark`。测试说明和实测记录见 [`docs/performance-benchmark.md`](docs/performance-benchmark.md)。结果仅表示对应局部计算路径，不能直接换算成整体 TPS 提升。
 
 ### 运行单个测试
