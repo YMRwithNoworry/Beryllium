@@ -19,15 +19,18 @@ public final class BerylliumMixinPlugin implements IMixinConfigPlugin {
 
     private final boolean vulkanModPresent;
     private final boolean lithiumPresent;
+    private final boolean quarkPresent;
 
     public BerylliumMixinPlugin() {
         this(isVulkanModPresent(BerylliumMixinPlugin.class.getClassLoader()),
-            isLithiumPresent(BerylliumMixinPlugin.class.getClassLoader()));
+            isLithiumPresent(BerylliumMixinPlugin.class.getClassLoader()),
+            isQuarkPresent(BerylliumMixinPlugin.class.getClassLoader()));
     }
 
-    BerylliumMixinPlugin(boolean vulkanModPresent, boolean lithiumPresent) {
+    BerylliumMixinPlugin(boolean vulkanModPresent, boolean lithiumPresent, boolean quarkPresent) {
         this.vulkanModPresent = vulkanModPresent;
         this.lithiumPresent = lithiumPresent;
+        this.quarkPresent = quarkPresent;
     }
 
     static boolean isVulkanModPresent(ClassLoader loader) {
@@ -37,6 +40,10 @@ public final class BerylliumMixinPlugin implements IMixinConfigPlugin {
 
     static boolean isLithiumPresent(ClassLoader loader) {
         return loader.getResource("net/caffeinemc/mods/lithium/common/LithiumMod.class") != null;
+    }
+
+    static boolean isQuarkPresent(ClassLoader loader) {
+        return loader.getResource("org/violetmoon/quark/base/Quark.class") != null;
     }
 
     @Override
@@ -51,6 +58,11 @@ public final class BerylliumMixinPlugin implements IMixinConfigPlugin {
                 "Lithium detected: disabling the duplicate frog sensor mixin."
             );
         }
+        if (this.quarkPresent) {
+            LoggerFactory.getLogger("beryllium").info(
+                "Quark detected: disabling the tempting sensor overwrite to preserve feeding trough integration."
+            );
+        }
     }
 
     @Override
@@ -63,6 +75,10 @@ public final class BerylliumMixinPlugin implements IMixinConfigPlugin {
         // A runtime flag is too late: runTick injection and local capture happen at load time.
         // Skip the whole group so callbacks cannot use accessors that were not installed.
         if (this.lithiumPresent && mixinClassName.equals("alku.beryllium.mixin.FrogAttackablesSensorMixin")) {
+            return false;
+        }
+        // Quark's feeding trough hooks the vanilla Stream.collect call removed by our overwrite.
+        if (this.quarkPresent && mixinClassName.equals("alku.beryllium.mixin.TemptingSensorMixin")) {
             return false;
         }
         return !this.vulkanModPresent || !INPUT_LATENCY_MIXINS.contains(mixinClassName);

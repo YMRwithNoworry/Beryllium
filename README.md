@@ -64,13 +64,15 @@ gradle :neoforge:runClient
 gradle :common:test :fabric:test :neoforge:test
 ```
 
-当前 `:common:check` 会运行 JavaExec 验证器：`javaParityTest` 覆盖 Java fallback/native 语义一致性，`nativeRuntimeTest` 要求打包进 classpath 的 native 后端真实加载并执行所有 FFM 入口，`ffmReuseTest` 验证线程本地 FFM buffer 复用和并发隔离，`inputLatencyStateTest` 验证输入时序和重复处理门控，`mixinCompatibilityTest` 验证 VulkanMod、Lithium 检测及 Mixin 加载策略。
+当前 `:common:check` 会运行 JavaExec 验证器：`javaParityTest` 覆盖 Java fallback/native 语义一致性，`nativeRuntimeTest` 要求打包进 classpath 的 native 后端真实加载并执行所有 FFM 入口，`ffmReuseTest` 验证线程本地 FFM buffer 复用和并发隔离，`inputLatencyStateTest` 验证输入时序和重复处理门控，`mixinCompatibilityTest` 验证 VulkanMod、Lithium、Quark 检测及全部八种组合的 Mixin 加载策略。
 
 安装 VulkanMod 时，Beryllium 会在 Mixin 应用前自动跳过整组客户端输入延迟优化，避免干扰 VulkanMod 对 `Minecraft.runTick` 的注入和局部变量捕获。键鼠输入由原版及 VulkanMod 处理，世界生成、实体计算和 Rust 原生优化继续启用；未安装 VulkanMod 时保留 Beryllium 输入优化。启动日志会输出兼容模式提示。
 
 NeoForge 移植版 VulkanMod 首次启动若停在 `VulkanTransformationService is Loading...`，检查是否有要求重启的提示窗口。该版本会将 `config/fml.toml` 的 `earlyWindowControl` 改为 `false` 后等待确认并退出；关闭提示并重新启动实例即可绕过该分支。这发生在模组发现阶段，不能靠 Beryllium 的 Mixin 兼容开关解决。
 
 安装 Lithium 时，Beryllium 自动跳过重复的 `FrogAttackablesSensorMixin`，避免双方重定向同一个调用而导致启动失败。该青蛙目标筛选优化由 Lithium 提供。VulkanMod 应与 Sodium、Sodium Extra 和 Ixeris 分开使用；在 NeoVulkanMod 0.5.5-dev+3.1 的实例中已确认 Sodium Extra 的垂直同步注入冲突及 Ixeris 的模块重复导出错误。
+
+安装 Quark 时，Beryllium 自动跳过 `TemptingSensorMixin`，保留原版诱惑传感器中 Quark 喂食槽所需的 `Stream.collect` 注入点，避免覆盖该方法导致注入失败或喂食槽失效。其他优化继续启用；未安装 Quark 时保留诱惑传感器优化。启动日志会输出 Quark 兼容模式提示。
 
 区块发送批处理通过 FastUtil 的公开 primitive spliterator 复制到复用缓冲，保持原版流的遇见顺序（包括零键和等距离目标），不再向上层类加载器中的 `LongOpenHashSet` 注入模组接口，避免 NeoForge 启动时的 `LongOpenHashSetAccess` 类加载失败。
 

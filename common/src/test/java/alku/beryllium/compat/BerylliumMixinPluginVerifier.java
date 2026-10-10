@@ -14,7 +14,8 @@ public final class BerylliumMixinPluginVerifier {
             @Override
             public URL getResource(String name) {
                 return name.equals("net/vulkanmod/Initializer.class")
-                    || name.equals("net/caffeinemc/mods/lithium/common/LithiumMod.class") ? marker : null;
+                    || name.equals("net/caffeinemc/mods/lithium/common/LithiumMod.class")
+                    || name.equals("org/violetmoon/quark/base/Quark.class") ? marker : null;
             }
 
             @Override
@@ -26,11 +27,9 @@ public final class BerylliumMixinPluginVerifier {
         check(!BerylliumMixinPlugin.isVulkanModPresent(new ClassLoader(null) {}), "absent VulkanMod must stay enabled");
         check(BerylliumMixinPlugin.isLithiumPresent(resourceOnlyLoader), "Lithium resource must be detected");
         check(!BerylliumMixinPlugin.isLithiumPresent(new ClassLoader(null) {}), "absent Lithium must stay enabled");
+        check(BerylliumMixinPlugin.isQuarkPresent(resourceOnlyLoader), "Quark resource must be detected");
+        check(!BerylliumMixinPlugin.isQuarkPresent(new ClassLoader(null) {}), "absent Quark must stay enabled");
 
-        BerylliumMixinPlugin compatible = new BerylliumMixinPlugin(true, false);
-        BerylliumMixinPlugin vanilla = new BerylliumMixinPlugin(false, false);
-        BerylliumMixinPlugin lithium = new BerylliumMixinPlugin(false, true);
-        BerylliumMixinPlugin combined = new BerylliumMixinPlugin(true, true);
         try (var stream = BerylliumMixinPluginVerifier.class.getResourceAsStream("/beryllium.mixins.json")) {
             check(stream != null, "Mixin configuration must be packaged");
             var config = JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).getAsJsonObject();
@@ -39,19 +38,24 @@ public final class BerylliumMixinPluginVerifier {
             for (String group : new String[]{"client", "mixins"}) {
                 for (var entry : config.getAsJsonArray(group)) {
                     String name = prefix + entry.getAsString();
-                    check(vanilla.shouldApplyMixin("unused", name), "vanilla must apply " + name);
-                    check(compatible.shouldApplyMixin("unused", name) == group.equals("mixins"),
-                        "VulkanMod must skip input mixins and preserve common mixins: " + name);
                     boolean duplicateFrogSensor = entry.getAsString().equals("FrogAttackablesSensorMixin");
-                    check(lithium.shouldApplyMixin("unused", name) == !duplicateFrogSensor,
-                        "Lithium must only skip the duplicate frog sensor: " + name);
-                    check(combined.shouldApplyMixin("unused", name) == (group.equals("mixins") && !duplicateFrogSensor),
-                        "combined compatibility must preserve unrelated optimizations: " + name);
+                    boolean temptingSensor = entry.getAsString().equals("TemptingSensorMixin");
+                    for (int mask = 0; mask < 8; mask++) {
+                        boolean vulkan = (mask & 1) != 0;
+                        boolean lithium = (mask & 2) != 0;
+                        boolean quark = (mask & 4) != 0;
+                        var plugin = new BerylliumMixinPlugin(vulkan, lithium, quark);
+                        boolean expected = !(vulkan && group.equals("client"))
+                            && !(lithium && duplicateFrogSensor) && !(quark && temptingSensor);
+                        check(plugin.shouldApplyMixin("unused", name) == expected,
+                            "compatibility combination " + mask + " must preserve unrelated optimizations: " + name);
+                        check(plugin.shouldApplyMixin("unused", "other.mod.InputLatencyMixin"),
+                            "unrelated mixins must remain enabled for combination " + mask);
+                    }
                 }
             }
         }
-        check(compatible.shouldApplyMixin("unused", "other.mod.InputLatencyMixin"), "unrelated mixins must remain enabled");
-        System.out.println("VulkanMod and Lithium Mixin compatibility checks passed.");
+        System.out.println("VulkanMod, Lithium and Quark Mixin compatibility checks passed.");
     }
 
     private static void check(boolean condition, String message) {
