@@ -3,6 +3,7 @@
 
 # Gradle cache folder
 .gradle
+.architectury-transformer/
 
 # Gradle build folder
 build

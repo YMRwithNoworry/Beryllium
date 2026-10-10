@@ -67,6 +67,7 @@ tasks.register('verifyNativePackage') {
             nativeEntry,
             'alku/beryllium/bridge/NativeBridge.class',
             'alku/beryllium/bridge/FfmNativeBridge.class',
+            'alku/beryllium/compat/BerylliumMixinPlugin.class',
             'alku/beryllium/client/MouseInputLatencyAccess.class',
             'alku/beryllium/compute/ChunkSendBatchSelector.class',
             'alku/beryllium/compute/EntityDistanceSort.class',

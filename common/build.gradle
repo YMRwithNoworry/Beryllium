@@ -106,6 +106,14 @@ tasks.register('inputLatencyStateTest', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
 }
 
+tasks.register('mixinCompatibilityTest', JavaExec) {
+    description = 'Verifies VulkanMod and Lithium detection and load-time mixin exclusion.'
+    group = 'verification'
+    dependsOn tasks.named('testClasses')
+    mainClass = 'alku.beryllium.compat.BerylliumMixinPluginVerifier'
+    classpath = sourceSets.test.runtimeClasspath + files(sourceSets.test.output.classesDirs)
+}
+
 tasks.register('performanceBenchmark', JavaExec) {
     description = 'Measures nearest-item, chunk, potential, and native entity-filter paths.'
     group = 'verification'
@@ -146,3 +154,4 @@ check.dependsOn tasks.named('javaParityTest')
 check.dependsOn tasks.named('nativeRuntimeTest')
 check.dependsOn tasks.named('ffmReuseTest')
 check.dependsOn tasks.named('inputLatencyStateTest')
+check.dependsOn tasks.named('mixinCompatibilityTest')

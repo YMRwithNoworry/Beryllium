@@ -1,6 +1,7 @@
 {
   "required": true,
   "package": "alku.beryllium.mixin",
+  "plugin": "alku.beryllium.compat.BerylliumMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "minVersion": "0.8",
   "client": [
