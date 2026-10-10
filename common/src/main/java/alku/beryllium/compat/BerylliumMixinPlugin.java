@@ -9,6 +9,10 @@ import java.util.List;
 import java.util.Set;
 
 public final class BerylliumMixinPlugin implements IMixinConfigPlugin {
+    private static final Set<String> LITHIUM_DUPLICATE_MIXINS = Set.of(
+        "alku.beryllium.mixin.FrogAttackablesSensorMixin",
+        "alku.beryllium.mixin.EntitySectionMixin"
+    );
     private static final Set<String> INPUT_LATENCY_MIXINS = Set.of(
         "alku.beryllium.mixin.KeyboardInputLatencyMixin",
         "alku.beryllium.mixin.MinecraftInputLatencyAccess",
@@ -55,7 +59,7 @@ public final class BerylliumMixinPlugin implements IMixinConfigPlugin {
         }
         if (this.lithiumPresent) {
             LoggerFactory.getLogger("beryllium").info(
-                "Lithium detected: disabling the duplicate frog sensor mixin."
+                "Lithium detected: disabling duplicate frog sensor and entity section iterator mixins."
             );
         }
         if (this.quarkPresent) {
@@ -74,7 +78,7 @@ public final class BerylliumMixinPlugin implements IMixinConfigPlugin {
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         // A runtime flag is too late: runTick injection and local capture happen at load time.
         // Skip the whole group so callbacks cannot use accessors that were not installed.
-        if (this.lithiumPresent && mixinClassName.equals("alku.beryllium.mixin.FrogAttackablesSensorMixin")) {
+        if (this.lithiumPresent && LITHIUM_DUPLICATE_MIXINS.contains(mixinClassName)) {
             return false;
         }
         // Quark's feeding trough hooks the vanilla Stream.collect call removed by our overwrite.

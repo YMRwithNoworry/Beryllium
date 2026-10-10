@@ -70,7 +70,7 @@ gradle :common:test :fabric:test :neoforge:test
 
 NeoForge 移植版 VulkanMod 首次启动若停在 `VulkanTransformationService is Loading...`，检查是否有要求重启的提示窗口。该版本会将 `config/fml.toml` 的 `earlyWindowControl` 改为 `false` 后等待确认并退出；关闭提示并重新启动实例即可绕过该分支。这发生在模组发现阶段，不能靠 Beryllium 的 Mixin 兼容开关解决。
 
-安装 Lithium 时，Beryllium 自动跳过重复的 `FrogAttackablesSensorMixin`，避免双方重定向同一个调用而导致启动失败。该青蛙目标筛选优化由 Lithium 提供。VulkanMod 应与 Sodium、Sodium Extra 和 Ixeris 分开使用；在 NeoVulkanMod 0.5.5-dev+3.1 的实例中已确认 Sodium Extra 的垂直同步注入冲突及 Ixeris 的模块重复导出错误。
+安装 Lithium 时，Beryllium 自动跳过重复的 `FrogAttackablesSensorMixin` 和 `EntitySectionMixin`，避免双方重定向同一个调用而导致启动或加载世界失败。青蛙目标筛选和实体分区迭代优化由 Lithium 提供。VulkanMod 应与 Sodium、Sodium Extra 和 Ixeris 分开使用；在 NeoVulkanMod 0.5.5-dev+3.1 的实例中已确认 Sodium Extra 的垂直同步注入冲突及 Ixeris 的模块重复导出错误。
 
 安装 Quark 时，Beryllium 自动跳过 `TemptingSensorMixin`，保留原版诱惑传感器中 Quark 喂食槽所需的 `Stream.collect` 注入点，避免覆盖该方法导致注入失败或喂食槽失效。其他优化继续启用；未安装 Quark 时保留诱惑传感器优化。启动日志会输出 Quark 兼容模式提示。
 

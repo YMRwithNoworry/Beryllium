@@ -38,7 +38,8 @@ public final class BerylliumMixinPluginVerifier {
             for (String group : new String[]{"client", "mixins"}) {
                 for (var entry : config.getAsJsonArray(group)) {
                     String name = prefix + entry.getAsString();
-                    boolean duplicateFrogSensor = entry.getAsString().equals("FrogAttackablesSensorMixin");
+                    boolean duplicateLithiumMixin = entry.getAsString().equals("FrogAttackablesSensorMixin")
+                        || entry.getAsString().equals("EntitySectionMixin");
                     boolean temptingSensor = entry.getAsString().equals("TemptingSensorMixin");
                     for (int mask = 0; mask < 8; mask++) {
                         boolean vulkan = (mask & 1) != 0;
@@ -46,7 +47,7 @@ public final class BerylliumMixinPluginVerifier {
                         boolean quark = (mask & 4) != 0;
                         var plugin = new BerylliumMixinPlugin(vulkan, lithium, quark);
                         boolean expected = !(vulkan && group.equals("client"))
-                            && !(lithium && duplicateFrogSensor) && !(quark && temptingSensor);
+                            && !(lithium && duplicateLithiumMixin) && !(quark && temptingSensor);
                         check(plugin.shouldApplyMixin("unused", name) == expected,
                             "compatibility combination " + mask + " must preserve unrelated optimizations: " + name);
                         check(plugin.shouldApplyMixin("unused", "other.mod.InputLatencyMixin"),
